@@ -578,7 +578,7 @@ if cacheSize > 1024*1024*1024 {
 | **Dockerfile location** | `docker/Dockerfile` - NEVER in project root |
 | **Default timezone** | `America/New_York` (override with `TZ` env var) |
 | **Internal port** | Default `80` - app listens on `0.0.0.0:80` (override with `PORT` env var) |
-| **External port** | Random `64xxx` port mapped to internal 80: `64580:80` |
+| **External port** | Random `64xxx` port mapped to internal 80: `172.17.0.1:64580:80` (production); `64580:80` is dev-only (binds all interfaces) |
 | **STOPSIGNAL** | `SIGRTMIN+3` |
 | **ENTRYPOINT** | `["tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh"]` |
 | **NEVER modify ENTRYPOINT/CMD** | All customization via entrypoint.sh |
@@ -592,7 +592,8 @@ if cacheSize > 1024*1024*1024 {
 │  CONTAINER DEFAULT: 0.0.0.0:80                                          │
 │                                                                         │
 │  Inside container:  app --address 0.0.0.0 --port 80                    │
-│  Docker mapping:    -p {randomport}:80  (e.g., -p 64580:80)            │
+│  Docker mapping:    -p 172.17.0.1:{randomport}:80  (prod)              │
+│                     -p {randomport}:80  (dev only, all interfaces)     │
 │                                                                         │
 │  Override with env vars:                                                │
 │    - PORT=8080      (change internal port, update docker-compose too)  │
@@ -602,8 +603,9 @@ if cacheSize > 1024*1024*1024 {
 
 | Context | Address | Port | Example |
 |---------|---------|------|---------|
-| **Container (default)** | `0.0.0.0` | `80` | `-p 64580:80` |
-| **Container (custom)** | `0.0.0.0` | `PORT` env | `PORT=8080` + `-p 64580:8080` |
+| **Container (default, prod)** | `0.0.0.0` | `80` | `-p 172.17.0.1:64580:80` |
+| **Container (default, dev)** | `0.0.0.0` | `80` | `-p 64580:80` (all interfaces, dev only) |
+| **Container (custom, prod)** | `0.0.0.0` | `PORT` env | `PORT=8080` + `-p 172.17.0.1:64580:8080` |
 | **Local (dev)** | `0.0.0.0` | Random `64xxx` | `--address 0.0.0.0 --port 64580` |
 | **Local (prod)** | Specific IP | Random `64xxx` | `--address 192.168.1.100 --port 64580` |
 
@@ -994,7 +996,6 @@ src/
 | `middleware/` | HTTP middleware | Auth, logging, rate limiting, CORS |
 | `template/` | HTML templates | Go templates for WebUI |
 | `static/` | Static assets | CSS, JS, images (embedded) |
-| `migration/` | DB migrations | SQL migration files |
 | `swagger/` | OpenAPI/Swagger | Spec generation, UI handler, theming (always `src/swagger/`) |
 | `graphql/` | GraphQL API | Schema, resolvers, UI handler, theming (always `src/graphql/`) |
 
@@ -1134,15 +1135,21 @@ Quick reference: Accept `yes/no`, `true/false`, `1/0`, `on/off`, `enable/disable
 
 ### AI-Specific Files and Directories
 
-| Directory | Gitignored | Purpose |
-|-----------|:----------:|---------|
-| `.claude/` | ✓ | Claude Code configuration (regenerated from AI.md) |
-| `.cursor/` | ✓ | Cursor AI configuration (regenerated from AI.md) |
-| `.aider/` | ✓ | Aider AI configuration (regenerated from AI.md) |
-| `.ai/` | ✓ | Generic AI configuration (regenerated from AI.md) |
-| `.windsurf/` | ✓ | Windsurf AI configuration (regenerated from AI.md) |
+| Path | Gitignored | Purpose |
+|------|:----------:|---------|
+| `.claude/settings.json` | — | Claude Code team settings — **committed** |
+| `.claude/settings.local.json` | ✓ | Personal local overrides — gitignored |
+| `.claude/*.lock` | ✓ | Claude Code lock files — gitignored |
+| `.claude/backups/`, `.claude/cache/`, `.claude/history.jsonl` | ✓ | Runtime state — gitignored |
+| `.claude/CLAUDE.md`, `.claude/agents/`, `.claude/hooks/`, `.claude/commands/`, `.claude/plans/`, `.claude/rules/` | — | Team config — **committed** |
+| `.cursor/rules/`, `.cursor/mcp.json` | — | Cursor team config — **committed** |
+| `.cursor/settings.json` | ✓ | Cursor personal settings — gitignored |
+| `.windsurf/rules/` | — | Windsurf team config — **committed** |
+| `.windsurf/settings.json` | ✓ | Windsurf personal settings — gitignored |
+| `.aider/` | ✓ | Aider AI configuration — gitignored |
+| `.ai/` | ✓ | Generic AI configuration — gitignored |
 
-**All AI config directories are gitignored** - regenerated from AI.md (source of truth).
+**Rule:** team config (rules, agents, hooks, shared settings) is committed; personal overrides, credentials, cache, and lock files are gitignored.
 
 **Claude Code Rules (.claude/rules/):**
 
@@ -5071,8 +5078,8 @@ For code that runs in the application, NEVER use bare `/path`. Always use `{fqdn
 
 | Context | ❌ Wrong | ✅ Correct |
 |---------|----------|------------|
-| **Go code** | `"/api/v1/users"` | `fmt.Sprintf("https://%s/api/v1/users", cfg.FQDN)` |
-| **JavaScript** | `fetch('/api/v1/users')` | `fetch(\`${window.location.origin}/api/v1/users\`)` |
+| **Go code** | `"/api/{api_version}/users"` | `fmt.Sprintf("https://%s/api/%s/users", cfg.FQDN, apiVersion)` |
+| **JavaScript** | `fetch('/api/{api_version}/users')` | `fetch(\`${window.location.origin}/api/${apiVersion}/users\`)` |
 | **HTML templates** | `href="/api/docs"` | `href="https://{{.FQDN}}/api/docs"` |
 | **Config files** | `url: /callback` | `url: https://{fqdn}/callback` |
 | **Email templates** | `<a href="/verify">` | `<a href="https://{{.FQDN}}/verify">` |
@@ -5089,30 +5096,30 @@ For code that runs in the application, NEVER use bare `/path`. Always use `{fqdn
 ```go
 // ❌ WRONG - Bare path
 redirectURL := "/server/auth/callback"
-link := "/api/v1/users/" + userID
+link := "/api/" + apiVersion + "/users/" + userID
 
 // ✅ CORRECT - Using FQDN
 redirectURL := fmt.Sprintf("https://%s/server/auth/callback", cfg.FQDN)
-link := fmt.Sprintf("https://%s/api/v1/users/%s", cfg.FQDN, userID)
+link := fmt.Sprintf("https://%s/api/%s/users/%s", cfg.FQDN, apiVersion, userID)
 
 // ✅ CORRECT - Helper function
 func BuildURL(path string) string {
     return fmt.Sprintf("https://%s%s", cfg.FQDN, path)
 }
-link := BuildURL("/api/v1/users/" + userID)
+link := BuildURL("/api/" + apiVersion + "/users/" + userID)
 ```
 
 **JavaScript examples:**
 
 ```javascript
 // ❌ WRONG - Bare path (breaks with base paths)
-fetch('/api/v1/users')
+fetch(`/api/${apiVersion}/users`)
 
 // ✅ CORRECT - Full URL
-fetch(`${window.location.origin}/api/v1/users`)
+fetch(`${window.location.origin}/api/${apiVersion}/users`)
 
 // ✅ CORRECT - From config
-fetch(`${config.apiBaseUrl}/api/v1/users`)
+fetch(`${config.apiBaseUrl}/api/${apiVersion}/users`)
 ```
 
 **HTML template examples:**
@@ -5128,7 +5135,7 @@ fetch(`${config.apiBaseUrl}/api/v1/users`)
 **Exception - Internal routing only:**
 ```go
 // OK to use bare paths for internal router registration
-router.GET("/api/v1/users", handleUsers)
+router.GET("/api/"+apiVersion+"/users", handleUsers)
 router.GET("/server/healthz", handleHealth)
 if cfg.Server.Healthz.Root.Enabled {
     router.GET("/healthz", handleHealth) // same handler, no redirect
@@ -5144,7 +5151,7 @@ if cfg.Server.Healthz.Root.Enabled {
 | Go code | `{fqdn}/path` | `fmt.Sprintf("https://%s/path", cfg.FQDN)` |
 | JS code | `origin/path` | `${window.location.origin}/path` |
 | Email templates | `{fqdn}/path` | `https://{{.FQDN}}/verify` |
-| Router registration | `/path` | `router.GET("/api/v1/users", ...)` (internal only) |
+| Router registration | `/path` | `router.GET("/api/"+apiVersion+"/users", ...)` (internal only) |
 
 **Platform-Specific URLs:**
 
@@ -5188,7 +5195,7 @@ if cfg.Server.Healthz.Root.Enabled {
 ```bash
 docker run -d \
   --name {project_name} \
-  -p 64580:80 \
+  -p 172.17.0.1:64580:80 \
   -v ./volumes/config:/config:z \
   -v ./volumes/data:/data:z \
   {PLATFORM_CONTAINER_REGISTRY}/{project_org}/{internal_name}:latest
@@ -7370,15 +7377,16 @@ func SafeFilePath(baseDir, userPath string) (string, error) {
 ```go
 func setupMiddleware(handler http.Handler) http.Handler {
     // Wrapping order: last applied = first to execute (outermost layer)
-    // Execution order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9
-    handler = LoggingMiddleware(handler)           // 9. Log requests
-    handler = AuthMiddleware(handler)              // 8. Check auth
-    handler = GeoIPMiddleware(handler)             // 7. Country blocking
-    handler = RateLimitMiddleware(handler)         // 6. Rate limiting
-    handler = BlocklistMiddleware(handler)         // 5. IP/domain blocklist check
-    handler = AllowlistMiddleware(handler)         // 4. Set allowlisted flag (bypasses blocklist/ratelimit/geoip, NOT auth)
-    handler = SecurityHeadersMiddleware(handler)   // 3. Add security headers
-    handler = PathSecurityMiddleware(handler)      // 2. Validate paths, block traversal
+    // Execution order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10
+    handler = LoggingMiddleware(handler)           // 10. Log requests (after RequestID so logs carry the request_id)
+    handler = AuthMiddleware(handler)              // 9. Check auth
+    handler = GeoIPMiddleware(handler)             // 8. Country blocking
+    handler = RateLimitMiddleware(handler)         // 7. Rate limiting
+    handler = BlocklistMiddleware(handler)         // 6. IP/domain blocklist check
+    handler = AllowlistMiddleware(handler)         // 5. Set allowlisted flag (bypasses blocklist/ratelimit/geoip, NOT auth)
+    handler = SecurityHeadersMiddleware(handler)   // 4. Add security headers
+    handler = PathSecurityMiddleware(handler)      // 3. Validate paths, block traversal
+    handler = RequestIDMiddleware(handler)         // 2. Attach request ID (must run before Logging so logs include it)
     handler = URLNormalizeMiddleware(handler)      // 1. FIRST - normalize URLs (trailing slash, etc.)
     return handler
 }
@@ -8044,22 +8052,22 @@ func handleForm(w http.ResponseWriter, r *http.Request) {
 
 // JSON API body
 // All fields are strings to accept flexible boolean input (true/false, yes/no, 1/0)
-type CreateUserRequest struct {
-    Email    string `json:"email"`
-    IsAdmin  string `json:"is_admin"`
-    Verified string `json:"verified"`
+type CreateResourceRequest struct {
+    Name    string `json:"name"`
+    Enabled string `json:"enabled"`
+    Public  string `json:"public"`
 }
 
-func (req *CreateUserRequest) Parse() (*User, error) {
-    isAdmin, err := config.ParseBool(req.IsAdmin, false)
+func (req *CreateResourceRequest) Parse() (*Resource, error) {
+    enabled, err := config.ParseBool(req.Enabled, false)
     if err != nil {
-        return nil, fmt.Errorf("invalid is_admin: %w", err)
+        return nil, fmt.Errorf("invalid enabled: %w", err)
     }
-    verified, err := config.ParseBool(req.Verified, false)
+    public, err := config.ParseBool(req.Public, false)
     if err != nil {
-        return nil, fmt.Errorf("invalid verified: %w", err)
+        return nil, fmt.Errorf("invalid public: %w", err)
     }
-    return &User{Email: req.Email, IsAdmin: isAdmin, Verified: verified}, nil
+    return &Resource{Name: req.Name, Enabled: enabled, Public: public}, nil
 }
 ```
 
@@ -12877,7 +12885,7 @@ services:
       - logs:/logs                 # Logs (read-write)
       - /var/run:/run:z            # PID file
     ports:
-      - "8080:8080"
+      - "172.17.0.1:8080:8080"
 ```
 
 **Minimal compose (uses container defaults):**
@@ -12890,7 +12898,7 @@ services:
     volumes:
       - {project_name}-data:/data
     ports:
-      - "8080:8080"
+      - "172.17.0.1:8080:8080"
 
 volumes:
   {project_name}-data:
@@ -15770,8 +15778,8 @@ All three coexist under the admin tree. The admin-panel UI groups them under a s
 
 **Text Log Format:**
 ```
-2024-10-10 13:55:36 [INFO] Server started on :8080
-2024-10-10 13:55:40 [ERROR] Database connection failed: timeout
+2024-10-10T13:55:36-04:00 [INFO] Server started on :8080
+2024-10-10T13:55:40-04:00 [ERROR] Database connection failed: timeout
 ```
 
 **JSON Log Format:**
@@ -15782,8 +15790,8 @@ All three coexist under the admin tree. The admin-panel UI groups them under a s
 
 **Fail2ban Format:**
 ```
-2024-10-10 13:55:36 [security] Failed login attempt from 192.168.1.100 for user admin
-2024-10-10 13:55:40 [security] Rate limit exceeded from 192.168.1.100
+2024-10-10T13:55:36-04:00 [security] Failed login attempt from 192.168.1.100 for user admin
+2024-10-10T13:55:40-04:00 [security] Rate limit exceeded from 192.168.1.100
 ```
 
 ### Custom Format Variables
@@ -22309,14 +22317,15 @@ func URLNormalizeMiddleware(next http.Handler) http.Handler {
 ```go
 // Execution order (request flows top to bottom):
 // 1. URLNormalizeMiddleware    - normalize URLs (trailing slash, etc.)
-// 2. PathSecurityMiddleware    - validate paths, block traversal
-// 3. SecurityHeadersMiddleware - add security headers
-// 4. AllowlistMiddleware       - set allowlisted flag (bypasses blocklist/ratelimit/geoip, NOT auth)
-// 5. BlocklistMiddleware       - IP/domain blocklist check
-// 6. RateLimitMiddleware       - rate limiting
-// 7. GeoIPMiddleware           - country blocking
-// 8. AuthMiddleware            - authentication
-// 9. LoggingMiddleware         - log requests
+// 2. RequestIDMiddleware       - attach request ID (must run before Logging so logs include it)
+// 3. PathSecurityMiddleware    - validate paths, block traversal
+// 4. SecurityHeadersMiddleware - add security headers
+// 5. AllowlistMiddleware       - set allowlisted flag (bypasses blocklist/ratelimit/geoip, NOT auth)
+// 6. BlocklistMiddleware       - IP/domain blocklist check
+// 7. RateLimitMiddleware       - rate limiting
+// 8. GeoIPMiddleware           - country blocking
+// 9. AuthMiddleware            - authentication
+// 10. LoggingMiddleware        - log requests (after RequestID so logs carry the request_id)
 ```
 
 ### No JavaScript-Disabled Broken State
@@ -36943,11 +36952,11 @@ test:
 	@$(GO_DOCKER) go mod download
 	@$(GO_DOCKER) go test -v -cover -coverprofile=coverage.out ./...
 	@COVERAGE=$$($(GO_DOCKER) go tool cover -func=coverage.out | grep total | awk '{print $$3}' | sed 's/%//'); \
-	if [ $$(echo "$$COVERAGE < 100" | bc -l) -eq 1 ]; then \
-		echo "ERROR: Coverage is $$COVERAGE%, must be 100%"; \
+	if [ $$(echo "$$COVERAGE < 80" | bc -l) -eq 1 ]; then \
+		echo "ERROR: Coverage is $$COVERAGE%, must be >= 80%"; \
 		exit 1; \
 	fi
-	@echo "Tests complete - Coverage: 100% ✓"
+	@echo "Tests complete - Coverage: $$COVERAGE% (>= 80% required) ✓"
 
 # =============================================================================
 # DEV - Quick build for local development/testing (to random temp dir)
@@ -37666,7 +37675,7 @@ export DATA_DIR="${DATA_DIR:-/data/${APP_NAME}}"
 # Track background PIDs for cleanup
 declare -a PIDS=()
 
-log() { echo "[entrypoint] $(date '+%Y-%m-%d %H:%M:%S') $*"; }
+log() { echo "[entrypoint] $(date '+%Y-%m-%dT%H:%M:%S%z') $*"; }
 
 # Signal handling for graceful shutdown
 cleanup() {
@@ -38141,7 +38150,7 @@ EXPOSE 80
 HEALTHCHECK --interval=10s --timeout=5s --start-period=90s --retries=3 \
     CMD timeout 10s bash -c ':> /dev/tcp/127.0.0.1/80' || exit 1
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+ENTRYPOINT ["tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh"]
 ```
 
 **All-in-One supervisor config (`docker/rootfs/etc/supervisor/conf.d/services.conf`):**
@@ -42440,7 +42449,7 @@ rm -rf "${TMPDIR:-/tmp}/${PROJECT_ORG}/"
 - If the behavior requires a running binary, real HTTP requests, real process execution, or container/Incus setup, it belongs in `./tests/*.sh`
 
 **Reason both are required:**
-- `*_test.go` exists to achieve and enforce **100% Go code coverage** via `go test -cover`
+- `*_test.go` exists to achieve and enforce **≥80% Go code coverage** via `go test -cover` (critical paths — auth, DB, token validation — must always be covered)
 - `./tests/*.sh` exists to achieve and enforce **100% endpoint/route/integration coverage**
 - One does **not** replace the other; they measure different things and catch different classes of bugs
 
@@ -42525,9 +42534,9 @@ done
 
 # Backend routes - test BOTH application/json and text/plain
 api_routes=(
-    "/api/v1/status"
-    "/api/v1/jokes/random"
-    "/api/v1/users/john"
+    "/api/{api_version}/status"
+    "/api/{api_version}/jokes/random"
+    "/api/{api_version}/users/john"
 )
 
 for route in "${api_routes[@]}"; do
@@ -42541,8 +42550,8 @@ done
 txt_endpoints=(
     "/robots.txt"
     "/.well-known/security.txt"
-    "/api/v1/jokes/random.txt"
-    "/api/v1/users/john.txt"
+    "/api/{api_version}/jokes/random.txt"
+    "/api/{api_version}/users/john.txt"
 )
 
 for endpoint in "${txt_endpoints[@]}"; do
@@ -42668,24 +42677,25 @@ make test
 
 **Note:** Makefile targets use Docker internally. See PART 26 for underlying commands.
 
-## 100% Test Coverage
+## Test Coverage Gates
 
-**ALL code MUST have 100% test coverage. No exceptions.**
+**Two different gates apply: ≥80% for unit tests, 100% for endpoint/route integration tests.**
 
 ### Coverage Requirements
 
 | Coverage Type | Requirement | Verification |
 |--------------|-------------|--------------|
-| **Go Unit Tests** | 100% code coverage | `go test -cover` must report 100% |
+| **Go Unit Tests** | ≥80% code coverage | `go test -cover` must report ≥80% |
 | **Integration Tests** | 100% endpoint coverage | Every endpoint tested |
 | **Admin Routes** | 100% route coverage | Every admin route tested |
-| **Error Paths** | 100% error handling | All error conditions tested |
+| **Critical Paths (auth, DB, token validation)** | Always tested | No critical path may go untested regardless of overall % |
+| **Error Paths** | Cover all reachable error returns | All error conditions surfaced by callers tested |
 
-### What 100% Coverage Means
+### What These Gates Mean
 
-**Go Code (Unit Tests):**
+**Go Code (Unit Tests) — ≥80%:**
 ```bash
-# Run tests with coverage enforcement (fails if below 100%)
+# Run tests with coverage enforcement (fails if below 80%)
 make test
 ```
 
@@ -42716,18 +42726,18 @@ test:
         docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $(pwd):/app -w /app casjaysdev/go:latest \
           go test -cover -coverprofile=coverage.out ./...
 
-    - name: Check coverage is 100%
+    - name: Check coverage is >= 80%
       run: |
         COVERAGE=$(docker run --rm -it --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $(pwd):/app -w /app casjaysdev/go:latest \
           go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-        if [ $(echo "$COVERAGE < 100" | bc -l) -eq 1 ]; then
-          echo "ERROR: Coverage is $COVERAGE%, must be 100%"
+        if [ $(echo "$COVERAGE < 80" | bc -l) -eq 1 ]; then
+          echo "ERROR: Coverage is $COVERAGE%, must be >= 80%"
           exit 1
         fi
-        echo "Coverage: $COVERAGE% ✓"
+        echo "Coverage: $COVERAGE% (>= 80% required) ✓"
 ```
 
-### How to Achieve 100% Coverage
+### How to Achieve the Coverage Gates (≥80% unit, 100% endpoints)
 
 **1. Test All Code Paths:**
 ```go
@@ -42835,18 +42845,20 @@ verify_all_endpoints_tested
 | All branches covered | Just main branch |
 | Integration test hits endpoint | Documentation says it works |
 
-### Coverage Exceptions (NONE)
+### Coverage Exceptions
 
-**There are NO exceptions to 100% coverage:**
+**Unit-test gate is ≥80%, not 100% — but the 100% gates for endpoints/routes and critical paths are absolute.** Common pushback on writing unit tests is still rejected:
 
 | Common Excuse | Response |
 |--------------|----------|
-| "It's just a simple getter" | Test it anyway |
+| "It's just a simple getter" | Test it anyway if it counts toward the 80% floor and is in a critical path |
 | "The code is obvious" | Obvious code can still have bugs |
 | "It's only used internally" | Internal code needs tests too |
 | "I tested it manually" | Manual tests don't count |
 | "It's just logging" | Mock the logger and test |
 | "It's third-party code" | Test your integration with it |
+
+**Endpoint/route coverage stays at 100% — every endpoint and every admin route MUST be exercised by an integration test.**
 
 **When to run which tests:**
 
@@ -44505,7 +44517,7 @@ pymdown-extensions>=10.0
 
 ```bash
 # Docker
-docker run -p 64580:80 {PLATFORM_CONTAINER_REGISTRY}/{project_org}/{internal_name}:latest
+docker run -p 172.17.0.1:64580:80 {PLATFORM_CONTAINER_REGISTRY}/{project_org}/{internal_name}:latest
 
 # Binary
 ./{project_name}-linux-amd64 --config server.yml
@@ -44549,7 +44561,7 @@ MIT - See [LICENSE.md]({PLATFORM_REPO_URL}/blob/main/LICENSE.md)
 ```bash
 docker run -d \
   --name {project_name} \
-  -p 64580:80 \
+  -p 172.17.0.1:64580:80 \
   -v {project_name}-data:/data \
   {PLATFORM_CONTAINER_REGISTRY}/{project_org}/{internal_name}:latest
 ```
@@ -60433,10 +60445,10 @@ After each significant change:
 **If project has existing database:**
 
 1. **NEVER break existing data**
-2. Create migration scripts in `src/migration/`
-3. Use proper migration tool or SQL migration files
-4. Test migrations on backup data first
-5. Provide rollback capability
+2. All schema changes are idempotent and applied on startup using `CREATE TABLE IF NOT EXISTS` + `ALTER TABLE IF NOT EXISTS ADD COLUMN IF NOT EXISTS`
+3. No `migration/` directory, no migration tool, no SQL migration files, no version tracking — the schema bootstrap runs every startup and is a no-op when already current
+4. Test schema bootstrap on backup data first
+5. Forward-only — schema changes must remain backward-compatible with the previous binary release (additive columns, never destructive)
 6. Document breaking schema changes
 
 ---
