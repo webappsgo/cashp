@@ -37509,6 +37509,7 @@ Container registries (GHCR, Docker Hub, etc.) read metadata from the manifest in
   with:
     annotations: ${{ steps.meta.outputs.annotations }}
     labels: ""
+    provenance: false
     tags: ${{ steps.meta.outputs.tags }}
 ```
 
@@ -39043,6 +39044,7 @@ jobs:
           file: docker/Dockerfile.build
           platforms: linux/amd64,linux/arm64
           push: true
+          provenance: false
           tags: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:build
 ```
 
@@ -39719,6 +39721,7 @@ jobs:
           file: docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
+          provenance: false
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
             VERSION=${{ env.VERSION }}
@@ -39814,6 +39817,7 @@ jobs:
           file: docker/Dockerfile.aio
           platforms: linux/amd64,linux/arm64
           push: true
+          provenance: false
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
             VERSION=${{ env.VERSION }}
@@ -40564,6 +40568,7 @@ jobs:
           file: docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
+          provenance: false
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
             VERSION=${{ env.VERSION }}
@@ -40666,6 +40671,7 @@ jobs:
           file: docker/Dockerfile.aio
           platforms: linux/amd64,linux/arm64
           push: true
+          provenance: false
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
             VERSION=${{ env.VERSION }}
