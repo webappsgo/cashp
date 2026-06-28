@@ -385,7 +385,7 @@ permission rules, business invariants. The HOW lives in AI.md PARTS 0-36; PART 3
 ```bash
 # After make dev, debug in Docker with tools
 BUILD_DIR=$(ls -td ${TMPDIR:-/tmp}/${PROJECT_ORG}/${PROJECT_NAME}-*/ 2>/dev/null | head -1)
-docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v "$BUILD_DIR:/app" alpine:latest sh -c "
+docker run --rm -v "$BUILD_DIR:/app" alpine:latest sh -c "
   apk add --no-cache curl bash file jq  # Required debug tools
   /app/{project_name} --help
   /app/{project_name} --version
@@ -431,7 +431,7 @@ make dev                # Quick build to temp dir
 
 # 2. Debug in Docker (with tools)
 BUILD_DIR=$(ls -td ${TMPDIR:-/tmp}/${PROJECT_ORG}/${PROJECT_NAME}-*/ 2>/dev/null | head -1)
-docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v "$BUILD_DIR:/app" alpine:latest sh -c "
+docker run --rm -v "$BUILD_DIR:/app" alpine:latest sh -c "
   apk add --no-cache curl bash file jq
   /app/{project_name} --help
 "
@@ -36740,17 +36740,22 @@ BINDIR := binaries
 RELDIR := releases
 
 # Go directories (persistent across builds)
-# GO_CACHE maps host module cache to GOPATH/pkg/mod; GO_BUILD maps to GOCACHE inside the image
+# GO_CACHE: module download cache — safe to share across concurrent builds (Go file-locks writes)
+# GO_BUILD: compile cache — scoped per project to prevent corruption when multiple projects build concurrently
 GO_CACHE  ?= $(HOME)/go/pkg/mod
-GO_BUILD  ?= $(HOME)/.cache/go-build
+GO_BUILD  ?= $(HOME)/.cache/go-build/$(PROJECTNAME)
 
 # Build targets
 PLATFORMS ?= linux/amd64,linux/arm64
 
+# Resource limits — overrideable; prevents any single container from starving concurrent agent builds
+DOCKER_MEM  ?= 4g
+DOCKER_CPUS ?= 2
+
 # Docker - Set REGISTRY based on your platform (ghcr.io, registry.gitlab.com, git.example.com)
 REGISTRY ?= ghcr.io/$(PROJECTORG)/$(PROJECTNAME)
 GO_DOCKER := docker run --rm \
-	--name $(PROJECTNAME)-$$(tr -dc 'a-z0-9' </dev/urandom | head -c8) \
+	--memory=$(DOCKER_MEM) --cpus=$(DOCKER_CPUS) \
 	-v $(PWD):/app \
 	-v $(GO_CACHE):/usr/local/share/go/pkg/mod \
 	-v $(GO_BUILD):/usr/local/share/go/cache \
@@ -38041,7 +38046,8 @@ networks:
 ```dockerfile
 # All-in-One Dockerfile - includes app + postgresql + valkey + tor
 # Build: casjaysdev/go:latest (static binary, CGO_ENABLED=0)
-# Runtime: debian:latest (stable, broad compatibility)
+# Runtime: debian:latest — Alpine (musl) is insufficient here; PostgreSQL, Valkey, and Tor
+#           require glibc and system libraries not available on Alpine. Use debian, not alpine.
 # Image name: {PLATFORM_CONTAINER_REGISTRY}/{project_org}/{internal_name}:latest-aio
 # PORTS: Only 80 exposed (db/cache are internal-only)
 
