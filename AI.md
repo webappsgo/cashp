@@ -16653,6 +16653,8 @@ server:
 | `backup.deleted` | Backup deleted | Filename, deleted by |
 | `backup.failed` | Backup failed | Error message |
 | `server.started` | Application started | Version, mode, node ID |
+
+> **Suppression:** `scheduler.task_failed` is not emitted when `backup.failed` fires for the same execution — both would describe the same event. `scheduler.task_failed` fires only for tasks that produce no subsystem-specific audit event.
 | `server.stopped` | Application stopped | Reason, uptime |
 | `server.maintenance_entered` | Maintenance mode enabled | Reason, enabled by |
 | `server.maintenance_exited` | Maintenance mode disabled | Duration, disabled by |
@@ -30455,6 +30457,7 @@ Admin Panel Header:
 | `notifications.backup_failure` | Toggle | On | No | Notify on backup failure |
 | `notifications.ssl_expiring` | Toggle | On | No | Notify SSL expiring |
 | `notifications.ssl_expiring_days` | Number | `14` | No | Days before expiry |
+| `notifications.ssl_renewal_failure` | Toggle | On | No | Notify on SSL renewal failure |
 | `notifications.security_alerts` | Toggle | On | No | Security event alerts |
 | `notifications.update_available` | Toggle | On | No | New version available |
 
@@ -31735,6 +31738,7 @@ server:
 | `backup_failed` | Backup error | ✗ |
 | `ssl_expiring` | Certificate expiration warning | ✗ |
 | `ssl_renewed` | Certificate renewed successfully | ✗ |
+| `ssl_renewal_failed` | Certificate renewal failure | ✗ |
 | `scheduler_error` | Scheduled task failed | ✗ |
 | `breach_notification` | Data breach notification to affected users | ✓ |
 | `breach_admin_alert` | Breach detected alert to Server Admins | ✗ |
@@ -31761,6 +31765,7 @@ server:
 | `backup_failed` | `Backup Failed - {app_name}` | Includes error message |
 | `ssl_expiring` | `SSL Certificate Expiring - {app_name}` | Sent 30, 14, 7, 3, 1 days before expiry |
 | `ssl_renewed` | `SSL Certificate Renewed - {app_name}` | Confirmation of renewal |
+| `ssl_renewal_failed` | `SSL Renewal Failed - {app_name}` | Includes domain, error, days until expiry, next retry |
 | `scheduler_error` | `Scheduled Task Failed - {app_name}` | Includes task name and error |
 | `breach_notification` | `Important Security Notice - {app_name}` | Compliance-aware, includes breach details, recommended actions |
 | `breach_admin_alert` | `[{severity}] Security Breach Detected - {app_name}` | Immediate alert, includes detection details, action required |
@@ -32413,6 +32418,8 @@ Do not reply to this email.
 | `{size}` | Backup file size |
 | `{error}` | Error message (failed only) |
 
+**Suppression:** When `backup_failed` fires from a scheduled run, it suppresses the `scheduler_error` notification for the same execution. One notification, not two.
+
 ### ssl_expiring / ssl_renewed
 | Variable | Description |
 |----------|-------------|
@@ -32421,12 +32428,25 @@ Do not reply to this email.
 | `{expiry_date}` | Expiration date |
 | `{valid_until}` | New validity date (renewed only) |
 
+### ssl_renewal_failed
+| Variable | Description |
+|----------|-------------|
+| `{fqdn}` | Domain whose cert failed to renew |
+| `{error}` | Error message from the renewal attempt |
+| `{expires_in}` | Days until the current cert expires (urgency signal) |
+| `{expiry_date}` | Absolute expiry date of the current cert |
+| `{next_retry}` | When renewal will be retried automatically |
+
+**Suppression:** When `ssl_renewal_failed` fires from a scheduled run, it suppresses the `scheduler_error` notification for the same execution. One notification, not two.
+
 ### scheduler_error
 | Variable | Description |
 |----------|-------------|
 | `{task_name}` | Failed task name |
 | `{error}` | Error message |
 | `{next_run}` | Next scheduled run |
+
+**Suppression:** `scheduler_error` fires only for tasks that have no dedicated failure event of their own. It is suppressed when a subsystem emits a more specific failure notification for the same execution: `backup_failed` suppresses it for backup tasks; `ssl_renewal_failed` suppresses it for SSL renewal tasks. Tasks with no dedicated failure event (`session_cleanup`, `token_cleanup`, `log_rotation`, `update_check`) still fire `scheduler_error` normally.
 
 ### breach_notification
 
@@ -32630,7 +32650,7 @@ Do not reply to this email.
 | SSL renewed | ✓ | | ✓ | Certificate renewed |
 | SSL renewal failed | ✓ | ✓ | ✓ | Critical - needs attention |
 | Update available | | ✓ | ✓ | New version available |
-| Scheduler task failed | ✓ | | ✓ | Task error |
+| Scheduler task failed | ✓ | | ✓ | Task error (suppressed when `Backup failed` or `SSL renewal failed` fires for the same execution) |
 | New admin login | | | ✓ | Another admin logged in |
 | SMTP not configured | | ✓ | | Persistent warning |
 | Database connection issue | | ✓ | ✓ | Critical warning |
@@ -32675,7 +32695,8 @@ Do not reply to this email.
 | SSL renewed | ✓ | ✗ | Informational |
 | Login from new IP | ✓ | ✓ | Security - permanent record |
 | Security alert | ✓ | ✓ | Critical - needs record |
-| Scheduler task failed | ✓ | ✓ | Needs attention when away |
+| SSL renewal failed | ✓ | ✓ | Critical - cert will expire; suppresses `scheduler_error` for same execution |
+| Scheduler task failed | ✓ | ✓ | Needs attention when away (suppressed when `backup_failed` or `ssl_renewal_failed` fires for the same execution) |
 | Scheduler task success | ✗ | ✗ | No notification needed |
 | Password changed | ✓ | ✓ | Security - confirmation |
 | Token regenerated | ✓ | ✓ | Security - confirmation |
@@ -32848,6 +32869,7 @@ User Notification Preferences (/users/settings/notifications)
       "backup_complete": false,
       "backup_failed": true,
       "ssl_expiring": true,
+      "ssl_renewal_failed": true,
       "admin_login": false
     }
   }
@@ -32893,6 +32915,7 @@ server:
         backup_failed: true
         ssl_expiring: true
         ssl_renewed: false
+        ssl_renewal_failed: true
         login_alert: true
         security_alert: true
         scheduler_error: true
@@ -46582,6 +46605,7 @@ var localeFS embed.FS
     "mark_all_read": "Marcar todo como leído",
     "clear_all": "Limpiar todo",
     "ssl_expiring": "El certificado SSL expira en {count} días",
+    "ssl_renewal_failed": "Error al renovar el certificado SSL",
     "backup_completed": "Respaldo completado",
     "backup_failed": "Respaldo fallido",
     "login_new_location": "Inicio de sesión desde nueva ubicación",
@@ -46629,6 +46653,7 @@ var localeFS embed.FS
       "backup_failed": "Respaldo fallido - {app_name}",
       "ssl_expiring": "Certificado SSL por expirar - {app_name}",
       "ssl_renewed": "Certificado SSL renovado - {app_name}",
+      "ssl_renewal_failed": "Error al renovar SSL - {app_name}",
       "task_failed": "Tarea programada fallida - {app_name}",
       "security_notice": "Aviso de seguridad importante - {app_name}",
       "security_breach": "[{severity}] Brecha de seguridad detectada - {app_name}",
