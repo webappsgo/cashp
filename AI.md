@@ -13336,6 +13336,7 @@ All templates, Swagger/OpenAPI, GraphQL, email links, etc. MUST use these resolv
 
 | Priority | Source | Description |
 |----------|--------|-------------|
+| 0 | **`tor.onion_address` match** | Only when `Host == tor.onion_address`; forces `http://` proto, no port; bypasses proxy headers |
 | 1 | **Reverse Proxy Headers** | `X-Forwarded-Host`, `X-Real-Host`, `X-Original-Host` |
 | 2 | **DOMAIN env var** | Comma-separated list (first is primary) |
 | 3 | **os.Hostname()** | Go's hostname function |
@@ -17979,6 +17980,8 @@ server:
 
 All of these headers are supported regardless of proxy vendor (Nginx, Caddy, HAProxy, Traefik, Apache, Cloudflare Tunnels, AWS ALB, etc.). Headers from non-trusted peers are dropped before resolution runs, so an attacker reaching the binary directly cannot inject a forged Host into the learned-origins list.
 
+**Tor exception:** Tor requests bypass this gate entirely. When `tor.onion_address` is set and the incoming `Host` matches it, FQDN/proto/port are resolved from `tor.*` config — no proxy header inspection, no IP check. See "Tor Hidden Service Configuration" below.
+
 | Always trusted (no config required) | Reason |
 |--------------------------------------|--------|
 | `127.0.0.0/8`, `::1` | Loopback |
@@ -18002,6 +18005,62 @@ server:
 ```
 
 **On a public-facing direct deployment (no proxy in front)** leave `additional: []`. The X-Forwarded headers from random internet peers are then dropped, falling back to `r.Host` and `r.RemoteAddr` for URL construction — exactly the behavior we want.
+
+## Tor Hidden Service Configuration
+
+```yaml
+tor:
+  # .onion hostname for this service (without http:// prefix)
+  # If set, requests with this Host header are treated as Tor requests
+  onion_address: ""
+  # Contact email for .onion responses (security.txt, contact pages, error pages)
+  # If unset, no email is shown on Tor responses — never fall back to the clearnet email
+  contact_email: ""
+```
+
+### Tor Request Detection
+
+A request is a **Tor request** when the `Host` header (after proxy resolution) matches `tor.onion_address`. When `tor.onion_address` is unset, Tor detection is disabled and `.onion` Host headers are treated like any other host.
+
+When a Tor request is detected, `GetURLVars(r)` / `BuildURL(r, path)` return:
+- **FQDN:** `tor.onion_address`
+- **Proto:** `http://` — Tor hidden services are always HTTP; TLS terminates in the Tor layer
+- **Port:** always stripped (never appended)
+
+This check is **priority 0** in the FQDN resolution table — evaluated before reverse proxy headers, always trusted, no IP check against `trusted_proxies` required.
+
+All server functionality works normally on Tor — only clearnet URLs and clearnet email addresses must not appear in responses.
+
+### Tor Privacy Rules
+
+These rules apply to **all responses** when the request is detected as a Tor request:
+
+| Rule | Requirement |
+|------|-------------|
+| **Email** | Show `tor.contact_email` only; if unset, omit email entirely from all responses (security.txt, contact pages, error pages, footers). Never fall back to the clearnet contact email. |
+| **URLs** | All absolute URLs in responses must use `tor.onion_address`. Never embed clearnet FQDN. Applies to: `security.txt`, `llms.txt`, OpenAPI `servers[0].url`, GraphQL endpoint, OAuth redirect URIs, email verification links, pagination links. |
+| **Clearnet links** | Any link that would normally point to the clearnet site must use the onion address or be omitted entirely. |
+| **CORS** | The onion address is added to the CORS allow-list automatically when `tor.onion_address` is set. The clearnet origin must NOT appear in Tor response CORS headers. |
+| **OAuth / external auth** | Redirect URIs must use the onion address. If the OAuth provider does not support `.onion` redirect URIs, that provider is disabled for Tor requests with a `503` error. |
+| **`Preferred-Languages`** | Omitted from `security.txt` served over Tor — locale selection leaks fingerprinting information. |
+
+### Tor Variant of `/.well-known/security.txt`
+
+When `tor.onion_address` is set, a separate `security.txt` is generated for Tor requests:
+
+```
+# Served at http://{tor.onion_address}/.well-known/security.txt
+Contact: {report_url}
+Contact: http://{tor.onion_address}/server/contact?security_id={security_id}
+{tor_contact_line}
+Policy: http://{tor.onion_address}/server/security
+Expires: {expiry_date}
+```
+
+- `{tor_contact_line}` = `Contact: mailto:{tor.contact_email}` — **omitted entirely if `tor.contact_email` is unset**; never falls back to the clearnet contact email
+- All URLs use `http://` and `tor.onion_address` — no clearnet FQDN appears anywhere in this file
+- `Preferred-Languages:` line is **omitted** (locale fingerprinting risk on Tor)
+- Served per-request via `BuildURL(r, path)`; never cached or frozen at startup
 
 ## Session Configuration
 
