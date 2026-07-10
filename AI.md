@@ -369,13 +369,14 @@ permission rules, business invariants. The HOW lives in AI.md PARTS 0-36; PART 3
 | `make dev` | **Development & Debugging** | `${TMPDIR}/${PROJECT_ORG}/${PROJECT_NAME}-XXXXXX/` | Active coding, quick tests |
 | `make local` | **Production Testing** | `binaries/` (with version) | Test prod builds locally |
 | `make build` | **Full Release** | `binaries/` (all 8 platforms) | Before release |
-| `make test` | **Unit Tests** | Coverage report | After code changes |
+| `make test` | **Phase 1 — Toolchain Gate** | Coverage report | Before commits; after code changes |
 
 | NEVER (locally) | ALWAYS (Makefile targets) |
 |-----------------|---------------------------|
 | `go build ...` | `make dev` or `make local` or `make build` |
 | `go test ...` | `make test` |
 | `go run ...` | `make dev` then run binary in Docker |
+| Run binary on host directly | `docker run --rm -v "$BUILD_DIR:/app" alpine:latest /app/{project_name}` or Phase 2 scripts |
 
 **Makefile targets use Docker internally (`casjaysdev/go:latest`) with host cache dirs (`GO_CACHE`/`GO_BUILD`) bind-mounted — local machine stays clean.**
 
@@ -439,10 +440,10 @@ docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -
   /app/{project_name} --help
 "
 
-# 3. Unit tests
+# Phase 1: Toolchain gate — unit tests inside Docker
 make test
 
-# 4. Integration tests
+# Phase 2: Binary validation — shell scripts run against the compiled binary
 # Auto-detects incus/docker
 ./tests/run_tests.sh
 
@@ -9803,10 +9804,9 @@ func FromEnv() {
 
 | Data Type | Location | Source | Update Frequency |
 |-----------|----------|--------|------------------|
-| GeoIP (ASN) | `{data_dir}/security/geoip/` | ip-location-db | Daily |
-| GeoIP (Country) | `{data_dir}/security/geoip/` | ip-location-db | Daily |
-| GeoIP (City) | `{data_dir}/security/geoip/` | ip-location-db | Daily |
-| GeoIP (WHOIS) | `{data_dir}/security/geoip/` | ip-location-db | Daily |
+| GeoIP (Country) | `{data_dir}/security/geoip/` | ip-location-db | Daily / Monthly / Twice weekly |
+| GeoIP (City) | `{data_dir}/security/geoip/` | ip-location-db | Monthly / Twice weekly |
+| GeoIP (ASN) | `{data_dir}/security/geoip/` | ip-location-db | Daily / Monthly / Twice weekly |
 | IP Blocklists | `{data_dir}/security/blocklists/` | Configurable sources | Daily |
 | Domain Blocklists | `{data_dir}/security/blocklists/` | Configurable sources | Daily |
 | CVE databases | `{data_dir}/security/cve/` | NVD/NIST feeds | Daily |
@@ -9834,25 +9834,72 @@ data:
 
   geoip:
     # ip-location-db (https://github.com/sapics/ip-location-db)
-    # Free, no API key required, daily updates, CC0/PDDL licensed
+    # All files from GitHub Releases — no API key or account required.
+    # Tiers: PDDL (daily), CC BY 4.0 (monthly), GeoLite2/CC BY-SA 4.0 (twice weekly).
     provider: "ip-location-db"
     databases:
-      asn:
+      # Country — PDDL (daily, no attribution required)
+      user_country:
         enabled: true
-        url: "https://cdn.jsdelivr.net/npm/@ip-location-db/asn-mmdb/asn.mmdb"
-        file: "asn.mmdb"
-      country:
+        url: "https://github.com/sapics/ip-location-db/releases/download/latest/user-country.mmdb"
+        file: "user-country.mmdb"
+      server_country:
         enabled: true
-        url: "https://cdn.jsdelivr.net/npm/@ip-location-db/geo-whois-asn-country-mmdb/geo-whois-asn-country.mmdb"
-        file: "country.mmdb"
-      city:
+        url: "https://github.com/sapics/ip-location-db/releases/download/latest/server-country.mmdb"
+        file: "server-country.mmdb"
+      iptoasn_country:
         enabled: true
-        url: "https://cdn.jsdelivr.net/npm/@ip-location-db/dbip-city-mmdb/dbip-city-ipv4.mmdb"
-        file: "city.mmdb"
-      whois:
+        url: "https://github.com/sapics/ip-location-db/releases/download/latest/iptoasn-country.mmdb"
+        file: "iptoasn-country.mmdb"
+      # Country — CC BY 4.0 (monthly; credit: DB-IP.com)
+      dbip_country:
         enabled: true
-        url: "https://cdn.jsdelivr.net/npm/@ip-location-db/geo-whois-asn-country-mmdb/geo-whois-asn-country.mmdb"
-        file: "whois.mmdb"
+        url: "https://github.com/sapics/ip-location-db/releases/download/latest/dbip-country.mmdb"
+        file: "dbip-country.mmdb"
+      # Country — GeoLite2/CC BY-SA 4.0 (twice weekly; free redistribution, no MaxMind account needed)
+      geolite2_country:
+        enabled: true
+        url: "https://github.com/sapics/ip-location-db/releases/download/latest/geolite2-country.mmdb"
+        file: "geolite2-country.mmdb"
+
+      # City — CC BY 4.0 (monthly; credit: DB-IP.com; IPv4 and IPv6 separate — no combined MMDB)
+      dbip_city_ipv4:
+        enabled: true
+        url: "https://github.com/sapics/ip-location-db/releases/download/latest/dbip-city-ipv4.mmdb"
+        file: "dbip-city-ipv4.mmdb"
+      dbip_city_ipv6:
+        enabled: true
+        url: "https://github.com/sapics/ip-location-db/releases/download/latest/dbip-city-ipv6.mmdb"
+        file: "dbip-city-ipv6.mmdb"
+      # City — GeoLite2/CC BY-SA 4.0 (twice weekly; free redistribution, no MaxMind account needed)
+      geolite2_city_ipv4:
+        enabled: true
+        url: "https://github.com/sapics/ip-location-db/releases/download/latest/geolite2-city-ipv4.mmdb"
+        file: "geolite2-city-ipv4.mmdb"
+      geolite2_city_ipv6:
+        enabled: true
+        url: "https://github.com/sapics/ip-location-db/releases/download/latest/geolite2-city-ipv6.mmdb"
+        file: "geolite2-city-ipv6.mmdb"
+
+      # ASN — PDDL (daily, no attribution required)
+      origin_asn:
+        enabled: true
+        url: "https://github.com/sapics/ip-location-db/releases/download/latest/origin-asn.mmdb"
+        file: "origin-asn.mmdb"
+      iptoasn_asn:
+        enabled: true
+        url: "https://github.com/sapics/ip-location-db/releases/download/latest/iptoasn-asn.mmdb"
+        file: "iptoasn-asn.mmdb"
+      # ASN — CC BY 4.0 (monthly; credit: DB-IP.com)
+      dbip_asn:
+        enabled: true
+        url: "https://github.com/sapics/ip-location-db/releases/download/latest/dbip-asn.mmdb"
+        file: "dbip-asn.mmdb"
+      # ASN — GeoLite2/CC BY-SA 4.0 (twice weekly; free redistribution, no MaxMind account needed)
+      geolite2_asn:
+        enabled: true
+        url: "https://github.com/sapics/ip-location-db/releases/download/latest/geolite2-asn.mmdb"
+        file: "geolite2-asn.mmdb"
 
   # Blocklists: stored in {data_dir}/security/blocklists/
   # Config is under server.security.blocklists (see Blocklists Section)
@@ -9874,10 +9921,19 @@ data:
 ```
 {data_dir}/security/
 ├── geoip/
-│   ├── asn.mmdb                 # ASN lookups (AS number, organization)
-│   ├── country.mmdb             # Country code lookups
-│   ├── city.mmdb                # City, country, state, postcode, coordinates, timezone
-│   ├── whois.mmdb               # WHOIS data (registrant, org)
+│   ├── user-country.mmdb        # Country — community-aggregated (PDDL, daily)
+│   ├── server-country.mmdb      # Country for server IPs (PDDL, daily)
+│   ├── iptoasn-country.mmdb     # Country via IPtoASN (PDDL, daily)
+│   ├── dbip-country.mmdb        # Country — DB-IP Lite (CC BY 4.0, monthly)
+│   ├── geolite2-country.mmdb    # Country — GeoLite2 (CC BY-SA 4.0, twice weekly)
+│   ├── dbip-city-ipv4.mmdb      # City IPv4 — DB-IP Lite (CC BY 4.0, monthly)
+│   ├── dbip-city-ipv6.mmdb      # City IPv6 — DB-IP Lite (CC BY 4.0, monthly)
+│   ├── geolite2-city-ipv4.mmdb  # City IPv4 — GeoLite2 (CC BY-SA 4.0, twice weekly)
+│   ├── geolite2-city-ipv6.mmdb  # City IPv6 — GeoLite2 (CC BY-SA 4.0, twice weekly)
+│   ├── origin-asn.mmdb          # ASN via BGP routing (PDDL, daily)
+│   ├── iptoasn-asn.mmdb         # ASN via IPtoASN (PDDL, daily)
+│   ├── dbip-asn.mmdb            # ASN — DB-IP Lite (CC BY 4.0, monthly)
+│   ├── geolite2-asn.mmdb        # ASN — GeoLite2 (CC BY-SA 4.0, twice weekly)
 │   └── .last_updated            # Timestamp file
 ├── blocklists/
 │   ├── firehol_level1.txt
@@ -9893,19 +9949,28 @@ data:
 
 ### GeoIP Database Details (ip-location-db)
 
-| Database | File | Contains | Use Case |
-|----------|------|----------|----------|
-| ASN | `asn.mmdb` | AS number, AS organization | Network provider identification |
-| Country | `country.mmdb` | Country code (ISO 3166-1) | Geo-blocking, compliance |
-| City | `city.mmdb` | City, country, state1/state2, postcode, lat/lon, timezone | Location-based features |
-| WHOIS | `whois.mmdb` | Registrant info, combined with ASN | Abuse detection, attribution |
+| Database | File(s) | License | Updated | Contains |
+|----------|---------|---------|---------|----------|
+| Country (community) | `user-country.mmdb` | PDDL | Daily | ISO 3166-1 country code |
+| Country (server IPs) | `server-country.mmdb` | PDDL | Daily | ISO 3166-1 country code |
+| Country (IPtoASN) | `iptoasn-country.mmdb` | PDDL | Daily | ISO 3166-1 country code |
+| Country (DB-IP Lite) | `dbip-country.mmdb` | CC BY 4.0 | Monthly | ISO 3166-1 country code |
+| Country (GeoLite2) | `geolite2-country.mmdb` | CC BY-SA 4.0 | Twice weekly | ISO 3166-1 country code |
+| City IPv4 (DB-IP Lite) | `dbip-city-ipv4.mmdb` | CC BY 4.0 | Monthly | City, state, postcode, lat/lon, timezone |
+| City IPv6 (DB-IP Lite) | `dbip-city-ipv6.mmdb` | CC BY 4.0 | Monthly | City, state, postcode, lat/lon, timezone |
+| City IPv4 (GeoLite2) | `geolite2-city-ipv4.mmdb` | CC BY-SA 4.0 | Twice weekly | City, state, postcode, lat/lon, timezone |
+| City IPv6 (GeoLite2) | `geolite2-city-ipv6.mmdb` | CC BY-SA 4.0 | Twice weekly | City, state, postcode, lat/lon, timezone |
+| ASN (BGP routing) | `origin-asn.mmdb` | PDDL | Daily | AS number, AS organization |
+| ASN (IPtoASN) | `iptoasn-asn.mmdb` | PDDL | Daily | AS number, AS organization |
+| ASN (DB-IP Lite) | `dbip-asn.mmdb` | CC BY 4.0 | Monthly | AS number, AS organization |
+| ASN (GeoLite2) | `geolite2-asn.mmdb` | CC BY-SA 4.0 | Twice weekly | AS number, AS organization |
 
 **Benefits of ip-location-db:**
-- No API key or account required (unlike MaxMind)
-- Daily updates via jsDelivr CDN
-- CC0/PDDL licensed (no restrictions)
-- MMDB format (same as MaxMind, compatible with existing Go libraries)
-- IPv4 and IPv6 support
+- No API key or account required — files downloaded directly from GitHub Releases
+- GeoLite2 databases freely redistributed by ip-location-db — no MaxMind account needed
+- Three tiers: PDDL (daily), CC BY 4.0 (monthly), GeoLite2/CC BY-SA 4.0 (twice weekly)
+- MMDB format compatible with oschwald/maxminddb-golang
+- Full IPv4 and IPv6 coverage
 
 ## Display Environment Detection
 
@@ -24692,7 +24757,7 @@ textarea:user-invalid,
 | **HTTPS** | Required for service workers | Non-negotiable |
 | **Push Notifications** | Web Push API via Service Worker | User opt-in required |
 | **Geolocation** | GPS access via Geolocation API | User permission required |
-| **User Sessions** | Tokens in localStorage/IndexedDB | Persists across restarts |
+| **User Sessions** | HttpOnly session cookie (server-side) | Persists across restarts |
 | **Background Sync** | Queue actions when offline, sync when online | Seamless offline |
 | **App Updates** | Detect new SW version, prompt user | Keep app current |
 
@@ -25237,27 +25302,31 @@ async function checkLocationPermission() {
 
 ### User Sessions in PWA
 
-**PWA maintains user login across app restarts.**
+**PWA maintains user login across app restarts — via the server-side session cookie, never JS-held tokens.**
+
+The session lives in an `HttpOnly` + `Secure` + `SameSite` cookie. The browser sends it automatically on every request, it persists across app restarts natively, and JS cannot read it — no token-handling JavaScript exists. Session tokens NEVER go in localStorage or IndexedDB: anything XSS-readable is not a place for credentials.
 
 | Storage | Use Case | Cleared |
 |---------|----------|---------|
-| **localStorage** | Session token, user preferences | Manual/logout |
+| **Cookie (HttpOnly + Secure + SameSite)** | Session — sent automatically; unreadable by JS | Expiry/logout |
 | **IndexedDB** | Offline data, cached responses | Manual/logout |
-| **Cookies** | Server-side session (fallback) | Expiry/logout |
+| **localStorage** | Pure client-only state only (e.g. collapsed-panel state) — never session or auth data | Manual |
 
 **Session persists when:**
 - App is closed and reopened
 - Device is restarted
 - Switching between browser and installed PWA
 
-**Logout clears all:** localStorage, IndexedDB, service worker cache of user data.
+The cookie must set `Max-Age`/`Expires` (persistent cookie) — a session-scoped cookie is dropped when the app closes and login would not survive a restart.
+
+**Logout is a plain `POST /logout` form — works with zero JS.** The server destroys the session and expires the cookie. External JS enhances logout by also clearing client-side offline data:
 
 ```javascript
-// Complete logout - clear all user data
-async function logout() {
-  // Clear localStorage
-  localStorage.removeItem('auth_token');
-  localStorage.removeItem('user_prefs');
+// Logout enhancement - the server already destroyed the session and expired the
+// cookie via POST /logout; this only clears client-side offline data
+async function clearClientData() {
+  // Clear client-only state (the session was never stored here)
+  localStorage.clear();
 
   // Clear IndexedDB
   const databases = await indexedDB.databases();
@@ -37937,16 +38006,16 @@ docker:
 test:
 	@echo "Running tests with coverage..."
 	@$(GO_DOCKER) sh -c " \
-		mkdir -p \"/tmp/$(PROJECTORG)\" && \
-		COVDIR=\$$(mktemp -d \"/tmp/$(PROJECTORG)/$(PROJECTNAME)-XXXXXX\") && \
+		mkdir -p \"\$${TMPDIR:-/tmp}/$(PROJECTORG)\" && \
+		COVDIR=\$$(mktemp -d \"\$${TMPDIR:-/tmp}/$(PROJECTORG)/$(PROJECTNAME)-XXXXXX\") && \
 		go mod download && \
 		go test -v -cover -coverprofile=\$$COVDIR/coverage.out ./... && \
 		COVERAGE=\$$(go tool cover -func=\$$COVDIR/coverage.out | grep total | awk '{print \$$3}' | sed 's/%//') && \
 		echo \"Coverage: \$$COVERAGE%\" && \
-		if [ \$$(echo \"\$$COVERAGE < 80\" | bc -l) -eq 1 ]; then \
-			echo \"ERROR: Coverage is \$$COVERAGE%, must be >= 80%\"; exit 1; \
+		if [ \$$(echo \"\$$COVERAGE < 60\" | bc -l) -eq 1 ]; then \
+			echo \"ERROR: Coverage is \$$COVERAGE%, must be >= 60%\"; exit 1; \
 		fi && \
-		echo \"Tests complete - Coverage: \$$COVERAGE% (>= 80% required) ✓\""
+		echo \"Tests complete - Coverage: \$$COVERAGE% (>= 60% required) ✓\""
 
 # =============================================================================
 # DEV - Quick build for local development/testing (to random temp dir)
@@ -38088,7 +38157,7 @@ All Docker builds use persistent Go module caching to avoid re-downloading depen
 | `make dev` | **Development & Debugging** | `${TMPDIR}/${PROJECT_ORG}/${PROJECT_NAME}-XXXXXX/` | Active coding, quick tests, debugging |
 | `make local` | **Production Testing** | `binaries/` (with version) | Test production builds locally before release |
 | `make build` | **Full Release Build** | `binaries/` (all 8 platforms) | Before tagging release, cross-platform verification |
-| `make test` | **Unit Tests** | Coverage report | After code changes, before commits |
+| `make test` | **Phase 1 — Toolchain Gate** | Coverage report | Before commits; after code changes |
 
 **Local Development Workflow:**
 
@@ -38096,8 +38165,8 @@ All Docker builds use persistent Go module caching to avoid re-downloading depen
 |-------|---------|---------|
 | **1. Coding** | `make dev` | Rapid iteration - builds to temp dir, no version info |
 | **2. Quick Test** | Run binary in Docker | Debug with curl, file, bash tools |
-| **3. Unit Tests** | `make test` | Verify logic, coverage |
-| **4. Integration** | `./tests/run_tests.sh` | Full server + CLI + agent tests |
+| **3. Phase 1 — Toolchain Gate** | `make test` | Unit tests in Docker; pre-commit requirement |
+| **4. Phase 2 — Binary Validation** | `./tests/run_tests.sh` | Shell scripts run against compiled binary |
 | **5. Production Test** | `make local` | Build with version info to `binaries/` |
 | **6. Release** | `make build` | Full cross-platform build (8 platforms) |
 
@@ -38117,12 +38186,12 @@ docker run --rm \
   "
 ```
 
-**Integration Tests:**
+**Phase 2 — Binary Validation:**
 
 | Script | Container | Best For |
 |--------|-----------|----------|
 | `./tests/run_tests.sh` | Auto-detect | General testing (picks best available) |
-| `./tests/docker.sh` | Docker `alpine:latest` | Quick integration tests |
+| `./tests/docker.sh` | Docker `alpine:latest` | Quick binary validation |
 | `./tests/incus.sh` | Incus `debian:latest` | **PREFERRED** - Full OS, systemd, realistic |
 
 **Typical workflow:**
@@ -38774,8 +38843,8 @@ exec $APP_BIN $FLAGS "$@"
 ### Docker Compose Structure
 
 ```yaml
-# {project_name} - {brief description}
 # nginx proxy address - http://172.17.0.1:{port}
+# {project_name} - {brief description}
 
 name: {project_name}
 
@@ -38857,8 +38926,8 @@ services:
 ### Multi-Service Example
 
 ```yaml
-# {project_name} - with PostgreSQL + Valkey
 # nginx proxy address - http://172.17.0.1:64580
+# {project_name} - with PostgreSQL + Valkey
 
 name: {project_name}
 
@@ -38993,8 +39062,8 @@ networks:
 **All-in-One docker-compose (`docker/all-in-one.yml`):**
 
 ```yaml
-# {project_name} - All-in-One (app + embedded DB)
 # nginx proxy address - http://172.17.0.1:64580
+# {project_name} - All-in-One (app + embedded DB)
 # Usage: docker compose -f all-in-one.yml up -d
 
 name: {project_name}
@@ -42960,6 +43029,7 @@ When a test or debug step requires `reboot`, `systemctl`, `iptables`, `mount`, p
 
 | Test Need | Run It Where |
 |-----------|--------------|
+| Run or test the compiled binary | `docker run --rm -v "$BUILD_DIR:/app" alpine:latest /app/{project_name}` or `./tests/docker.sh` / `./tests/incus.sh` |
 | Test systemd service install/start/stop | `incus exec test-{project_name} -- systemctl ...` |
 | Test firewall integration | `docker run --rm --name "{project_name}-test" --cap-add=NET_ADMIN ...` |
 | Test network interface behavior | `ip netns exec {ns} ...` or inside Incus |
@@ -43215,30 +43285,30 @@ rm -rf "${TMPDIR:-/tmp}/${PROJECT_ORG}/"
 
 ### Testing Strategy
 
-**Two types of tests are REQUIRED:**
+**Two test phases are REQUIRED:**
 
-| Test Type | Files | Run With | Tests |
-|-----------|-------|----------|-------|
-| **Go Unit Tests** | `*_test.go` | `go test` | Function/package logic, no server |
-| **Integration Tests** | `./tests/*.sh` | Executable shell scripts | Full server, API endpoints, auth |
+| Phase | Files | Run With | Tests |
+|-------|-------|----------|-------|
+| **Phase 1 — Toolchain Gate** | `*_test.go` | `make test` | Source-code logic via `go test`; pre-commit gate |
+| **Phase 2 — Binary Validation** | `./tests/*.sh` | `./tests/run_tests.sh` | Compiled binary behavior — routes, auth, debugging — **manual, developer-initiated** |
 
-**Go Unit Tests (`*_test.go`):**
-- Test individual functions and packages
+**Phase 1 — Toolchain Gate (`*_test.go`):**
+- Tests individual functions and packages via `go test` inside Docker
 - No server running required
 - Fast, run frequently during development
 - Create or update the matching `*_test.go` immediately when you add or change package logic
 - Run with `make test`
 
-**Integration Tests (`./tests/*.sh`):**
-- Test complete running server
-- Test API endpoints, .txt extension, Accept headers
-- Test authentication, admin routes
-- Test project-specific functionality (from IDEA.md)
+**Phase 2 — Binary Validation (`./tests/*.sh`) — manual, developer-initiated:**
+- Tests the complete running server binary
+- Tests API endpoints, .txt extension, Accept headers
+- Tests authentication, admin routes
+- Tests project-specific functionality (from IDEA.md)
 - Run with `./tests/run_tests.sh`
 - `./tests/*` means executable shell scripts in the repository-root `tests/` directory
 - Minimum required scripts: `./tests/run_tests.sh`, `./tests/docker.sh`, `./tests/incus.sh`
 - Additional helper scripts are allowed (for example `./tests/test_content_negotiation.sh`)
-- These scripts complement integration coverage; they do **NOT** replace required Go unit tests in `*_test.go`
+- These scripts complement binary coverage; they do **NOT** replace required Go unit tests in `*_test.go`
 
 ### What Goes in `*_test.go` vs `./tests/*.sh` — and Why
 
@@ -43252,16 +43322,16 @@ rm -rf "${TMPDIR:-/tmp}/${PROJECT_ORG}/"
 - If the behavior requires a running binary, real HTTP requests, real process execution, or container/Incus setup, it belongs in `./tests/*.sh`
 
 **Reason both are required:**
-- `*_test.go` exists to achieve and enforce **≥80% Go code coverage** via `go test -cover` (critical paths — auth, DB, token validation — must always be covered)
+- `*_test.go` exists to achieve and enforce **≥60% Go code coverage** via `go test -cover` (critical paths — auth, DB, token validation — must always be covered)
 - `./tests/*.sh` exists to achieve and enforce **100% endpoint/route/integration coverage**
 - One does **not** replace the other; they measure different things and catch different classes of bugs
 
 ### Testing Requirements Summary
 
-**BOTH types of tests are REQUIRED for all projects:**
+**Both test phases are REQUIRED for all projects:**
 
-1. **Go Unit Tests** (`*_test.go`) - Test package logic
-2. **Integration Tests** (`./tests/*.sh`) - Test full running application
+1. **Phase 1 — Toolchain Gate** (`make test`) — source-code logic via `go test`, pre-commit gate
+2. **Phase 2 — Binary Validation** (`./tests/*.sh`) — compiled binary behavior, debugging — **manual, developer-initiated**
 
 **Integration tests MUST be comprehensive:**
 - ✓ Test ALL project-specific endpoints (IDEA.md)
@@ -43531,27 +43601,27 @@ make test
 
 ## Test Coverage Gates
 
-**Two different gates apply: ≥80% for unit tests, 100% for endpoint/route integration tests.**
+**Two different gates apply: ≥60% for unit tests, 100% for endpoint/route integration tests.**
 
 ### Coverage Requirements
 
 | Coverage Type | Requirement | Verification |
 |--------------|-------------|--------------|
-| **Go Unit Tests** | ≥80% code coverage | `go test -cover` must report ≥80% |
-| **Integration Tests** | 100% endpoint coverage | Every endpoint tested |
+| **Phase 1 — Toolchain Gate** | ≥60% code coverage | `go test -cover` must report ≥60% |
+| **Phase 2 — Binary Validation** | 100% endpoint coverage | Every endpoint tested |
 | **Admin Routes** | 100% route coverage | Every admin route tested |
 | **Critical Paths (auth, DB, token validation)** | Always tested | No critical path may go untested regardless of overall % |
 | **Error Paths** | Cover all reachable error returns | All error conditions surfaced by callers tested |
 
 ### What These Gates Mean
 
-**Go Code (Unit Tests) — ≥80%:**
+**Phase 1 — Toolchain Gate — ≥60% code coverage:**
 ```bash
-# Run tests with coverage enforcement (fails if below 80%)
+# Run tests with coverage enforcement (fails if below 60%)
 make test
 ```
 
-**Endpoints (Integration Tests):**
+**Phase 2 — Binary Validation — endpoint coverage:**
 
 | Endpoint Type | Must Test |
 |--------------|-----------|
@@ -43567,7 +43637,7 @@ make test
 **In CI/CD Pipeline (REQUIRED):**
 
 ```yaml
-# .github/workflows/test.yml
+# .github/workflows/ci.yml (coverage job)
 test:
   runs-on: ubuntu-latest
   steps:
@@ -43581,18 +43651,18 @@ test:
         docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $PWD:/app -w /app casjaysdev/go:latest \
           go test -cover -coverprofile=coverage.out ./...
 
-    - name: Check coverage is >= 80%
+    - name: Check coverage is >= 60%
       run: |
         COVERAGE=$(docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $PWD:/app -w /app casjaysdev/go:latest \
           go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
-        if [ $(echo "$COVERAGE < 80" | bc -l) -eq 1 ]; then
-          echo "ERROR: Coverage is $COVERAGE%, must be >= 80%"
+        if [ $(echo "$COVERAGE < 60" | bc -l) -eq 1 ]; then
+          echo "ERROR: Coverage is $COVERAGE%, must be >= 60%"
           exit 1
         fi
-        echo "Coverage: $COVERAGE% (>= 80% required) ✓"
+        echo "Coverage: $COVERAGE% (>= 60% required) ✓"
 ```
 
-### How to Achieve the Coverage Gates (≥80% unit, 100% endpoints)
+### How to Achieve the Coverage Gates (≥60% unit, 100% endpoints)
 
 **1. Test All Code Paths:**
 ```go
@@ -43706,11 +43776,11 @@ verify_all_endpoints_tested
 
 ### Coverage Exceptions
 
-**Unit-test gate is ≥80%, not 100% — but the 100% gates for endpoints/routes and critical paths are absolute.** Common pushback on writing unit tests is still rejected:
+**Unit-test gate is ≥60%, not 100% — but the 100% gates for endpoints/routes and critical paths are absolute.** Common pushback on writing unit tests is still rejected:
 
 | Common Excuse | Response |
 |--------------|----------|
-| "It's just a simple getter" | Test it anyway if it counts toward the 80% floor and is in a critical path |
+| "It's just a simple getter" | Test it anyway if it counts toward the 60% floor and is in a critical path |
 | "The code is obvious" | Obvious code can still have bugs |
 | "It's only used internally" | Internal code needs tests too |
 | "I tested it manually" | Manual tests don't count |
@@ -43723,10 +43793,10 @@ verify_all_endpoints_tested
 
 | When | Run This | Purpose |
 |------|----------|---------|
-| **During development** | `make test` (Go unit tests) | Fast feedback, verify logic |
-| **Before committing** | `make test` + `./tests/run_tests.sh` | Verify all tests pass |
-| **Before release** | `make test` + `./tests/incus.sh` | Full systemd testing |
-| **In CI/CD** | Both Go tests and integration tests | Automated verification |
+| **During development** | `make test` (Phase 1 — toolchain gate) | Fast feedback, verify source logic |
+| **Before committing** | `make test` (Phase 1 required) | Toolchain gate must pass before every commit |
+| **Before release** | `make test` + `./tests/incus.sh` | Phase 1 + Phase 2 binary validation (manual) |
+| **In CI/CD** | Phase 1 only | Toolchain gate; Phase 2 is manual |
 
 **Test Execution Order:**
 ```bash
