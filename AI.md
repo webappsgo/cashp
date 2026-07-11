@@ -7861,6 +7861,9 @@ server:
       # Delete logs older than 7 days during cleanup
       log_retention_days: 7
       # Keep last 5 backups during cleanup
+      # Retention and disk-pressure cleanup scan the backup directory
+      # resolved and cached at startup step 7 — the same directory
+      # backups are written to. Never re-resolve the path at cleanup time.
       backup_keep_count: 5
 
     # Notifications
@@ -8733,8 +8736,9 @@ func needsEscalationForUpdate() bool {
 }
 
 // Backup: check directory access (no auth needed)
-func canBackup() bool {
-    return isWritable(getBackupDir())
+// Uses the backup dir resolved and cached at startup step 7
+func canBackup(backupDir string) bool {
+    return isWritable(backupDir)
 }
 
 // Setup: check authorization (not just access)
@@ -9063,8 +9067,7 @@ server:
         enabled: true
         # Daily: midnight
         schedule: "0 0 * * *"
-        max_age: 30d
-        max_size: 100MB
+        # Size/age limits come from each log's rotate/keep policy (server.logs)
       session_cleanup:
         enabled: true
         # Hourly
@@ -10776,10 +10779,12 @@ Run '{project_name} <command> help' for detailed help on any command.
 | `--data` | Directory | `/var/lib/{project_org}/{internal_name}/` | `~/.local/share/{project_org}/{internal_name}/` |
 | `--cache` | Directory | `/var/cache/{project_org}/{internal_name}/` | `~/.cache/{project_org}/{internal_name}/` |
 | `--log` | Directory | `/var/log/{project_org}/{internal_name}/` | `~/.local/log/{project_org}/{internal_name}/` |
-| `--backup` | Directory | `/mnt/Backups/{project_org}/{internal_name}/` (if writable) | `~/.local/share/Backups/{project_org}/{internal_name}/` |
+| `--backup` | Directory | `/mnt/Backups/{project_org}/{internal_name}/` (if writable, else `{data_dir}/backup/`) | `~/.local/share/Backups/{project_org}/{internal_name}/` |
 | `--pid` | File | `/var/run/{project_org}/{internal_name}.pid` | `~/.local/share/{project_org}/{internal_name}/{internal_name}.pid` |
 
-**Note:** `--backup` prefers system backup dir if writable, falls back to user dir. See `GetBackupDir()` in PART 5.
+**Note:** `--backup` prefers the system backup dir if writable. Fallback is mode-aware: system mode (started as root) falls back to `{data_dir}/backup/` — never a `$HOME`-derived path; user mode falls back to the user dir. See `GetBackupDir()` in PART 5.
+
+**Directory mode is locked at process start.** System vs user paths are decided ONCE from the EUID at startup, before any privilege drop, and cached for the process lifetime. Never resolve `~` or `$HOME` after the privilege drop — the service account's HOME points at `{data_dir}` (e.g. `/var/lib/{project_org}/{internal_name}`), so a late `$HOME` lookup nests user-style paths like `.local/share/Backups/` inside the system data dir.
 
 ### Directory Validation Rules
 
@@ -11042,12 +11047,14 @@ PHASE 5: Server startup (actual server start)
    ├─ Container vs local (/.dockerenv exists? container env var?)
    └─ Detect service manager (systemd, launchd, runit, etc.)
 
-7. Resolve all paths (CLI flags → env vars → context-based defaults):
+7. Resolve ALL paths ONCE and cache them (CLI flags → env vars → context-based defaults):
+   ├─ Mode (system vs user) = EUID at start; locked for process lifetime
    ├─ {config_dir}  (/etc/... or ~/.config/...)
    ├─ {data_dir}    (/var/lib/... or ~/.local/share/...)
    ├─ {cache_dir}   (/var/cache/... or ~/.cache/...)
    ├─ {log_dir}     (/var/log/... or ~/.local/log/...)
-   └─ {backup_dir}  (see PART 5 GetBackupDir - /mnt/Backups/... if writable)
+   ├─ {backup_dir}  (see PART 5 GetBackupDir - /mnt/Backups/... if writable, else {data_dir}/backup/ in system mode)
+   └─ Never resolve ~/$HOME again after step 8g — the service account's HOME is {data_dir}
 
 8. IF RUNNING AS ROOT - setup system resources BEFORE dropping privileges:
    a. Check/create system user:
@@ -11121,7 +11128,7 @@ PHASE 5: Server startup (actual server start)
 14. Reconfigure logging from config:
     ├─ Set log level from server.logging.level
     ├─ Set log format from server.logging.format
-    └─ Configure rotation (max_size, max_files)
+    └─ Configure rotation (per-log rotate/keep policies)
 
 15. Initialize database:
     ├─ Connect to database (SQLite: {data_dir}/db/server.db)
@@ -11140,6 +11147,8 @@ PHASE 5: Server startup (actual server start)
     │   ├─ geoip_update (03:00 Sunday)
     │   ├─ public_ip_refresh (startup + every 12h, hardcoded)
     │   └─ ... and others (see PART 19)
+    ├─ Run one full retention sweep of backup dir (cached from step 7) before
+    │   starting scheduler — clears accumulation from crashed/failed prior runs
     └─ Start scheduler goroutine
 
 17. Start Tor (if tor binary available) - see PART 32:
@@ -11182,7 +11191,7 @@ PHASE 5: Server startup (actual server start)
 | Step | Runs As | Why |
 |------|---------|-----|
 | 6. Determine context | any | First thing - detect if root, container, etc. |
-| 7. Resolve paths | any | Path resolution based on context |
+| 7. Resolve paths | any | Resolved ONCE and cached — mode locked from start EUID; never re-derived after 8g |
 | **IF ROOT (step 8):** | | |
 | 8a. Create system user | **root** | Only root can create system users |
 | 8b. Create directories | **root** | Only root can create /etc/, /var/lib/, etc. |
@@ -13188,9 +13197,18 @@ func GetCacheDir(flagValue string) string {
     return defaultCacheDir()
 }
 
-// GetBackupDir returns backup directory from env or default
-// Prefers system backup dir if writable, falls back to user dir
-func GetBackupDir(flagValue string) string {
+// startedElevated is captured ONCE at process start, BEFORE any privilege
+// drop, and never re-evaluated. After startup step 8g drops privileges,
+// geteuid() changes but the directory mode (system vs user) must not.
+var startedElevated = isElevated()
+
+// GetBackupDir returns backup directory from flag, env, or default
+// System mode (startedElevated): system backup dir if writable, else
+// {data_dir}/backup/ — NEVER a $HOME-derived path. Service accounts have
+// HOME set to {data_dir}, so a $HOME fallback would nest user-style dirs
+// inside /var/lib/{project_org}/{internal_name}/.
+// User mode: system backup dir if writable, else user backup dir.
+func GetBackupDir(flagValue string, dataDir string) string {
     if flagValue != "" {
         return flagValue
     }
@@ -13202,7 +13220,11 @@ func GetBackupDir(flagValue string) string {
     if isWritable(sysBackup) {
         return sysBackup
     }
-    // Fall back to user backup dir
+    // System mode: fall back inside the data dir, never $HOME
+    if startedElevated {
+        return filepath.Join(dataDir, "backup")
+    }
+    // User mode only: fall back to user backup dir
     return userBackupDir()
 }
 
@@ -13248,6 +13270,8 @@ func systemBackupDir() string {
 }
 
 // userBackupDir returns the user-level backup directory
+// USER MODE ONLY — never call when startedElevated is true: $HOME belongs
+// to the service account after a privilege drop and points at {data_dir}.
 // Linux/BSD: ~/.local/share/Backups/{project_org}/{internal_name}
 // macOS: ~/Library/Backups/{project_org}/{internal_name}
 // Windows: %LocalAppData%\Backups\{project_org}\{internal_name}
@@ -16718,6 +16742,7 @@ server:
 | `backup.restored` | Backup restored | Filename, restored by |
 | `backup.deleted` | Backup deleted | Filename, deleted by |
 | `backup.failed` | Backup failed | Error message |
+| `backup.skipped_disk_full` | Backup skipped — insufficient free space or disk above threshold | Free space, disk usage %, threshold |
 | `server.started` | Application started | Version, mode, node ID |
 
 > **Suppression:** `scheduler.task_failed` is not emitted when `backup.failed` fires for the same execution — both would describe the same event. `scheduler.task_failed` fires only for tasks that produce no subsystem-specific audit event.
@@ -30563,6 +30588,7 @@ Admin Panel Header:
 | `backup.retention.keep_weekly` | Number | `0` | No | Weekly backups (Sunday) - 0 = disabled |
 | `backup.retention.keep_monthly` | Number | `0` | No | Monthly backups (1st) - 0 = disabled |
 | `backup.retention.keep_yearly` | Number | `0` | No | Yearly backups (Jan 1st) - 0 = disabled |
+| `backup.retention.max_total_size` | Text | `"10%"` | No | Hard size cap (e.g. `"10%"`, `"50G"`); `0` = disabled; overrides count limits |
 | `backup.encryption.enabled` | Toggle | Off | No | Encrypt backups |
 | `backup.encryption.password` | Password | (none) | No | Encryption password |
 
@@ -33212,11 +33238,7 @@ server:
       log_rotation:
         schedule: "0 0 * * *"
         enabled: true
-        # Delete logs older than 30 days
-        max_age: 30d
-        # Rotate when log exceeds 100MB
-        max_size: 100MB
-        compress: true
+        # Applies each log's rotate/keep/compress policy from server.logs
 
       # Daily backup at 02:00 (admin can disable)
       backup_daily:
@@ -33225,6 +33247,7 @@ server:
         # Verify after creation (all checks must pass)
         verify: true
         # Creates: {project_name}_backup_YYYY-MM-DD.tar.gz[.enc] (full)
+        #          {project_name}_backup_YYYY-MM-DD_HHMMSS.tar.gz[.enc] (manual)
         #          {project_name}-daily.tar.gz[.enc] (incremental)
         retention:
           # 1-365: daily full backups to keep
@@ -33235,6 +33258,10 @@ server:
           keep_monthly: 0
           # 0-10: January 1st backups (0 = disabled)
           keep_yearly: 0
+          # Hard size cap: percent of backup volume (e.g. "10%") or absolute
+          # (e.g. "50G"). 0 = disabled. Size cap overrides all count limits —
+          # oldest files deleted first until total is under the cap.
+          max_total_size: "10%"
 
       # Hourly incremental backup (disabled by default)
       backup_hourly:
@@ -35294,6 +35321,7 @@ Shown on:
 | `keep_weekly` | 0 | ≥0 | Weekly backups (Sunday) - 0 = disabled |
 | `keep_monthly` | 0 | ≥0 | Monthly backups (1st) - 0 = disabled |
 | `keep_yearly` | 0 | ≥0 | Yearly backups (Jan 1st) - 0 = disabled |
+| `max_total_size` | `"10%"` | % or bytes | Hard size cap (e.g. `"10%"`, `"50G"`); `0` = disabled; overrides count limits |
 
 **Falsey Values (all disabled):** `0`, `false`, `no`, `none`, `disable`, `disabled`, `off`
 
@@ -35311,6 +35339,8 @@ server:
       keep_monthly: 0
       # 0-10: January 1st (0 = disabled)
       keep_yearly: 0
+      # Hard size cap: percent of backup volume or absolute size; 0 = disabled
+      max_total_size: "10%"
 ```
 
 **Default: 2 files total** (yesterday's full + today's incremental)
@@ -35322,13 +35352,17 @@ server:
 **Backup Creation Flow (backup_daily task at 02:00):**
 
 ```
-1. Create full backup: {project_name}_backup_YYYY-MM-DD.tar.gz[.enc]
-2. Verify full backup (all checks must pass)
-3. Create daily incremental: {project_name}-daily.tar.gz[.enc]
-4. Verify daily incremental (all checks must pass)
-5. If ALL verifications pass:
+1. Run retention sweep on backup dir (resolved and cached at startup step 7)
+2. Check free space: if free < 2× size of most recent backup, OR disk usage
+   > disk_threshold (default 90%), log backup.skipped_disk_full (level=error)
+   and abort — do NOT create the backup
+3. Create full backup: {project_name}_backup_YYYY-MM-DD.tar.gz[.enc]
+4. Verify full backup (all checks must pass)
+5. Create daily incremental: {project_name}-daily.tar.gz[.enc]
+6. Verify daily incremental (all checks must pass)
+7. If ALL verifications pass:
    - Apply retention policy (delete old backups per retention settings)
-6. If ANY verification fails:
+8. If ANY verification fails:
    - Delete failed backup file
    - Keep existing valid backups
    - Alert admin
@@ -35368,6 +35402,7 @@ Every backup is verified **immediately after creation** - backups must be 100% w
 │  Weekly backups (keep_weekly):        [0    ] ← 0 = disabled        │
 │  Monthly backups (keep_monthly):      [0    ] ← 0 = disabled        │
 │  Yearly backups (keep_yearly):        [0    ] ← 0 = disabled        │
+│  Hard size cap (max_total_size):      [10%  ] ← % or abs; 0=off     │
 │                                                                      │
 │  [✓] Auto-delete old backups after successful backup                │
 │                                                                      │
@@ -35387,6 +35422,7 @@ Every backup is verified **immediately after creation** - backups must be 100% w
 | `backup.retention_cleanup` | Old backups deleted | Deleted files, reason, remaining count |
 | `backup.verification_failed` | Backup verification failed | Filename, check that failed |
 | `backup.daily_updated` | Daily incremental updated | Filename, changes since last |
+| `backup.skipped_disk_full` | Backup skipped — insufficient free space or disk above threshold | Free space, disk usage %, threshold |
 
 ### Backup Files Created (Single Task at 02:00)
 
@@ -35412,6 +35448,8 @@ server:
       keep_monthly: 0
       # Optional: keep yearly backup (e.g., Jan 1st)
       keep_yearly: 0
+      # Hard size cap: percent of backup volume or absolute size; 0 = disabled
+      max_total_size: "10%"
 ```
 
 **Retention Settings:**
@@ -35422,6 +35460,7 @@ server:
 | `keep_weekly` | 0 | ≥0 | Weekly backups (Sunday) - 0 = disabled |
 | `keep_monthly` | 0 | ≥0 | Monthly backups (1st) - 0 = disabled |
 | `keep_yearly` | 0 | ≥0 | Yearly backups (Jan 1st) - 0 = disabled |
+| `max_total_size` | `"10%"` | % or bytes | Hard size cap (e.g. `"10%"`, `"50G"`); `0` = disabled; overrides count limits |
 
 **Falsey Values (all mean disabled):**
 - `0`, `false`, `no`, `none`, `disable`, `disabled`, `off`
@@ -35525,17 +35564,41 @@ Backups on disk (January 15, 2026):
 Total: 6 files (1 daily + 1 weekly + 2 monthly + 1 yearly + incremental)
 ```
 
-**Backup Cleanup Logic (runs after successful backup):**
+**Backup Cleanup Logic (runs at startup and after every backup):**
+
+Retention and disk-pressure cleanup scan the backup directory resolved and
+cached at startup step 7 — the same directory backups are written to.
+Never re-resolve the path at cleanup time.
+
+The algorithm matches EVERY backup file the app creates:
+- `{project_name}_backup_YYYY-MM-DD.tar.gz[.enc]` — daily full
+- `{project_name}_backup_YYYY-MM-DD_HHMMSS.tar.gz[.enc]` — manual/timestamped
+- `{project_name}-daily.tar.gz[.enc]` — daily incremental
+- `{project_name}-hourly.tar.gz[.enc]` — hourly incremental
+
+Timestamped manual backups count toward `max_backups` alongside daily fulls
+(sorted by date, oldest deleted first). Any file matching the
+`{project_name}_backup_*` or `{project_name}-*.tar.gz*` prefix that is not
+otherwise classified is treated as a daily backup for retention purposes —
+nothing in the backup dir matching the app's naming is ever exempt from pruning.
+
 ```
-1. Mark all backups from January 1st as "yearly" (keep up to keep_yearly)
-2. Mark all backups from 1st of month as "monthly" (keep up to keep_monthly)
-3. Mark all backups from Sunday as "weekly" (keep up to keep_weekly)
-4. Mark remaining backups as "daily" (keep up to max_backups)
-5. Delete unmarked backups, oldest first
-6. Daily incremental is always replaced (only 1 exists)
+1. Collect all backup files in the cached backup dir matching the app's
+   naming patterns above; sort by date (oldest first)
+2. Mark all backups from January 1st as "yearly" (keep up to keep_yearly)
+3. Mark all backups from 1st of month as "monthly" (keep up to keep_monthly)
+4. Mark all backups from Sunday as "weekly" (keep up to keep_weekly)
+5. Mark remaining backups (daily full + manual/timestamped) as "daily"
+   (keep up to max_backups, oldest deleted first)
+6. Delete unmarked backups, oldest first
+7. Daily incremental ({project_name}-daily.tar.gz[.enc]) is always replaced
+   (only 1 exists); hourly incremental likewise
+8. If max_total_size > 0: after all count-based pruning, if total size of
+   all backup files still exceeds the cap, delete oldest files first until
+   total is under the cap (size cap overrides all count limits)
 
 Note: A single backup can satisfy multiple retention types (e.g., Jan 1st 2025
-on a Sunday counts as daily + weekly + monthly + yearly - uses highest priority)
+on a Sunday counts as daily + weekly + monthly + yearly — uses highest priority)
 ```
 
 **Daily incremental is NOT counted** in retention - it's always exactly 1 file that gets replaced.
@@ -38540,7 +38603,7 @@ All Dockerfiles MUST include these labels:
 
 | Label | Value |
 |-------|-------|
-| `maintainer` | `{maintainer_name} <{maintainer_email}>` |
+| `maintainer` | `{maintainer_name} <{maintainer_email}>` — email part omitted when `maintainer_email` is unset (label becomes just `{maintainer_name}`) |
 | `org.opencontainers.image.vendor` | `{project_org}` |
 | `org.opencontainers.image.authors` | `{project_org}` |
 | `org.opencontainers.image.title` | `{project_name}` |
@@ -60140,8 +60203,8 @@ project_org:     {project_org}
 internal_name:   {project_name}
 app_name:        {project_name}
 official_site:   {fqdn}
-maintainer_name: {maintainer_name}
-maintainer_email: {maintainer_email}
+maintainer_name: {maintainer_name — defaults to {project_org} if unset}
+maintainer_email: {maintainer_email — or empty; used only if set}
 
 ## Business logic
 
