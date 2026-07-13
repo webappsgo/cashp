@@ -729,7 +729,7 @@ Every project ships workflow files for all five CI/CD providers. Same gates, dif
 
 Go projects never have `build-toolchain.yml` — `casjaysdev/go:latest` is maintained externally and needs no per-project rebuild workflow.
 
-**Toolchain image — `casjaysdev/go:latest`.** All Go CI jobs and containerized builds use this maintained image; never create `docker/Dockerfile.build` for Go. Image defaults: `CGO_ENABLED=0`, `GOFLAGS=-buildvcs=false`, `GOTOOLCHAIN=auto`, `GOTELEMETRY=off`. Pre-installed tools:
+**Toolchain image — `casjaysdev/go:latest`.** All Go CI jobs and containerized builds use this maintained image by default; a build image declared in IDEA.md/AI.md overrides it, and a `docker/Dockerfile.build` is created only for a genuine custom need the image cannot satisfy — then it MUST be `FROM casjaysdev/go:latest` (extend, never replace). This picks the toolchain image only; the runtime image (final stage of `docker/Dockerfile`) is a separate decision. Image defaults: `CGO_ENABLED=0`, `GOFLAGS=-buildvcs=false`, `GOTOOLCHAIN=auto`, `GOTELEMETRY=off`. Pre-installed tools:
 
 - Latest stable Go toolchain (`go`, `gofmt`, `go vet`)
 - `golangci-lint`, `staticcheck`, `gofumpt`, `goimports` — linting and formatting
@@ -1276,6 +1276,7 @@ paths:
 - ✅ Source /server/about and /server/help content from IDEA.md
 - ✅ Implement features 100% complete - no stubs, no TODOs, no "future"
 - ✅ ONE thing at a time - finish current task completely before starting another
+- ✅ Return after cross-references - a "See PART X" jump never replaces the rest of the PART/section you were reading; read it, then continue from where you left off
 
 ## KEY DECISIONS (pre-answered)
 | Question | Answer | Reference |
@@ -1580,7 +1581,7 @@ On EVERY new conversation or after "context compacted" message:
 - AI behavior: `.claude/rules/ai-rules.md` (PART 0, 1)
 - Project structure: `.claude/rules/project-rules.md` (PART 2, 3, 4)
 - Frontend/WebUI: `.claude/rules/frontend-rules.md` (PART 16, 17)
-- Full spec: `AI.md` (~55k lines) ← **SOURCE OF TRUTH**
+- Full spec: `AI.md` (~62k lines) ← **SOURCE OF TRUTH**
 
 ## Current Project State
 [AI updates this section as work progresses]
@@ -2306,16 +2307,16 @@ server:
 
 ## How to Read This Large File
 
-**AI.md is ~2.0MB and ~55,580 lines. You CANNOT read it all at once. Follow these procedures.**
+**AI.md is ~2.4MB and ~62,300 lines. You CANNOT read it all at once. Follow these procedures.**
 
 ### File Size Reality
 
 | Constraint | Value |
 |------------|-------|
-| File size | ~2.0MB |
-| Line count | ~55,580 lines |
+| File size | ~2.4MB |
+| Line count | ~62,300 lines |
 | Read limit | ~500 lines per read |
-| Full reads needed | ~110 reads (impractical) |
+| Full reads needed | ~125 reads (impractical) |
 
 **Use the PART index to find relevant sections, then read each section COMPLETELY.**
 
@@ -2325,45 +2326,45 @@ server:
 
 | PART | Line | Topic | When to Read |
 |------|------|-------|--------------|
-| 0 | ~1957 | AI Assistant Rules | **AI Behavior Rules**, **Translation Rule** |
-| 1 | ~3895 | Critical Rules | Read before implementing features |
-| 2 | ~5146 | License & Attribution | License requirements |
-| 3 | ~5480 | Project Structure | Setting up new project, **CI/CD badge detection** |
-| 4 | ~6441 | OS-Specific Paths | Path handling |
-| 5 | ~6635 | Configuration | Config file work, **Path Security**, **Privileged Ports**, **Escalation** |
-| 6 | ~8551 | Application Modes | Mode handling, debug endpoints |
-| 7 | ~9159 | Binary Requirements | Binary building, **Display detection**, **TERM=dumb**, **NO_COLOR** |
-| 8 | ~9808 | Server Binary CLI | CLI flags/commands, **NO_COLOR Support**, **--color/--lang flags** |
-| 9 | ~12985 | Error Handling & Caching | Error/cache patterns |
-| 10 | ~13362 | Database & Cluster | Database work |
-| 11 | ~13908 | Security & Logging | Security features, **Scoped Agent Tokens**, **Context Detection** |
-| 12 | ~15944 | Server Configuration | Server settings, **Allowlist**, **Blocklists**, **GeoIP** |
-| 13 | ~17071 | Health & Versioning | Health endpoints |
-| 14 | ~17822 | API Structure | REST/GraphQL/Route Compliance, **Non-Interactive Text Output** |
-| 15 | ~19455 | SSL/TLS & Let's Encrypt | SSL certificates |
-| 16 | ~20426 | Web Frontend | Frontend/UI, **Sitemap**, **Site Verification**, **Branding/SEO** |
-| 17 | ~26599 | Admin Panel | Admin UI, **Server Admin**, **Scoped Agents API**, **Blocklists**, **Allowlist**, **GeoIP** |
-| 18 | ~29010 | Email & Notifications | Email/SMTP, **SMTP Auto-Detection** |
-| 19 | ~30333 | Scheduler | Background tasks, **NO external schedulers**, **Backup tasks** |
-| 20 | ~30818 | GeoIP | GeoIP features, **Country blocking (deny/allow)** |
-| 21 | ~30915 | Metrics | Prometheus metrics, **INTERNAL only** |
-| 22 | ~32360 | Backup & Restore | Backup features, **Compliance encryption**, **Cluster backups** |
-| 23 | ~33089 | Update Command | Update feature |
-| 24 | ~33568 | Privilege Escalation & Service | Service/privilege work |
-| 25 | ~34477 | Service Support | Systemd/runit/rc.d/launchd templates |
-| 26 | ~34661 | Makefile | Local dev/tests/debug only, **NOT used in CI/CD** |
-| 27 | ~35438 | Docker | Docker/containers, **NEVER copy/symlink binaries** |
-| 28 | ~36946 | CI/CD Workflows | GitHub/GitLab/Gitea Actions |
-| 29 | ~39880 | Testing & Development | Testing/dev workflow, **Host Safety in tests**, **AI Docker Compose Rules**, **Content Negotiation Testing** |
-| 30 | ~41719 | ReadTheDocs Documentation | Documentation |
-| 31 | ~42451 | I18N & A11Y | Internationalization, **Translation parity (all binaries)**, **--lang flag** |
-| 32 | ~44413 | Tor Hidden Service | Tor support, **binary controls Tor** |
-| 33 | ~46165 | Client & Agent | Client **REQUIRED**, Agent optional - CLI/TUI/GUI, **Scoped Agent Tokens**, **Smart Context**, **First-Run Wizard** |
-| 34 | ~50588 | Multi-User | **OPTIONAL** - Regular User accounts/registration, vanity URLs |
-| 35 | ~54240 | Organizations | **OPTIONAL** - multi-user orgs, vanity URLs |
-| 36 | ~54881 | Custom Domains | **OPTIONAL** - user/org branded domains |
-| 37 | ~55904 | IDEA.md Reference | **Examples only** - NEVER modify |
-| FINAL | ~56158 | Compliance Checklist | Final verification, **AI Quick Reference Rules**, **Console/Banner Checklist**, **I18N Checklist**, **Host Safety Checklist** |
+| 0 | ~2459 | AI Assistant Rules | **AI Behavior Rules**, **Translation Rule** |
+| 1 | ~4318 | Critical Rules | Read before implementing features |
+| 2 | ~5629 | License & Attribution | License requirements |
+| 3 | ~5957 | Project Structure | Setting up new project, **CI/CD badge detection** |
+| 4 | ~6972 | OS-Specific Paths | Path handling |
+| 5 | ~7168 | Configuration | Config file work, **Path Security**, **Privileged Ports**, **Escalation** |
+| 6 | ~9164 | Application Modes | Mode handling, debug endpoints |
+| 7 | ~9773 | Binary Requirements | Binary building, **Display detection**, **TERM=dumb**, **NO_COLOR** |
+| 8 | ~10513 | Server Binary CLI | CLI flags/commands, **NO_COLOR Support**, **--color/--lang flags** |
+| 9 | ~13939 | Error Handling & Caching | Error/cache patterns |
+| 10 | ~14328 | Database & Cluster | Database work |
+| 11 | ~14939 | Security & Logging | Security features, **Scoped Agent Tokens**, **Context Detection** |
+| 12 | ~17945 | Server Configuration | Server settings, **Allowlist**, **Blocklists**, **GeoIP** |
+| 13 | ~19424 | Health & Versioning | Health endpoints |
+| 14 | ~20224 | API Structure | REST/GraphQL/Route Compliance, **Non-Interactive Text Output** |
+| 15 | ~21968 | SSL/TLS & Let's Encrypt | SSL certificates |
+| 16 | ~22940 | Web Frontend | Frontend/UI, **Sitemap**, **Site Verification**, **Branding/SEO** |
+| 17 | ~29312 | Admin Panel | Admin UI, **Server Admin**, **Scoped Agents API**, **Blocklists**, **Allowlist**, **GeoIP** |
+| 18 | ~31792 | Email & Notifications | Email/SMTP, **SMTP Auto-Detection** |
+| 19 | ~33135 | Scheduler | Background tasks, **NO external schedulers**, **Backup tasks** |
+| 20 | ~33633 | GeoIP | GeoIP features, **Country blocking (deny/allow)** |
+| 21 | ~33732 | Metrics | Prometheus metrics, **INTERNAL only** |
+| 22 | ~35179 | Backup & Restore | Backup features, **Compliance encryption**, **Cluster backups** |
+| 23 | ~35950 | Update Command | Update feature |
+| 24 | ~36490 | Privilege Escalation & Service | Service/privilege work |
+| 25 | ~37399 | Service Support | Systemd/runit/rc.d/launchd templates |
+| 26 | ~37712 | Makefile | Local dev/tests/debug only, **NOT used in CI/CD** |
+| 27 | ~38510 | Docker | Docker/containers, **NEVER copy/symlink binaries** |
+| 28 | ~40017 | CI/CD Workflows | GitHub/GitLab/Gitea Actions |
+| 29 | ~43133 | Testing & Development | Testing/dev workflow, **Host Safety in tests**, **AI Docker Compose Rules**, **Content Negotiation Testing** |
+| 30 | ~45071 | ReadTheDocs Documentation | Documentation |
+| 31 | ~45901 | I18N & A11Y | Internationalization, **Translation parity (all binaries)**, **--lang flag** |
+| 32 | ~47885 | Tor Hidden Service | Tor support, **binary controls Tor** |
+| 33 | ~49669 | Client & Agent | Client **REQUIRED**, Agent optional - CLI/TUI/GUI, **Scoped Agent Tokens**, **Smart Context**, **First-Run Wizard** |
+| 34 | ~54437 | Multi-User | **OPTIONAL** - Regular User accounts/registration, vanity URLs |
+| 35 | ~58485 | Organizations | **OPTIONAL** - multi-user orgs, vanity URLs |
+| 36 | ~59170 | Custom Domains | **OPTIONAL** - user/org branded domains |
+| 37 | ~60218 | IDEA.md Reference | **Examples only** - NEVER modify |
+| FINAL | ~60450 | Compliance Checklist | Final verification, **AI Quick Reference Rules**, **Console/Banner Checklist**, **I18N Checklist**, **Host Safety Checklist** |
 
 **When Implementing OPTIONAL PARTs (34-36, Agent from 33):**
 1. Change PART title from `OPTIONAL` → `NON-NEGOTIABLE` in AI.md
@@ -3459,12 +3460,14 @@ db.Exec(query, id)
 | **YAML** | 2 spaces | 120 | Single `\n` | Manual |
 | **CSS** | 2 spaces | 120 | Single `\n` | Manual or prettier |
 | **JavaScript** | 2 spaces | 120 | Single `\n` | Manual or prettier |
-| **Makefile** | Tabs (required) | Single `\n` | Manual |
+| **Makefile** | Tabs (required) | 180 | Single `\n` | Manual |
 | **Shell scripts** (bash/sh/zsh/fish) | 2 spaces | 180 | Single `\n` | shellcheck/shfmt |
-| **Text responses** | N/A | Single `\n` | `fmt.Fprintf(w, "%s\n", text)` |
+| **Text responses** | N/A | N/A | Single `\n` | `fmt.Fprintf(w, "%s\n", text)` |
 
 **Universal Rules:**
-- **Every file** ends with exactly ONE newline character
+- **Any filetype not listed above:** 2 spaces (4 if the ecosystem standard says so); tabs only where the format requires them — filetype requirement wins over preference
+- **Every file** ends with exactly ONE newline character — never blank lines at EOF
+- **Trailing-newline exceptions (no `\n`):** raw-value secret/token files (the newline becomes part of the credential), files interpolated verbatim into strings by strict tooling, fragment files spliced mid-line into another file, and binary/generated artifacts
 - **Every response** (JSON, TXT, HTML, XML) ends with exactly ONE newline
 - **No trailing whitespace** on any line
 - **Consistent indentation** throughout each file
@@ -10832,6 +10835,8 @@ func EnsurePIDFile(path string, isRoot bool) error {
 
 **Stale PID detection is REQUIRED.** A crash or kill -9 leaves stale PID files.
 
+**Containers: no PID file.** When `isContainer()` is true, skip PID file creation and checking entirely (the `pidfile: true` config default is ignored). The container runtime supervises the process, and PIDs are namespace-local - a PID file on a mounted volume read from the host or another container points at the wrong process or produces a false "already running".
+
 ```go
 // CheckPIDFile checks if PID file exists and if the process is still running
 // Returns: (isRunning bool, pid int, err error)
@@ -10883,7 +10888,11 @@ func isProcessRunning(pid int) bool {
     }
     // On Unix, FindProcess always succeeds - need to send signal 0
     err = process.Signal(syscall.Signal(0))
-    return err == nil
+    if err == nil {
+        return true
+    }
+    // EPERM means the process exists but belongs to another user - it IS running
+    return errors.Is(err, syscall.EPERM)
 }
 
 // isOurProcess verifies the process is actually our binary (Unix)
@@ -10894,7 +10903,8 @@ func isOurProcess(pid int) bool {
         // On macOS/BSD, use ps command
         return isOurProcessDarwin(pid)
     }
-    return strings.Contains(filepath.Base(exePath), "{project_name}")
+    // Exact match - substring matching would also match {project_name}-cli
+    return filepath.Base(exePath) == "{project_name}"
 }
 
 // isOurProcessDarwin checks process on macOS/BSD
@@ -10904,7 +10914,8 @@ func isOurProcessDarwin(pid int) bool {
     if err != nil {
         return false
     }
-    return strings.Contains(string(output), "{project_name}")
+    // Exact match - substring matching would also match {project_name}-cli
+    return strings.TrimSpace(string(output)) == "{project_name}"
 }
 
 // --- pid_windows.go ---
@@ -10943,11 +10954,19 @@ func isOurProcess(pid int) bool {
         return false
     }
     exePath := windows.UTF16ToString(buf[:size])
-    return strings.Contains(strings.ToLower(filepath.Base(exePath)), "{project_name}")
+    // Exact match (case-insensitive) - substring matching would also match {project_name}-cli.exe
+    base := filepath.Base(exePath)
+    return strings.EqualFold(base, "{project_name}.exe") || strings.EqualFold(base, "{project_name}")
 }
 
 // WritePIDFile writes current process PID to file
 func WritePIDFile(pidPath string) error {
+    // Containers: skip entirely - the runtime supervises the process, and a
+    // namespace-local pid in a PID file is wrong when read across namespaces
+    if isContainer() {
+        return nil
+    }
+
     // Check for existing running instance first
     running, existingPID, err := CheckPIDFile(pidPath)
     if err != nil {
@@ -10971,6 +10990,7 @@ func RemovePIDFile(pidPath string) error {
 **Startup Flow:**
 
 ```
+0. Running in a container (isContainer()) -> skip PID file entirely
 1. Check if PID file exists
    ├─► No  → Create PID file, start server
    └─► Yes → Read PID from file
@@ -13807,11 +13827,17 @@ func IsValidSSLHost(host string) bool {
 - `X-Real-Port` - nginx alternative
 
 **Client IP Detection (for logging, rate limiting, GeoIP):**
-- `X-Forwarded-For` - Standard: may contain chain "client, proxy1, proxy2"
-- `X-Real-IP` - nginx: single IP
-- `CF-Connecting-IP` - Cloudflare
-- `True-Client-IP` - Akamai/Cloudflare Enterprise
-- `X-Client-IP` - Alternative
+
+| Priority | Source | Notes |
+|----------|--------|-------|
+| 1 | `CF-Connecting-IP` | Cloudflare — single IP |
+| 2 | `True-Client-IP` | Akamai / Cloudflare Enterprise — single IP |
+| 3 | `X-Real-IP` | nginx — single IP |
+| 4 | `X-Forwarded-For` | Standard chain "client, proxy1, proxy2" — take the leftmost entry |
+| 5 | `X-Client-IP` | Alternative — single IP |
+| 6 | `r.RemoteAddr` | Fallback — always used when the immediate peer is not in `trusted_proxies` |
+
+Headers 1–5 are only honored when the immediate TCP peer passes the `trusted_proxies` gate (PART 12 → "Trusted Proxies"); otherwise resolution skips straight to `r.RemoteAddr`. The resolved client IP feeds access logs, rate limiting, blocklists, and GeoIP — never trust evaluation (see "Middleware ordering" below).
 
 **Request ID (for tracing):**
 - `X-Request-ID` - Standard
@@ -13960,7 +13986,7 @@ Error with structured context (validation, etc.):
 
 ### Error Codes
 
-**Standard error codes (see PART 16 for full list):**
+**Standard error codes (see PART 14 for full list):**
 
 | Code | HTTP | Message |
 |------|------|---------|
@@ -14486,7 +14512,7 @@ if err != nil && !isColumnExistsError(err) {
 | Term | What it is | Where it runs | Auth |
 |------|-----------|----------------|------|
 | **Cluster node** | Another instance of THIS server binary, sharing the same DB and cache, behind the same admin namespace | Anywhere reachable from the primary node | Internal — joins via the cluster join token; subsequent traffic uses the shared DB |
-| **Agent** (PART 33) | A separate, purpose-built `{project_name}-agent` binary on a remote machine reporting INTO the server | Customer / operator machines (web hosts, build runners, monitored machines) | Bearer token (`adm_agt_` / `usr_agt_` / `org_agt_`) — see PART 14 → Token Types |
+| **Agent** (PART 33) | A separate, purpose-built `{project_name}-agent` binary on a remote machine reporting INTO the server | Customer / operator machines (web hosts, build runners, monitored machines) | Bearer token (`adm_agt_` / `usr_agt_` / `org_agt_`) — see PART 34 → Token Types |
 
 Agents are NEVER cluster nodes; they don't share the DB; they don't get `app_secrets` distributed to them. Cluster nodes are NEVER agents; they don't register via `/agents/register`.
 
@@ -14985,7 +15011,7 @@ func isSerializationError(err error) bool {
 
 **Debug mode response shape:**
 
-When `DEBUG=true` is active and an error occurs, the canonical error body (PART 16 → "Error Response") gets an additional `_debug` field:
+When `DEBUG=true` is active and an error occurs, the canonical error body (PART 14 → "Error Response") gets an additional `_debug` field:
 
 ```json
 {
@@ -15022,7 +15048,7 @@ When `DEBUG=true` is active and an error occurs, the canonical error body (PART 
 | Timing oracles | n/a | `subtle.ConstantTimeCompare` for all secret comparisons | Identical response time for success/fail by adding artificial sleep when faster than threshold | n/a |
 | Credential stuffing | Rate limit per IP + per username + global | Argon2id on every login attempt (no "fast path" for unknown users) | Generic "invalid credentials" message | Account lockout after N failures |
 | Path traversal | Validate paths, reject `..` / null bytes | `filepath.Clean()` + base-dir confinement | n/a | OS-level read perms restrict reachable files |
-| Token / credential leakage | n/a | Never `slog.Info("token=", t)` — log token ID hash only | Sanitization layer strips known sensitive query params from URL fields in reports / logs / error contexts (see PART 14 → "Public Reports Scope") | TLS in transit (PART 15) |
+| Token / credential leakage | n/a | Never `slog.Info("token=", t)` — log token ID hash only | Sanitization layer strips known sensitive query params from URL fields in reports / logs / error contexts (see PART 34 → "Public Reports Scope") | TLS in transit (PART 15) |
 | CSRF | Validate Origin + same-origin check | n/a | CSRF token on cookie-authenticated state-changing requests (PART 16 → CSRF) | `SameSite=Strict` cookies (browser-level enforcement) |
 
 **Rule:** when implementing a feature, walk every layer. Don't assume "the input validator caught it" or "the output template will escape it" — write the code as if every other layer is broken.
@@ -15277,7 +15303,7 @@ web:
     # Per-feature config — see "Permissions-Policy Configuration" below.
 
   reports:
-    # Public reports endpoints (PART 14 → "Public Reports Scope").
+    # Public reports endpoints (PART 34 → "Public Reports Scope").
     # max reports/min/IP across all report types
     rate_limit_per_minute: 60
     # short-burst allowance
@@ -15386,7 +15412,7 @@ NEL: {"report_to":"default","max_age":2592000,"include_subdomains":true}
 
 **Network Error Logging (NEL — RFC draft, Chrome/Edge):** browser POSTs `application/reports+json` to `/api/{api_version}/server/reports/nel` for TLS handshake failures, DNS failures, TCP resets, HTTP errors. Sample rate `1.0` by default — drop to `0.1` on busy sites via `web.headers.nel.sample_rate`.
 
-**All report endpoints share the same Public Reports Scope** (PART 14) — same rate limits, same Output Sanitization Pipeline (PART 11), same Tier 2 visibility (no PII echoed back).
+**All report endpoints share the same Public Reports Scope** (PART 34) — same rate limits, same Output Sanitization Pipeline (PART 11), same Tier 2 visibility (no PII echoed back).
 
 ## Server-Timing (Debug Mode Only)
 
@@ -15415,7 +15441,7 @@ Server-Timing: db;dur=12.4, render;dur=3.1, total;dur=18.7
 
 **No declarations** = "everyone" defaults stay loose. The spec never tightens silently — every auto-tighten is logged to the setup audit so operators know what changed and why.
 
-**Strictest-wins:** when multiple compliances apply (e.g., `gdpr + hipaa + pci-dss`), the per-header strictest value wins, mirroring PART 12 → "Strictest-Wins Resolution".
+**Strictest-wins:** when multiple compliances apply (e.g., `gdpr + hipaa + pci-dss`), the per-header strictest value wins, mirroring PART 11 → "Compliance Requirements Matrix".
 
 ## Deprecated / Legacy Headers
 
@@ -15527,7 +15553,7 @@ Sends `Content-Security-Policy-Report-Only` instead of the enforcing header. Vio
 
 ### Reports Endpoint
 
-**See PART 14 → "Public Reports Scope" for the canonical reports endpoint pattern (`/api/{api_version}/server/reports/{name}`). All browser-emitted reports — CSP, NEL, deprecation, intervention, crash, default — share the same scope and shape.**
+**See PART 34 → "Public Reports Scope" for the canonical reports endpoint pattern (`/api/{api_version}/server/reports/{name}`). All browser-emitted reports — CSP, NEL, deprecation, intervention, crash, default — share the same scope and shape.**
 
 Server-side handling:
 - Accept `application/csp-report` (legacy) and `application/reports+json` (Reporting API)
@@ -16124,7 +16150,7 @@ web:
 | `Expires` | YES | Expiration date (auto-renewed yearly by default) |
 | `Policy` | YES | Human-readable security page at `/server/security` — renders the same information as this file plus plain-language reporting instructions. See "Security Reports" → "Public Pages". |
 
-**URL resolution:** every `{proto}`/`{fqdn}` in this file — and in the generated `llms.txt` and the `/server/security` page — is resolved **per request** via `BuildURL(r, ...)` (PART 12 → "Resolution Order": reverse-proxy headers first, gated by `trusted_proxies`). Never build these URLs from values cached at startup: the URLs a client sees MUST match the Host/proto that client actually used, so `security.txt`, `/server/security`, and every other rendered URL can never disagree behind a reverse proxy.
+**URL resolution:** every `{proto}`/`{fqdn}` in this file — and in the generated `llms.txt` and the `/server/security` page — is resolved **per request** via `BuildURL(r, ...)` (PART 8 → "Resolution Order": reverse-proxy headers first, gated by `trusted_proxies`). Never build these URLs from values cached at startup: the URLs a client sees MUST match the Host/proto that client actually used, so `security.txt`, `/server/security`, and every other rendered URL can never disagree behind a reverse proxy.
 
 ### llms.txt (AI Discovery)
 
@@ -18058,7 +18084,7 @@ server:
     additional: []
 ```
 
-**Used by `X-Forwarded-*` trust gate.** Every header-based detection chain in the spec — `BuildURL(r, ...)` (PART 12 → "Resolution Order"), CORS allow-list resolution (PART 16), CSP `connect-src` learning, domain-learning algorithm — only honors the following proxy headers when the **immediate peer's IP** is in `trusted_proxies` (private ranges + the `additional` allow-list):
+**Used by `X-Forwarded-*` trust gate.** Every header-based detection chain in the spec — `BuildURL(r, ...)` (PART 8 → "Resolution Order"), CORS allow-list resolution (PART 16), CSP `connect-src` learning, domain-learning algorithm — only honors the following proxy headers when the **immediate peer's IP** is in `trusted_proxies` (private ranges + the `additional` allow-list):
 
 | Category | Trusted headers |
 |----------|----------------|
@@ -18069,6 +18095,8 @@ server:
 | **Client IP** | `X-Real-IP`, `X-Forwarded-For`, `CF-Connecting-IP`, `True-Client-IP`, `X-Client-IP` |
 
 All of these headers are supported regardless of proxy vendor (Nginx, Caddy, HAProxy, Traefik, Apache, Cloudflare Tunnels, AWS ALB, etc.). Headers from non-trusted peers are dropped before resolution runs, so an attacker reaching the binary directly cannot inject a forged Host into the learned-origins list.
+
+**Middleware ordering — preserve the original TCP peer.** Any real-IP middleware that rewrites `r.RemoteAddr` with the resolved client IP MUST first store the original TCP peer address in the request context. `isTrustedPeer()` — and every `trusted_proxies` gate in the spec (`BuildURL(r, ...)`, `X-Forwarded-Prefix` handling, domain learning, CORS/CSP origin learning) — MUST evaluate that preserved original peer, never the rewritten value. Client-IP consumers (rate limiting, blocklists, access logs, GeoIP) use the resolved client IP. Rewriting first and trust-checking later makes every later gate judge the end client's public IP: proxy headers are silently dropped and `{proto}` downgrades to `http` behind a working proxy.
 
 **Tor exception:** Tor requests bypass this gate entirely. When `tor.onion_address` is set and the incoming `Host` matches it, FQDN/proto/port are resolved from `tor.*` config — no proxy header inspection, no IP check. See "Tor Hidden Service Configuration" below.
 
@@ -20199,6 +20227,11 @@ OS/Arch: {GOOS}/{GOARCH}
 - Admin Web Routes: PART 17 (Admin Panel)
 - Admin API Routes: PART 17 (Admin Panel → API Routes)
 - Project-specific Routes: IDEA.md
+
+## Authentication & CORS (Cross-References)
+
+- **Auth token extraction:** every auth-protected API endpoint MUST accept a valid token from ANY header in PART 8 → "Auth Token Headers (All Headers Supported)", plus the `?token=` query param, following the PART 8 priority order (first found wins). A valid token grants access regardless of which header carried it.
+- **CORS policy:** browser cross-origin rules for these endpoints — headers table, allow-list resolution order, and preflight caveats — are defined in PART 16 → "CORS".
 
 ## Legacy vs Compatibility Endpoints
 
@@ -27810,9 +27843,13 @@ web:
 |--------|-------|
 | `Access-Control-Allow-Origin` | Configured origin(s) or `*` |
 | `Access-Control-Allow-Methods` | `GET, POST, PUT, PATCH, DELETE, OPTIONS` |
-| `Access-Control-Allow-Headers` | `*` |
+| `Access-Control-Allow-Headers` | `Content-Type, Accept, X-Requested-With, Authorization, X-API-Key, X-Api-Key, API-Key, ApiKey, X-Auth-Token, X-Access-Token, X-Token, Token, X-CSRF-Token, X-XSRF-Token, X-Session-ID, X-Service-Token, X-Internal-Token` |
 | `Access-Control-Allow-Credentials` | `true` (only when specific origin, not `*`) |
 | `Access-Control-Max-Age` | `86400` (24 hours) |
+
+**Never `*` here:** the Fetch spec's `Access-Control-Allow-Headers: *` wildcard does NOT cover `Authorization`, and wildcards are invalid when credentials are allowed. Every supported auth header is listed by name — keep in sync with PART 8 → "Auth Token Headers (All Headers Supported)".
+
+**Query param bypass:** `?token=` auth (last in the PART 8 priority order) travels in the URL, not a header — it never triggers a CORS preflight and works from any origin regardless of the Allow-Headers list.
 
 ### Behavior
 
@@ -27823,6 +27860,17 @@ web:
 | `cors: "https://a.com,https://b.com"` | Allow listed origins, credentials allowed |
 | `cors: ""` | No CORS headers (same-origin only) |
 | Preflight (OPTIONS) | Return CORS headers, 204 No Content |
+
+### CORS Allow-list Resolution Order
+
+The effective CORS allow-list is resolved from these sources in order; the request `Origin` is matched against the combined list:
+
+1. **Explicit config** — origins listed in `web.cors` (comma-separated). `""` disables CORS entirely and stops resolution.
+2. **DOMAIN env entries** — every hostname from the `DOMAIN` environment variable is added as an `https://` origin.
+3. **Reverse-proxy-learned hosts** — hostnames observed via `X-Forwarded-Host` from trusted proxies only (gated on `trusted_proxies` — see PART 12 → "Trusted Proxies") are appended at runtime.
+4. **Default** — if no source produced a list, fall back to `*` (credentials NOT allowed).
+
+Credentials (`Access-Control-Allow-Credentials: true`) are sent only when the resolved list is explicit — never with `*`. CSP `connect-src` `{learned_origins}` (PART 11 → "Content Security Policy") uses this same resolved list.
 
 ### Mode-Specific Behavior
 
@@ -41692,7 +41740,7 @@ variables:
   CGO_ENABLED: "0"
   GOOS: linux
   GOARCH: amd64
-  # Go CI always uses casjaysdev/go:latest — never create docker/Dockerfile.build or build-toolchain.yml for Go.
+  # Go CI defaults to casjaysdev/go:latest — a docker/Dockerfile.build only for a genuine custom need, and then FROM casjaysdev/go:latest.
   BUILD_IMAGE: "casjaysdev/go:latest"
 
 stages:
@@ -56550,7 +56598,7 @@ PATCH /api/{api_version}/users/settings
 | `/api/graphql`, `/api/{api_version}/server/graphql` | POST | None for introspection; per-operation otherwise | GraphQL — see PART 14 GraphQL section for resolver-level auth |
 | `/api/autodiscover` | GET | None | Public client/agent auto-config |
 | `/api/{api_version}/server/healthz` | GET | None | Public JSON health |
-| `/api/{api_version}/server/reports/*` | POST | None | Public reports sink (CSP, NEL, deprecation, intervention, crash, error, default). See PART 14 → "Public Reports Scope". Browsers cannot present credentials when emitting these reports. Rate-limited per-IP. |
+| `/api/{api_version}/server/reports/*` | POST | None | Public reports sink (CSP, NEL, deprecation, intervention, crash, error, default). See PART 34 → "Public Reports Scope". Browsers cannot present credentials when emitting these reports. Rate-limited per-IP. |
 | `/server/security` | GET | None | Security overview page (HTML) — human-readable security.txt + reporting instructions. See PART 11 → "Security Reports". |
 | `/server/security/policy` | GET | None | Disclosure policy page (HTML). See PART 11 → "Security Reports". |
 | `/server/security/thanks` | GET | None | Acknowledgments / hall-of-fame (HTML). See PART 11. |
@@ -60019,7 +60067,7 @@ The discovered public IPs are safe to include in `/server/healthz` - same info a
 
 ## Error Handling
 
-**Uses standard error format (see PART 16). Domain-specific error codes:**
+**Uses standard error format (see PART 14). Domain-specific error codes:**
 
 | Error Code | HTTP | Description |
 |------------|------|-------------|
