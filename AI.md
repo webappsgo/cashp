@@ -9245,6 +9245,7 @@ Before proceeding, confirm you understand:
 | Shortcut | Mode |
 |----------|------|
 | `--mode dev` | development |
+| `--mode devel` | development |
 | `--mode development` | development |
 | `--mode prod` | production |
 | `--mode production` | production |
@@ -9700,7 +9701,7 @@ func (m AppMode) String() string {
 // SetAppMode sets the application mode
 func SetAppMode(m string) {
     switch strings.ToLower(m) {
-    case "dev", "development":
+    case "dev", "devel", "development":
         currentMode = Development
     default:
         currentMode = Production
