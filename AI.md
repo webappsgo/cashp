@@ -1783,7 +1783,6 @@ Both files use the same structure. Settings are merged: `settings.local.json` ov
   "permissions": {
     "allow": [
       "Read(**)",
-      "Write(**)",
       "Edit(**)",
       "Bash(go *)",
       "Bash(make *)",
@@ -1833,20 +1832,20 @@ Both files use the same structure. Settings are merged: `settings.local.json` ov
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Write(**)",
+        "matcher": "Write|Edit",
         "hooks": [
           {
             "type": "command",
-            "command": "if grep -qi 'anthropic\\|claude' \"$file\" 2>/dev/null; then echo 'Error: File contains vendor names (Anthropic/Claude)' >&2; exit 1; fi"
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); if [ -n \"$f\" ] && grep -qi 'anthropic\\|claude' \"$f\" 2>/dev/null; then echo 'Error: File contains vendor names (Anthropic/Claude)' >&2; exit 1; fi"
           }
         ]
       },
       {
-        "matcher": "Write(*.go)",
+        "matcher": "Write|Edit",
         "hooks": [
           {
             "type": "command",
-            "command": "gofmt -l \"$file\" 2>/dev/null | grep -q . && echo 'Error: Go file would not be formatted' >&2 && exit 1 || exit 0"
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.go) gofmt -l \"$f\" 2>/dev/null | grep -q . && { echo 'Error: Go file would not be formatted' >&2; exit 1; } || exit 0 ;; *) exit 0 ;; esac"
           }
         ]
       }
@@ -1863,8 +1862,7 @@ Both files use the same structure. Settings are merged: `settings.local.json` ov
 | Pattern | Description | Example |
 |---------|-------------|---------|
 | `Read(**)` | Read any file | All files recursively |
-| `Write(**)` | Write any file | All files recursively |
-| `Edit(**)` | Edit any file | All files recursively |
+| `Edit(**)` | Edit or write any file | All files recursively — `Write(...)` rules are NOT matched by permission checks; use `Edit(...)` for both write and edit tools |
 | `Bash(cmd *)` | Command with zero or more args | `Bash(go *)` → `go`, `go build`, `go test ./...` |
 | `Bash(cmd arg *)` | Command with specific prefix | `Bash(git commit *)` → `git commit -m "msg"` |
 | `WebFetch(domain:x)` | Fetch from specific domain | `WebFetch(domain:github.com)` |
@@ -10665,6 +10663,36 @@ Default config: /etc/apimgr/jokes/  # Hardcoded project name
 
 **For client and agent flags, see PART 33.**
 
+## Flag Parsing (Server Binary)
+
+**Never hand-roll argument parsing** (no manual `switch`/`os.Args` loops for the primary flag set — see `go_conventions.md` § CLI Flags). The server binary is single-command (it starts the server; it has no subcommands), so it uses the stdlib `flag` package. `cobra`/`viper` (listed under "Common Go Modules") are for the multi-command client CLI binary — see PART 33 — not the server.
+
+```go
+func main() {
+    fs := flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ExitOnError)
+    configPath := fs.String("config", "", "Path to config file")
+    dataDir := fs.String("data", "", "Data directory")
+    port := fs.Int("port", 0, "Listen port")
+    mode := fs.String("mode", "", "Application mode")
+    daemon := fs.Bool("daemon", false, "Run as background daemon")
+    debug := fs.Bool("debug", false, "Enable debug logging")
+    color := fs.String("color", "auto", "Color output: auto, yes, no")
+    showVersion := fs.Bool("version", false, "Show version and exit")
+
+    fs.Usage = func() { printHelp(fs) }
+    _ = fs.Parse(os.Args[1:])
+
+    if *showVersion {
+        printVersion()
+        os.Exit(0)
+    }
+    // Remaining flags (*configPath, *dataDir, *port, *mode, *daemon, *debug, *color)
+    // feed into config load / server startup below.
+}
+```
+
+`os.Args` manipulation elsewhere in this PART (e.g. `filterDaemonFlag`) operates on the args slice *after* this parse step (for daemon re-exec) — it is not a substitute for it.
+
 ## NO_COLOR Support (ALL Binaries)
 
 **All binaries (server, client, agent) MUST respect the [NO_COLOR](https://no-color.org/) standard.**
@@ -14671,7 +14699,7 @@ Admin manually removes dead nodes via:
 | `app_version` | Running binary's version (Tier-2 public-safe per PART 11) |
 | `commit_hash` | Build commit |
 | `installation_secret_version` | The version number of the `installation_secret` row this node currently has loaded (matches `app_secrets.version` for the `installation_secret` name). Used to detect drift. |
-| `server_security_encryption_key_version` | Same idea for the at-rest AES key (`server.security.encryption_key`). |
+| `server_security_encryption_key_version` | The node's local `server.security.encryption_key_version` value from `server.yml` (not an `app_secrets` row — this key is file-based, see PART 11 → "Server Encryption Key"). Used to detect drift the same way. |
 | `cookie_signing_key_version` | Same. |
 | `csrf_token_secret_version` | Same. |
 | `learned_origins_version` | Latest `MAX(observed_at)` from the `learned_origins` table this node has read. |
@@ -15277,9 +15305,9 @@ The root secret all other derived material hangs off. Without it, in-flight HMAC
 
 | Key | Length | Storage | Purpose | Rotation |
 |-----|--------|---------|---------|----------|
-| `server.security.encryption_key` | 32 bytes (AES-256-GCM) | `server.yml` (auto-generated on first run) | At-rest encryption for ALL sensitive server data: 2FA secrets, security report bodies (used as the AES fallback when no PGP keypair exists or when an admin has no personal pubkey, see PART 11 → "Security Reports"), and any future at-rest encrypted data. | Manual via admin panel (sensitive-op flow). 30-day grace for in-flight encrypted data. |
+| `server.security.encryption_key` | 32 bytes (AES-256-GCM) | `server.yml` (auto-generated on first run), alongside a companion `server.security.encryption_key_version` integer (starts at 1) | At-rest encryption for ALL sensitive server data: 2FA secrets, security report bodies (used as the AES fallback when no PGP keypair exists or when an admin has no personal pubkey, see PART 11 → "Security Reports"), and any future at-rest encrypted data. | Manual via admin panel (`/server/{admin_path}/config/security/encryption` → "Rotate Encryption Key"). Sensitive-operation flow (PART 5 → "Sensitive Operations"): re-prompt admin password, log to `audit.log` as `security.encryption_key_rotated`. 30-day grace for in-flight encrypted data. `encryption_key_version` is incremented on every rotation and distributed to cluster nodes via the same propagation mechanism as the key itself. |
 
-**Note on consolidation:** `server.security.encryption_key` is the canonical at-rest AES key — every place the spec talks about "encrypt this sensitive data at rest" resolves to this one key, including security report bodies. It is NOT duplicated in `app_secrets`. The three `app_secrets` rows above are HMAC keys (not AES) and a root-secret for HMAC derivation; they are stored in the DB rather than `server.yml` because they have independent rotation lifecycles and need to be visible to cluster replicas via shared DB read.
+**Note on consolidation:** `server.security.encryption_key` is the canonical at-rest AES key — every place the spec talks about "encrypt this sensitive data at rest" resolves to this one key, including security report bodies. It is NOT duplicated in `app_secrets`. The three `app_secrets` rows above are HMAC keys (not AES) and a root-secret for HMAC derivation; they are stored in the DB rather than `server.yml` because they have independent rotation lifecycles and need to be visible to cluster replicas via shared DB read. `encryption_key`'s own version is instead tracked via the `encryption_key_version` field written alongside it in `server.yml` (see "Pre-existing key" above) — used to populate `server_security_encryption_key_version` in the cluster heartbeat below.
 
 **All secrets above:**
 - Generated on first start, before any user-visible operation.
@@ -16896,6 +16924,14 @@ server:
 | `security.invalid_token` | Invalid API token used | Token type, IP |
 | `security.brute_force_detected` | Brute force attempt detected | IP, target (masked), attempt count |
 | `security.suspicious_activity` | Unusual activity detected | IP, activity type, details |
+| `security.installation_secret_rotated` | Installation secret rotated | Admin, IP, reason |
+| `security.encryption_key_rotated` | At-rest encryption key rotated | Admin, IP, reason |
+| `security.ip_allowlisted` | IP/CIDR added to allowlist | CIDR, description, added_by |
+| `security.ip_allowlist_removed` | IP/CIDR removed from allowlist | CIDR, removed_by |
+| `security.csp_violation` | CSP violation report received | IP, blocked-uri, violated-directive |
+| `security.security_id_invalid` | Invalid/expired security.txt id used | IP, user-agent, supplied id |
+| `security.report_received` | Security vulnerability report received | tracking_id, severity, sanitized affected-component |
+| `security.private_key_exported` | PGP private key exported | Admin, IP, reason |
 
 ### Token Events
 
@@ -16910,10 +16946,13 @@ server:
 
 | Event | Description | Logged Data |
 |-------|-------------|-------------|
-| `backup.created` | Backup created | Filename, size, created by |
+| `backup.created` | Backup created and verified | Filename, size, encrypted, verification status, created by |
 | `backup.restored` | Backup restored | Filename, restored by |
 | `backup.deleted` | Backup deleted | Filename, deleted by |
 | `backup.failed` | Backup failed | Error message |
+| `backup.retention_cleanup` | Old backups deleted | Deleted files, reason, remaining count |
+| `backup.verification_failed` | Backup verification failed | Filename, check that failed |
+| `backup.daily_updated` | Daily incremental updated | Filename, changes since last |
 | `backup.skipped_disk_full` | Backup skipped — insufficient free space or disk above threshold | Free space, disk usage %, threshold |
 | `server.started` | Application started | Version, mode, node ID |
 | `server.stopped` | Application stopped | Reason, uptime |
@@ -32123,12 +32162,17 @@ server:
 | `2fa_enabled` | 2FA activated on account | ✓ |
 | `2fa_disabled` | 2FA removed from account | ✓ |
 | `password_changed` | Password was changed | ✓ |
+| `token_regenerated` | API token regenerated | ✓ |
 | `backup_complete` | Backup finished successfully | ✗ |
 | `backup_failed` | Backup error | ✗ |
 | `ssl_expiring` | Certificate expiration warning | ✗ |
 | `ssl_renewed` | Certificate renewed successfully | ✗ |
 | `ssl_renewal_failed` | Certificate renewal failure | ✗ |
 | `scheduler_error` | Scheduled task failed | ✗ |
+| `startup` | Application started | ✗ |
+| `shutdown` | Application stopped | ✗ |
+| `update_available` | New eligible release detected (`update_check` task) | ✗ |
+| `update_installed` | Self-update completed (`auto_install: true`) | ✗ |
 | `breach_notification` | Data breach notification to affected users | ✓ |
 | `breach_admin_alert` | Breach detected alert to Server Admins | ✗ |
 | `test` | Test email | ✗ |
@@ -32150,12 +32194,17 @@ server:
 | `2fa_enabled` | `Two-Factor Authentication Enabled - {app_name}` | Confirmation of 2FA activation |
 | `2fa_disabled` | `Two-Factor Authentication Disabled - {app_name}` | Warning about 2FA removal |
 | `password_changed` | `Your Password Was Changed - {app_name}` | Confirmation of password change |
+| `token_regenerated` | `API Token Regenerated - {app_name}` | Confirmation of token regeneration |
 | `backup_complete` | `Backup Complete - {app_name}` | Includes filename and size |
 | `backup_failed` | `Backup Failed - {app_name}` | Includes error message |
 | `ssl_expiring` | `SSL Certificate Expiring - {app_name}` | Sent 30, 14, 7, 3, 1 days before expiry |
 | `ssl_renewed` | `SSL Certificate Renewed - {app_name}` | Confirmation of renewal |
 | `ssl_renewal_failed` | `SSL Renewal Failed - {app_name}` | Includes domain, error, days until expiry, next retry |
 | `scheduler_error` | `Scheduled Task Failed - {app_name}` | Includes task name and error |
+| `startup` | `{app_name} Started - {app_name}` | Includes version, mode |
+| `shutdown` | `{app_name} Stopped - {app_name}` | Includes reason, uptime |
+| `update_available` | `Update Available - {app_name}` | Includes current version, new version, and channel |
+| `update_installed` | `Update Installed - {app_name}` | Includes previous version and new version |
 | `breach_notification` | `Important Security Notice - {app_name}` | Compliance-aware, includes breach details, recommended actions |
 | `breach_admin_alert` | `[{severity}] Security Breach Detected - {app_name}` | Immediate alert, includes detection details, action required |
 | `test` | `Test Email - {app_name}` | Simple test message |
@@ -35650,7 +35699,10 @@ Every backup is verified **immediately after creation** - backups must be 100% w
 
 | Event | Description | Logged Data |
 |-------|-------------|-------------|
-| `backup.created` | Backup created and verified | Filename, size, encrypted, verification status |
+| `backup.created` | Backup created and verified | Filename, size, encrypted, verification status, created by |
+| `backup.restored` | Backup restored | Filename, restored by |
+| `backup.deleted` | Backup deleted | Filename, deleted by |
+| `backup.failed` | Backup failed | Error message |
 | `backup.retention_cleanup` | Old backups deleted | Deleted files, reason, remaining count |
 | `backup.verification_failed` | Backup verification failed | Filename, check that failed |
 | `backup.daily_updated` | Daily incremental updated | Filename, changes since last |
