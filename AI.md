@@ -27406,6 +27406,8 @@ Full CSS rules (custom properties, theming, layout): see "CSS Rules" earlier in 
 - ReadTheDocs documentation (if possible)
 - All interactive elements
 
+**Scope split:** Web, Swagger, and GraphiQL consume the literal hex palette below directly. CLI and TUI map the same semantic roles to ANSI-safe colors instead of literal hex — see "CLI/TUI Color Mapping" below. Native GUI follows platform light/dark theming rather than painting widgets with the literal hex palette — see "GUI Theming" below.
+
 **Three Required Themes:**
 
 | Theme | When Active | Default | Color Scheme |
@@ -27441,7 +27443,7 @@ Full CSS rules (custom properties, theming, layout): see "CSS Rules" earlier in 
 
 ### Unified Color Palette
 
-**Colors are defined ONCE in Go and used everywhere - Web CSS, TUI, CLI, GUI.**
+**Colors are defined ONCE in Go, as the literal hex source of truth for Web CSS, Swagger, and GraphiQL.** CLI, TUI, and GUI derive their theming from the same semantic roles but resolve them differently (see below) rather than consuming the hex values directly.
 
 ```go
 // src/common/theme/colors.go
@@ -27464,19 +27466,87 @@ type ThemePalette struct {
 }
 
 var ThemePaletteDark = ThemePalette{
-    Background: "#1a1b26", Foreground: "#c0caf5",
-    Primary: "#7aa2f7", Secondary: "#9ece6a", Accent: "#bb9af7",
-    Success: "#9ece6a", Warning: "#e0af68", Error: "#f7768e", Info: "#7dcfff",
-    Surface: "#24283b", SurfaceAlt: "#1f2335", Border: "#414868", Muted: "#565f89",
+    Background: "#282a36", Foreground: "#f8f8f2",
+    Primary: "#bd93f9", Secondary: "#50fa7b", Accent: "#ff79c6",
+    Success: "#50fa7b", Warning: "#ffb86c", Error: "#ff5555", Info: "#8be9fd",
+    Surface: "#2b2d3a", SurfaceAlt: "#21222c", Border: "#44475a", Muted: "#6272a4",
 }
 
 var ThemePaletteLight = ThemePalette{
-    Background: "#ffffff", Foreground: "#1a1b26",
-    Primary: "#2e7de9", Secondary: "#587539", Accent: "#7847bd",
-    Success: "#587539", Warning: "#8c6c3e", Error: "#c64343", Info: "#007197",
-    Surface: "#f5f5f5", SurfaceAlt: "#e9e9ec", Border: "#c0caf5", Muted: "#6172b0",
+    Background: "#ffffff", Foreground: "#1f2328",
+    Primary: "#0969da", Secondary: "#1a7f37", Accent: "#8250df",
+    Success: "#1a7f37", Warning: "#9a6700", Error: "#d1242f", Info: "#0969da",
+    Surface: "#f6f8fa", SurfaceAlt: "#eff2f5", Border: "#d1d9e0", Muted: "#59636e",
 }
 ```
+
+### CLI/TUI Color Mapping
+
+**CLI and TUI do NOT consume the literal hex palette above** — terminals
+render a fixed, user-configured 16/256-color set, so forcing exact hex
+values is not appropriate. Instead, map the same semantic roles to the
+nearest ANSI color:
+
+| Role | Dark ANSI | Light ANSI |
+|------|-----------|------------|
+| `Foreground` | `BrightWhite` | `Black` |
+| `Muted` | `White` | `DarkGray` |
+| `Primary` / `Accent` | `BrightMagenta` | `Blue` |
+| `Secondary` / `Success` | `BrightGreen` | `Green` |
+| `Warning` | `BrightYellow` | `Yellow` |
+| `Error` | `BrightRed` | `Red` |
+| `Info` | `BrightBlue` | `Blue` |
+
+- Respect `NO_COLOR` — `colors: ColorEnabled(nil)` (PART 8) already covers
+  the full precedence order (CLI flag > config > `NO_COLOR` > TTY/`TERM`
+  auto-detect); CLI/TUI output MUST gate on that same result, never a
+  separate ad hoc check, and strip all ANSI color when it is `false`
+- `lipgloss.AdaptiveColor` (TUI) and the CLI output package select the ANSI
+  name above per role and per theme — never a hardcoded hex/RGB value
+- True-color terminals MAY additionally accept the literal hex palette as
+  an opt-in enhancement, but the ANSI mapping is the required baseline
+
+```go
+// TerminalPalette holds ANSI 16-color indices (0-15) for CLI/TUI — never
+// the literal hex ThemePalette. lipgloss.Color() and the ESC[38;5;{n}m
+// escape both accept these indices directly.
+type TerminalPalette struct {
+    Foreground string `json:"foreground"`
+    Muted      string `json:"muted"`
+    Primary    string `json:"primary"`
+    Success    string `json:"success"`
+    Warning    string `json:"warning"`
+    Error      string `json:"error"`
+    Info       string `json:"info"`
+    Border     string `json:"border"`
+}
+
+var TerminalPaletteDark = TerminalPalette{
+    Foreground: "15", Muted: "7", Primary: "13",
+    Success: "10", Warning: "11", Error: "9", Info: "12", Border: "13",
+}
+
+var TerminalPaletteLight = TerminalPalette{
+    Foreground: "0", Muted: "8", Primary: "4",
+    Success: "2", Warning: "3", Error: "1", Info: "4", Border: "4",
+}
+```
+
+- TUI: `lipgloss` (via `termenv`) auto-detects `NO_COLOR` and downgrades to
+  plain output on its own — no additional check needed in
+  `StylesFromTerminalPalette`
+- CLI: gate explicitly on `ColorEnabled(nil)` (PART 8) as shown in
+  "CLI Colored Output" below — raw `fmt.Printf` ANSI escapes are not
+  NO_COLOR-aware by themselves
+
+### GUI Theming
+
+**Native GUI does NOT consume the literal hex palette above either** —
+native widget theming should follow the OS, not a custom app palette.
+`src/client/gui/theme_*.go` only detects light/dark (see System Theme
+Detection below) and lets the native toolkit (GTK/Cocoa/Win32) apply its
+own light/dark widget theme; it does not paint individual widgets with
+the hex values from `ThemePaletteDark`/`ThemePaletteLight`.
 
 ### System Theme Detection (Cross-Platform)
 
@@ -51423,7 +51493,7 @@ func IsRemoteSession() bool {
 
 **See PART 16 "Themes (NON-NEGOTIABLE - PROJECT-WIDE)" for the unified color palette.**
 
-**CLI/TUI/GUI use the same `theme.ThemePalette` from `src/common/theme/colors.go`.**
+**CLI and TUI use the same `TerminalPalette` (ANSI-mapped) from `src/common/theme/colors.go`; native GUI does not consume a literal palette — see "GUI Theming" above.**
 
 ### CLI Theme Configuration
 
@@ -51445,7 +51515,8 @@ import (
     "project/common/theme"
 )
 
-// TUIStyles holds lipgloss styles derived from ThemePalette
+// TUIStyles holds lipgloss styles derived from TerminalPalette (ANSI-safe
+// — see "CLI/TUI Color Mapping"; never the literal hex ThemePalette)
 type TUIStyles struct {
     Base     lipgloss.Style
     Title    lipgloss.Style
@@ -51457,16 +51528,13 @@ type TUIStyles struct {
     Border   lipgloss.Style
 }
 
-func StylesFromThemePalette(p theme.ThemePalette) TUIStyles {
+func StylesFromTerminalPalette(p theme.TerminalPalette) TUIStyles {
     return TUIStyles{
         Base: lipgloss.NewStyle().
-            Foreground(lipgloss.Color(p.Foreground)).
-            Background(lipgloss.Color(p.Background)),
+            Foreground(lipgloss.Color(p.Foreground)),
         Title: lipgloss.NewStyle().
             Foreground(lipgloss.Color(p.Primary)).Bold(true),
-        Selected: lipgloss.NewStyle().
-            Foreground(lipgloss.Color(p.Background)).
-            Background(lipgloss.Color(p.Primary)),
+        Selected: lipgloss.NewStyle().Reverse(true),
         Error: lipgloss.NewStyle().Foreground(lipgloss.Color(p.Error)),
         Success: lipgloss.NewStyle().Foreground(lipgloss.Color(p.Success)),
         Warning: lipgloss.NewStyle().Foreground(lipgloss.Color(p.Warning)),
@@ -51487,10 +51555,12 @@ import (
     "project/common/theme"
 )
 
-// Apply palette colors to CLI text output
+// Apply ANSI-mapped palette colors to CLI text output — never the literal
+// hex ThemePalette (see "CLI/TUI Color Mapping"); o.palette is a
+// TerminalPalette, not a ThemePalette
 func (o *Output) PrintSuccess(msg string) {
     if o.colors {
-        fmt.Printf("\033[38;2;%sm%s\033[0m\n", hexToRGB(o.palette.Success), msg)
+        fmt.Printf("\033[38;5;%sm%s\033[0m\n", o.palette.Success, msg)
     } else {
         fmt.Println(msg)
     }
@@ -51498,7 +51568,7 @@ func (o *Output) PrintSuccess(msg string) {
 
 func (o *Output) PrintError(msg string) {
     if o.colors {
-        fmt.Printf("\033[38;2;%sm%s\033[0m\n", hexToRGB(o.palette.Error), msg)
+        fmt.Printf("\033[38;5;%sm%s\033[0m\n", o.palette.Error, msg)
     } else {
         fmt.Println(msg)
     }
