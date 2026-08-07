@@ -9909,9 +9909,7 @@ func FromEnv() {
 
 | Data Type | Location | Source | Update Frequency |
 |-----------|----------|--------|------------------|
-| GeoIP (Country) | `{data_dir}/security/geoip/` | ip-location-db | Daily / Monthly / Twice weekly |
-| GeoIP (City) | `{data_dir}/security/geoip/` | ip-location-db | Monthly / Twice weekly |
-| GeoIP (ASN) | `{data_dir}/security/geoip/` | ip-location-db | Daily / Monthly / Twice weekly |
+| GeoIP (ASN/Country/City) | `{data_dir}/security/geoip/` | ip-location-db | Weekly (see PART 20: GEOIP) |
 | IP Blocklists | `{data_dir}/security/blocklists/` | Configurable sources | Daily |
 | Domain Blocklists | `{data_dir}/security/blocklists/` | Configurable sources | Daily |
 | CVE databases | `{data_dir}/security/cve/` | NVD/NIST feeds | Daily |
@@ -9929,7 +9927,9 @@ func FromEnv() {
 3. If download fails, log warning and continue (graceful degradation)
 4. Scheduler keeps data updated automatically
 
-### Default Data Sources
+**GeoIP database selection, config schema, and license/attribution requirements are defined once, in PART 20: GEOIP — see that section for the canonical GeoIP source list. This section does not duplicate it.**
+
+### Default Data Sources (Non-GeoIP)
 
 ```yaml
 # Data source configuration (in server.yml)
@@ -9937,74 +9937,7 @@ data:
   # Base directory for all security databases
   security_dir: "{data_dir}/security"
 
-  geoip:
-    # ip-location-db (https://github.com/sapics/ip-location-db)
-    # All files from GitHub Releases — no API key or account required.
-    # Tiers: PDDL (daily), CC BY 4.0 (monthly), GeoLite2/CC BY-SA 4.0 (twice weekly).
-    provider: "ip-location-db"
-    databases:
-      # Country — PDDL (daily, no attribution required)
-      user_country:
-        enabled: true
-        url: "https://github.com/sapics/ip-location-db/releases/download/latest/user-country.mmdb"
-        file: "user-country.mmdb"
-      server_country:
-        enabled: true
-        url: "https://github.com/sapics/ip-location-db/releases/download/latest/server-country.mmdb"
-        file: "server-country.mmdb"
-      iptoasn_country:
-        enabled: true
-        url: "https://github.com/sapics/ip-location-db/releases/download/latest/iptoasn-country.mmdb"
-        file: "iptoasn-country.mmdb"
-      # Country — CC BY 4.0 (monthly; credit: DB-IP.com)
-      dbip_country:
-        enabled: true
-        url: "https://github.com/sapics/ip-location-db/releases/download/latest/dbip-country.mmdb"
-        file: "dbip-country.mmdb"
-      # Country — GeoLite2/CC BY-SA 4.0 (twice weekly; free redistribution, no MaxMind account needed)
-      geolite2_country:
-        enabled: true
-        url: "https://github.com/sapics/ip-location-db/releases/download/latest/geolite2-country.mmdb"
-        file: "geolite2-country.mmdb"
-
-      # City — CC BY 4.0 (monthly; credit: DB-IP.com; IPv4 and IPv6 separate — no combined MMDB)
-      dbip_city_ipv4:
-        enabled: true
-        url: "https://github.com/sapics/ip-location-db/releases/download/latest/dbip-city-ipv4.mmdb"
-        file: "dbip-city-ipv4.mmdb"
-      dbip_city_ipv6:
-        enabled: true
-        url: "https://github.com/sapics/ip-location-db/releases/download/latest/dbip-city-ipv6.mmdb"
-        file: "dbip-city-ipv6.mmdb"
-      # City — GeoLite2/CC BY-SA 4.0 (twice weekly; free redistribution, no MaxMind account needed)
-      geolite2_city_ipv4:
-        enabled: true
-        url: "https://github.com/sapics/ip-location-db/releases/download/latest/geolite2-city-ipv4.mmdb"
-        file: "geolite2-city-ipv4.mmdb"
-      geolite2_city_ipv6:
-        enabled: true
-        url: "https://github.com/sapics/ip-location-db/releases/download/latest/geolite2-city-ipv6.mmdb"
-        file: "geolite2-city-ipv6.mmdb"
-
-      # ASN — PDDL (daily, no attribution required)
-      origin_asn:
-        enabled: true
-        url: "https://github.com/sapics/ip-location-db/releases/download/latest/origin-asn.mmdb"
-        file: "origin-asn.mmdb"
-      iptoasn_asn:
-        enabled: true
-        url: "https://github.com/sapics/ip-location-db/releases/download/latest/iptoasn-asn.mmdb"
-        file: "iptoasn-asn.mmdb"
-      # ASN — CC BY 4.0 (monthly; credit: DB-IP.com)
-      dbip_asn:
-        enabled: true
-        url: "https://github.com/sapics/ip-location-db/releases/download/latest/dbip-asn.mmdb"
-        file: "dbip-asn.mmdb"
-      # ASN — GeoLite2/CC BY-SA 4.0 (twice weekly; free redistribution, no MaxMind account needed)
-      geolite2_asn:
-        enabled: true
-        url: "https://github.com/sapics/ip-location-db/releases/download/latest/geolite2-asn.mmdb"
-        file: "geolite2-asn.mmdb"
+  # GeoIP config lives under server.geoip — see PART 20: GEOIP
 
   # Blocklists: stored in {data_dir}/security/blocklists/
   # Config is under server.security.blocklists (see Blocklists Section)
@@ -10025,21 +9958,8 @@ data:
 
 ```
 {data_dir}/security/
-├── geoip/
-│   ├── user-country.mmdb        # Country — community-aggregated (PDDL, daily)
-│   ├── server-country.mmdb      # Country for server IPs (PDDL, daily)
-│   ├── iptoasn-country.mmdb     # Country via IPtoASN (PDDL, daily)
-│   ├── dbip-country.mmdb        # Country — DB-IP Lite (CC BY 4.0, monthly)
-│   ├── geolite2-country.mmdb    # Country — GeoLite2 (CC BY-SA 4.0, twice weekly)
-│   ├── dbip-city-ipv4.mmdb      # City IPv4 — DB-IP Lite (CC BY 4.0, monthly)
-│   ├── dbip-city-ipv6.mmdb      # City IPv6 — DB-IP Lite (CC BY 4.0, monthly)
-│   ├── geolite2-city-ipv4.mmdb  # City IPv4 — GeoLite2 (CC BY-SA 4.0, twice weekly)
-│   ├── geolite2-city-ipv6.mmdb  # City IPv6 — GeoLite2 (CC BY-SA 4.0, twice weekly)
-│   ├── origin-asn.mmdb          # ASN via BGP routing (PDDL, daily)
-│   ├── iptoasn-asn.mmdb         # ASN via IPtoASN (PDDL, daily)
-│   ├── dbip-asn.mmdb            # ASN — DB-IP Lite (CC BY 4.0, monthly)
-│   ├── geolite2-asn.mmdb        # ASN — GeoLite2 (CC BY-SA 4.0, twice weekly)
-│   └── .last_updated            # Timestamp file
+├── geoip/                        # see PART 20: GEOIP for file list
+│   └── .last_updated
 ├── blocklists/
 │   ├── firehol_level1.txt
 │   ├── spamhaus_drop.txt
@@ -10051,31 +9971,6 @@ data:
     ├── db.tar.gz
     └── .last_updated
 ```
-
-### GeoIP Database Details (ip-location-db)
-
-| Database | File(s) | License | Updated | Contains |
-|----------|---------|---------|---------|----------|
-| Country (community) | `user-country.mmdb` | PDDL | Daily | ISO 3166-1 country code |
-| Country (server IPs) | `server-country.mmdb` | PDDL | Daily | ISO 3166-1 country code |
-| Country (IPtoASN) | `iptoasn-country.mmdb` | PDDL | Daily | ISO 3166-1 country code |
-| Country (DB-IP Lite) | `dbip-country.mmdb` | CC BY 4.0 | Monthly | ISO 3166-1 country code |
-| Country (GeoLite2) | `geolite2-country.mmdb` | CC BY-SA 4.0 | Twice weekly | ISO 3166-1 country code |
-| City IPv4 (DB-IP Lite) | `dbip-city-ipv4.mmdb` | CC BY 4.0 | Monthly | City, state, postcode, lat/lon, timezone |
-| City IPv6 (DB-IP Lite) | `dbip-city-ipv6.mmdb` | CC BY 4.0 | Monthly | City, state, postcode, lat/lon, timezone |
-| City IPv4 (GeoLite2) | `geolite2-city-ipv4.mmdb` | CC BY-SA 4.0 | Twice weekly | City, state, postcode, lat/lon, timezone |
-| City IPv6 (GeoLite2) | `geolite2-city-ipv6.mmdb` | CC BY-SA 4.0 | Twice weekly | City, state, postcode, lat/lon, timezone |
-| ASN (BGP routing) | `origin-asn.mmdb` | PDDL | Daily | AS number, AS organization |
-| ASN (IPtoASN) | `iptoasn-asn.mmdb` | PDDL | Daily | AS number, AS organization |
-| ASN (DB-IP Lite) | `dbip-asn.mmdb` | CC BY 4.0 | Monthly | AS number, AS organization |
-| ASN (GeoLite2) | `geolite2-asn.mmdb` | CC BY-SA 4.0 | Twice weekly | AS number, AS organization |
-
-**Benefits of ip-location-db:**
-- No API key or account required — files downloaded directly from GitHub Releases
-- GeoLite2 databases freely redistributed by ip-location-db — no MaxMind account needed
-- Three tiers: PDDL (daily), CC BY 4.0 (monthly), GeoLite2/CC BY-SA 4.0 (twice weekly)
-- MMDB format compatible with oschwald/maxminddb-golang
-- Full IPv4 and IPv6 coverage
 
 ## Display Environment Detection
 
@@ -24284,7 +24179,7 @@ document.addEventListener('click', function(e) {
 
 ```css
 :root {
-  /* Backgrounds — dark palette, based on Dracula */
+  /* Backgrounds — dark palette */
   --color-bg: #282a36;
   --color-bg-secondary: #21222c;
   --color-bg-card: #2b2d3a;
@@ -33941,9 +33836,63 @@ Shutdown complete
 
 ## Overview
 
-**ALL projects MUST have built-in GeoIP support using sapics/ip-location-db.**
+**ALL server-capable projects MUST have built-in GeoIP support using sapics/ip-location-db.**
 
-GeoIP databases are NEVER embedded - they are downloaded on first run and updated via scheduler.
+GeoIP databases are NEVER embedded in the binary — they are downloaded on first run and kept updated via the built-in scheduler (see PART 19: SCHEDULER). First run works with zero config: GeoIP defaults to enabled with no country blocking (`deny_countries`/`allow_countries` both empty).
+
+## GeoIP Is a Risk Signal — Never the Sole Access Gate (NON-NEGOTIABLE)
+
+**GeoIP MUST be treated as one risk signal among many — never as the sole access-control gate.** A request from a blocked country MUST still pass through every other layer of the security pipeline (rate limiting, authentication, authorization, input validation, audit logging). Conversely, a request from an allowed country MUST NOT skip any check on the assumption that "the country is trusted".
+
+| Rule | Detail |
+|------|--------|
+| **Never sole gate** | Country / ASN / city signals can raise risk score, trigger MFA, lower rate-limit thresholds, or feed audit logs — they MUST NOT be the only thing standing between an attacker and a resource. |
+| **Always alongside, not instead of** | Country check runs alongside or after rate limiting and authentication, never replacing them. A blocked-country request still consumes rate-limit budget and is still logged with its identity. |
+| **VPN / proxy / Tor caveat** | Country data is trivially bypassed via VPN, residential proxy, or Tor. Treat any blocking decision based on country as advisory, not authoritative. |
+| **GeoIP-only auth is forbidden** | "Allow if country = US" is not authentication. Login, API keys, session cookies, and tokens are still required regardless of source country. |
+| **Failure mode** | If a GeoIP database is missing, stale, or the lookup fails, the request MUST be processed by the rest of the pipeline normally (fail-open for GeoIP, fail-closed for real auth). Never block a request because a GeoIP lookup errored. |
+| **Private/internal IPs** | RFC 1918 / RFC 4193 / loopback addresses are never looked up or country-blocked. |
+
+## Database Sources (ip-location-db) — Canonical, Single Source Per Category
+
+All databases come from [sapics/ip-location-db](https://github.com/sapics/ip-location-db), distributed via the jsDelivr CDN under the `@ip-location-db` npm scope — no API key, account, or license agreement required at download time.
+
+**Go library:** use `github.com/oschwald/maxminddb-golang` — NOT `geoip2-golang`. ip-location-db embeds custom `database_type` strings (`asn ipv4`, `city ipv6`, `country ipvAll`, etc.) that `geoip2.Open()` rejects with `InvalidDatabaseError`. Decode into project-defined structs matching the field tables below.
+
+| Category | Package / File | CDN URL | Fields |
+|----------|-----------------|---------|--------|
+| ASN | `@ip-location-db/asn-mmdb` → `asn.mmdb` | `https://cdn.jsdelivr.net/npm/@ip-location-db/asn-mmdb/asn.mmdb` | `autonomous_system_number`, `autonomous_system_organization` |
+| Country | `@ip-location-db/geo-whois-asn-country-mmdb` → `geo-whois-asn-country.mmdb` | `https://cdn.jsdelivr.net/npm/@ip-location-db/geo-whois-asn-country-mmdb/geo-whois-asn-country.mmdb` | `country_code` |
+| City (IPv4) | `@ip-location-db/dbip-city-mmdb` → `dbip-city-ipv4.mmdb` | `https://cdn.jsdelivr.net/npm/@ip-location-db/dbip-city-mmdb/dbip-city-ipv4.mmdb` | `city`, `country_code`, `state1`, `state2`, `postcode`, `latitude`, `longitude`, `timezone` |
+| City (IPv6) | `@ip-location-db/dbip-city-mmdb` → `dbip-city-ipv6.mmdb` | `https://cdn.jsdelivr.net/npm/@ip-location-db/dbip-city-mmdb/dbip-city-ipv6.mmdb` | (same fields as City IPv4) |
+
+**No separate "WHOIS" database.** Earlier drafts of this spec described a combined WHOIS lookup exposing a `registrant_org` field — no such dataset exists in ip-location-db. The `geo-whois-asn-country` package name is misleading: despite the name, it exposes only `country_code` (merged from RIR geofeed, whois, and ASN data at the NRO's publishing layer — the merge happens upstream, not in the file this project consumes). Organization-name data available to this project comes solely from the ASN database's `autonomous_system_organization` field (a BGP/RIR-derived AS holder name, not an RDAP/WHOIS registrant record) — use that field directly and do not label it "WHOIS" anywhere in code, config, or docs.
+
+**Do not use MaxMind GeoLite2 as an alternative or fallback.** GeoLite2 requires acceptance of the MaxMind GeoLite2 EULA in addition to CC BY-SA 4.0 attribution — stricter terms (e.g. redistribution and update-frequency restrictions) than the CC BY 4.0 sources above. It is not zero-config-compatible with this project's "first run works with zero config, no account required" rule.
+
+## License & Attribution (NON-NEGOTIABLE)
+
+**All three databases above are licensed CC BY 4.0. Attribution is a license condition, not an optional courtesy.**
+
+| Database | License | Underlying Source(s) |
+|----------|---------|-----------------------|
+| ASN | CC BY 4.0 | RouteViews, NRO, DB-IP (merged) |
+| Country | CC BY 4.0 | NRO (RIR whois + geofeed + ASN data, merged) |
+| City | CC BY 4.0 | DB-IP |
+
+**Required, verbatim, on a page reachable from every screen that displays GeoIP-derived data (e.g. an "About" or footer link) AND in `LICENSE.md`'s third-party attribution section (see PART 2):**
+
+```html
+<a href="https://db-ip.com/">IP Geolocation by DB-IP</a>
+```
+
+```text
+Country and ASN data licensed CC BY 4.0 by the Number Resource Organization (NRO).
+```
+
+- Attribution MUST be visible on the page — not hidden behind a click-through, tooltip, or collapsed section
+- Both notices are required together; the DB-IP notice alone does not cover the NRO-sourced country data, and vice versa
+- If a future database swap changes the license (e.g. adding a PDDL-only source), update this section — do not carry stale attribution for a database no longer in use, and do not drop attribution for one still in use
 
 ## Configuration
 
@@ -33955,80 +33904,51 @@ server:
     # Directory for downloaded MMDB files
     dir: "{data_dir}/security/geoip"
 
-    # Update schedule (handled by scheduler, see PART 19)
-    # Default: weekly on Sunday 03:00
+    # Update schedule handled by the scheduler (see PART 19: SCHEDULER)
+    # Default: weekly, Sunday 03:00 local
 
     # Country blocking - ISO 3166-1 alpha-2 codes (e.g., CN, RU, KP)
-    # Two modes (mutually exclusive - set ONE or NEITHER, not both):
+    # Two modes (set ONE or NEITHER, never rely on both at once):
     #   deny_countries:  block listed countries, allow all others
     #   allow_countries: allow ONLY listed countries, block all others
-    # If both are set, allow_countries takes precedence (allowlist mode)
+    # If both are set, allow_countries wins (allowlist mode takes precedence)
     # Allowlisted IPs (server.security.allowlist) always bypass country blocking
     deny_countries: []
     allow_countries: []
 
-    # Which lookup categories to enable
-    # The per-source MMDB files, URLs, and licenses are defined under
-    # data.geoip.databases (PART 7) — this section only toggles categories.
-    # All files are MMDB format; city databases ship IPv4 and IPv6 as
-    # SEPARATE files (no combined MMDB) — see PART 7.
+    # Which databases to download and use - all three are CC BY 4.0 and
+    # require the attribution above whenever their data is used
     databases:
-      # ASN lookup - AS number and organization name
-      asn: true
-      # Country lookup - country code (ISO 3166-1)
-      country: true
-      # City lookup - city, country_code, state1, state2, postcode, lat/lon, timezone
-      city: true
+      asn: true      # autonomous_system_number, autonomous_system_organization
+      country: true  # country_code
+      city: true     # city, country_code, state1, state2, postcode, lat/lon, timezone
 ```
 
-## Database Sources (ip-location-db)
+| Config Key | Description |
+|------------|-------------|
+| `geoip.enabled` | Turn GeoIP on/off entirely |
+| `geoip.dir` | Directory the downloaded `.mmdb` files live in |
+| `geoip.deny_countries` | ISO 3166-1 alpha-2 codes to block; all others allowed |
+| `geoip.allow_countries` | ISO 3166-1 alpha-2 codes to allow exclusively; wins if both lists are set |
+| `geoip.databases.asn` | Enable ASN lookups |
+| `geoip.databases.country` | Enable country lookups |
+| `geoip.databases.city` | Enable city lookups |
 
-All databases from [sapics/ip-location-db](https://github.com/sapics/ip-location-db) - no API key required.
-
-**Go library:** use `github.com/oschwald/maxminddb-golang` — NOT `geoip2-golang`. ip-location-db embeds custom `database_type` strings (`asn ipv4`, `city ipv6`, `country ipvAll`, etc.) that `geoip2.Open()` rejects with `InvalidDatabaseError`. Field names, type strings, and Go struct definitions are in `~/.claude/memory/security_conventions.md`.
-
-**The authoritative list of MMDB files, download URLs, licenses, and update cadence is PART 7 → "GeoIP Database Details (ip-location-db)"** — per-source files (e.g. `user-country.mmdb`, `dbip-country.mmdb`, `dbip-city-ipv4.mmdb`, `dbip-city-ipv6.mmdb`, `origin-asn.mmdb`) downloaded from GitHub Releases (`https://github.com/sapics/ip-location-db/releases/download/latest/...`). Do not duplicate that table here.
-
-**Lookup Categories (fields available):**
-
-| Category | Fields Available |
-|----------|------------------|
-| ASN | `autonomous_system_number`, `autonomous_system_organization` |
-| Country | `country_code` (ISO 3166-1 alpha-2) |
-| City | `city`, `country_code`, `state1`, `state2`, `postcode`, `latitude`, `longitude`, `timezone` (IPv4 and IPv6 are separate files) |
-
-## Admin Panel (/server/{admin_path}/config/network/geoip)
-
-| Element | Type | Description |
-|---------|------|-------------|
-| Enable GeoIP | Toggle | Turn GeoIP on/off |
-| Country mode | Dropdown | `none`, `deny` (blocklist), `allow` (allowlist-only) |
-| Deny countries | Tag input | ISO 3166-1 alpha-2 codes to block (when mode=deny) |
-| Allow countries | Tag input | ISO 3166-1 alpha-2 codes to allow exclusively (when mode=allow) |
-| ASN database | Toggle | Enable ASN lookups |
-| Country database | Toggle | Enable country lookups |
-| City database | Toggle | Enable city lookups |
-| Last update | Read-only | When databases were last updated |
-| Update now | Button | Force immediate update |
-
-**Country Blocking Behavior:**
+**Country blocking behavior:**
 
 | Configuration | Behavior |
-|---------------|----------|
-| Both empty (default) | No country blocking — all countries allowed |
+|----------------|----------|
+| Both lists empty (default) | No country blocking — every country allowed |
 | `deny_countries: [CN, RU]` | Block CN and RU, allow all others |
-| `allow_countries: [US, CA, GB]` | Allow ONLY US, CA, GB — block all others |
-| Both set | `allow_countries` wins (allowlist mode) |
+| `allow_countries: [US, CA, GB]` | Allow ONLY US, CA, GB — block everything else |
+| Both lists set | `allow_countries` wins (allowlist mode) |
 
 **Notes:**
-- Uses ISO 3166-1 alpha-2 country codes (2 letters, uppercase)
+- ISO 3166-1 alpha-2 country codes only (2 letters, uppercase)
 - Allowlisted IPs (`server.security.allowlist`) always bypass country blocking
-- Requires `country.mmdb` database — if missing, country blocking is skipped with a warning
-- Tor exit nodes: blocked/allowed based on exit node country, not user origin
-- Private/internal IPs (RFC 1918) are never country-blocked
-
----
-
+- Country blocking requires the Country database; if it's missing or disabled, country blocking is skipped with a logged warning (fail-open per the risk-signal rule above)
+- Tor exit nodes are evaluated by exit-node country, not by any inferred user origin
+- Private/internal IPs (RFC 1918, RFC 4193, loopback) are never looked up or country-blocked
 
 # PART 21: METRICS
 
