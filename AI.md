@@ -24284,45 +24284,53 @@ document.addEventListener('click', function(e) {
 
 ```css
 :root {
-  /* Backgrounds */
-  --color-bg: #1a1a2e;
-  --color-bg-secondary: #16213e;
-  --color-bg-card: #1e1e3f;
-  --color-bg-hover: #2a2a4e;
-  --color-bg-active: #3a3a5e;
+  /* Backgrounds — dark palette, based on Dracula */
+  --color-bg: #282a36;
+  --color-bg-secondary: #21222c;
+  --color-bg-card: #2b2d3a;
+  --color-bg-hover: #343746;
+  --color-bg-active: #44475a;
   --color-code-bg: rgba(255, 255, 255, 0.1);
 
   /* Text */
-  --color-text: #eaeaea;
-  --color-muted: #888;
+  --color-text: #f8f8f2;
+  --color-muted: #6272a4;
 
   /* Borders */
-  --color-border: #333;
-  --color-border-hover: #555;
+  --color-border: #44475a;
+  --color-border-hover: #6272a4;
 
   /* Status colors */
-  --color-success: #4ade80;
-  --color-success-bg: rgba(74, 222, 128, 0.15);
-  --color-error: #f87171;
-  --color-error-bg: rgba(248, 113, 113, 0.15);
-  --color-warning: #fbbf24;
-  --color-warning-bg: rgba(251, 191, 36, 0.15);
-  --color-primary: #60a5fa;
-  --color-primary-bg: rgba(96, 165, 250, 0.15);
+  --color-success: #50fa7b;
+  --color-success-bg: rgba(80, 250, 123, 0.15);
+  --color-error: #ff5555;
+  --color-error-bg: rgba(255, 85, 85, 0.15);
+  --color-warning: #ffb86c;
+  --color-warning-bg: rgba(255, 184, 108, 0.15);
+  --color-primary: #bd93f9;
+  --color-primary-bg: rgba(189, 147, 249, 0.15);
 }
 
-/* Light theme overrides */
+/* Light theme overrides — light palette, based on GitHub Light */
 html.theme-light {
   --color-bg: #ffffff;
-  --color-bg-secondary: #f8f9fa;
+  --color-bg-secondary: #f6f8fa;
   --color-bg-card: #ffffff;
-  --color-bg-hover: #e9ecef;
-  --color-bg-active: #dee2e6;
+  --color-bg-hover: #eff2f5;
+  --color-bg-active: #e6eaef;
   --color-code-bg: rgba(0, 0, 0, 0.05);
-  --color-text: #212529;
-  --color-muted: #6c757d;
-  --color-border: #dee2e6;
-  --color-border-hover: #adb5bd;
+  --color-text: #1f2328;
+  --color-muted: #59636e;
+  --color-border: #d1d9e0;
+  --color-border-hover: #818b98;
+  --color-success: #1a7f37;
+  --color-success-bg: rgba(26, 127, 55, 0.12);
+  --color-error: #d1242f;
+  --color-error-bg: rgba(209, 36, 47, 0.12);
+  --color-warning: #9a6700;
+  --color-warning-bg: rgba(154, 103, 0, 0.12);
+  --color-primary: #0969da;
+  --color-primary-bg: rgba(9, 105, 218, 0.12);
 }
 ```
 
@@ -26662,22 +26670,22 @@ src/server/template/
 ```css
 /* common.css - theme variables */
 html.theme-dark {
-  --bg-color: #1a1a2e;
-  --text-color: #eaeaea;
-  --border-color: #333;
+  --color-bg: #282a36;
+  --color-text: #f8f8f2;
+  --color-border: #44475a;
   /* ... all theme colors ... */
 }
 
 html.theme-light {
-  --bg-color: #ffffff;
-  --text-color: #212529;
-  --border-color: #dee2e6;
+  --color-bg: #ffffff;
+  --color-text: #1f2328;
+  --color-border: #d1d9e0;
   /* ... all theme colors ... */
 }
 
 /* public.css and admin.css use the SAME variables */
-.sidebar { background: var(--bg-color); }
-.header { color: var(--text-color); }
+.sidebar { background: var(--color-bg); }
+.header { color: var(--color-text); }
 ```
 
 **Theme preference source:**
@@ -26755,13 +26763,9 @@ src/server/static/
 **CSS Variables (common.css):**
 ```css
 :root {
-  /* Colors */
-  --primary-color: #007bff;
-  --success-color: #28a745;
-  --warning-color: #ffc107;
-  --danger-color: #dc3545;
-  --bg-color: #ffffff;
-  --text-color: #212529;
+  /* Colors — reuse the --color-* variables from the CSS Variable Reference
+     above (defined once in :root / html.theme-light); never redefine them
+     here with different names or values. */
 
   /* Typography */
   --font-family: system-ui, -apple-system, sans-serif;
@@ -26775,7 +26779,6 @@ src/server/static/
 
   /* Borders */
   --border-radius: 0.25rem;
-  --border-color: #dee2e6;
 }
 ```
 
@@ -27070,7 +27073,7 @@ Mobile:
   right: -280px;           /* Hidden off-screen right */
   width: 280px;
   height: 100vh;
-  background: var(--bg-color);
+  background: var(--color-bg);
   transition: right 0.3s ease;
   z-index: 1001;
 }
@@ -28425,11 +28428,11 @@ When admin edits `custom_html`, show:
 ```css
 .admin-footer {
   padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--bg-secondary);
-  border-top: 1px solid var(--border-color);
+  background: var(--color-bg-secondary);
+  border-top: 1px solid var(--color-border);
   text-align: center;
   font-size: 0.875rem;
-  color: var(--text-muted);
+  color: var(--color-muted);
 }
 
 .admin-footer-content {
@@ -28441,16 +28444,16 @@ When admin edits `custom_html`, show:
 }
 
 .admin-footer-separator {
-  color: var(--text-muted);
+  color: var(--color-muted);
 }
 
 .admin-footer a {
-  color: var(--text-muted);
+  color: var(--color-muted);
   text-decoration: none;
 }
 
 .admin-footer a:hover {
-  color: var(--primary-color);
+  color: var(--color-primary);
   text-decoration: underline;
 }
 
@@ -28460,9 +28463,9 @@ When admin edits `custom_html`, show:
   margin-right: 0.25rem;
 }
 
-.status-ok { color: var(--success-color); }
-.status-warning { color: var(--warning-color); }
-.status-error { color: var(--danger-color); }
+.status-ok { color: var(--color-success); }
+.status-warning { color: var(--color-warning); }
+.status-error { color: var(--color-error); }
 ```
 
 **Admin Footer Contents:**
