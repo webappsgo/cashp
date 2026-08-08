@@ -662,7 +662,8 @@ if cacheSize > 1024*1024*1024 {
 | **VERSION precedence** | `release.txt` wins when present; otherwise use the workflow/build-specific fallback (tag, beta timestamp, etc.) |
 | **LDFLAGS** | `-s -w -X 'main.Version=...' -X 'main.CommitID=...' -X 'main.BuildDate=...' -X 'main.OfficialSite=...'` |
 | **Docker builds on EVERY push** | Any branch push triggers Docker image build |
-| **Docker tags** | Any push → `devel`, `{commit}`; beta → adds `beta`; tag → `{version}`, `latest`, `YYMM`, `{commit}` |
+| **Docker tags** | Any push → `{commit}`; beta → adds `beta`; tag → `{version}`, `latest`, `YYMM`, `{commit}` |
+| **Devel image is a job in docker.yml** | `:devel` is built from `docker/Dockerfile.dev` by the `build-devel` job inside the same `docker.yml` workflow (schedule + non-tag push, gated by `if:`) — never a separate file |
 | **Workflow permissions** | Default to read-only / least privilege; grant write only to the specific release/publish job that needs it |
 | **Third-party action pinning** | External actions MUST be pinned to a full commit SHA — never float on `@main`, `@master`, or broad tags; verify runtime and maintenance status on every SHA update |
 | **Unsafe PR triggers forbidden by default** | Do NOT use `pull_request_target` for untrusted code execution, build, test, or artifact upload paths |
@@ -2337,16 +2338,16 @@ server:
 
 ## How to Read This Large File
 
-**AI.md is ~2.4MB and ~62,300 lines. You CANNOT read it all at once. Follow these procedures.**
+**AI.md is ~2.4MB and ~63,300 lines. You CANNOT read it all at once. Follow these procedures.**
 
 ### File Size Reality
 
 | Constraint | Value |
 |------------|-------|
 | File size | ~2.4MB |
-| Line count | ~62,300 lines |
+| Line count | ~63,300 lines |
 | Read limit | ~500 lines per read |
-| Full reads needed | ~125 reads (impractical) |
+| Full reads needed | ~127 reads (impractical) |
 
 **Use the PART index to find relevant sections, then read each section COMPLETELY.**
 
@@ -5515,7 +5516,7 @@ curl -q -LSsf -X POST -d '{"key":"value"}' {url}
 
 | Flag | Purpose | Why Required |
 |------|---------|--------------|
-| `-q` | Quiet mode | Don't read `.curlrc` - ensures consistent behavior |
+| `-q` | Disable `.curlrc` | Skip config file - ensures consistent behavior |
 | `-L` | Follow redirects | Handle 301/302 automatically |
 | `-S` | Show errors | Display errors even in silent mode |
 | `-s` | Silent | No progress bar/meter |
@@ -6036,7 +6037,7 @@ package main
 |-------|-------|
 | **Name** | {project_name} |
 | **Organization** | {project_org} |
-| **Official Site** | https://{project_name}.{project_org}.us |
+| **Official Site** | `{official_site}` (e.g. `https://{project_name}.example.com`) |
 | **Repository** | {PLATFORM_REPO_URL} |
 | **README** | README.md |
 | **License** | MIT > LICENSE.md |
@@ -6129,7 +6130,7 @@ PROJECT_ORG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+
 | `~/Projects/` | Base projects directory (recommended) | Can be `~/Projects/`, `~/Documents/`, `/opt/`, etc. |
 | `{gitprovider}` | Git hosting provider or `local` | `github`, `gitlab`, `bitbucket`, `private`, `local` |
 | `{project_org}` | Organization/username (inferred) | `apimgr`, `casjay`, `myorg` |
-| `{project_name}` | Project name (inferred) | `jokes`, `icons`, `myproject` |
+| `{internal_name}` | Frozen on-disk project name (inferred) | `jokes`, `icons`, `myproject` |
 
 **Examples of recommended structure:**
 ```
@@ -7235,9 +7236,9 @@ Before proceeding, confirm you understand:
 ```yaml
 volumes:
   # Host ./volumes/config → Container /config
-  - './volumes/config:/config:z'
+  - ./volumes/config:/config:z
   # Host ./volumes/data → Container /data
-  - './volumes/data:/data:z'
+  - ./volumes/data:/data:z
 ```
 
 ---
@@ -8270,7 +8271,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | `NO_COLOR` | Disable ANSI color output when set and non-empty (see PART 8) |
 | `TERM` | Terminal type; `TERM=dumb` disables ALL ANSI escapes and forces CLI mode (see PART 7) |
 | `DOMAIN` | FQDN override (highest priority for hostname resolution) |
-| `MODE` | `production` (default) or `development` |
+| `MODE` | `production` (default) or `dev`/`devel`/`development` (synonymous) |
 | `DATABASE_DRIVER` | `sqlite` (+ `sqlite2`, `sqlite3`), `libsql` (+ `turso`), `postgres` (+ `pgsql`, `postgresql`), `mysql` (+ `mariadb`), `mssql`, `mongodb` (+ `mongo`) |
 | `DATABASE_URL` | Database connection string |
 | `SMTP_HOST` | SMTP server hostname (if set, skips autodetect) |
@@ -10809,7 +10810,7 @@ Run '{project_name} <command> help' for detailed help on any command.
 | `--backup` | Directory | `/mnt/Backups/{internal_org}/{internal_name}/` (if writable, else `{data_dir}/backup/`) | `~/.local/share/Backups/{internal_org}/{internal_name}/` |
 | `--pid` | File | `/var/run/{internal_org}/{internal_name}.pid` | `~/.local/share/{internal_org}/{internal_name}/{internal_name}.pid` |
 
-**Note:** `--backup` prefers the system backup dir if writable. Fallback is mode-aware: system mode (started as root) falls back to `{data_dir}/backup/` — never a `$HOME`-derived path; user mode falls back to the user dir. See `GetBackupDir()` in PART 5.
+**Note:** `--backup` prefers the system backup dir if writable. Fallback is mode-aware: system mode (started as root) falls back to `{data_dir}/backup/` — never a `$HOME`-derived path; user mode falls back to the user dir. See `GetBackupDir()` in PART 8.
 
 **Directory mode is locked at process start.** System vs user paths are decided ONCE from the EUID at startup, before any privilege drop, and cached for the process lifetime. Never resolve `~` or `$HOME` after the privilege drop — the service account's HOME points at `{data_dir}` (e.g. `/var/lib/{internal_org}/{internal_name}`), so a late `$HOME` lookup nests user-style paths like `.local/share/Backups/` inside the system data dir.
 
@@ -11098,13 +11099,13 @@ PHASE 5: Server startup (actual server start)
    ├─ {data_dir}    (/var/lib/... or ~/.local/share/...)
    ├─ {cache_dir}   (/var/cache/... or ~/.cache/...)
    ├─ {log_dir}     (/var/log/... or ~/.local/log/...)
-   ├─ {backup_dir}  (see PART 5 GetBackupDir - /mnt/Backups/... if writable, else {data_dir}/backup/ in system mode)
+   ├─ {backup_dir}  (see PART 8 GetBackupDir - /mnt/Backups/... if writable, else {data_dir}/backup/ in system mode)
    └─ Never resolve ~/$HOME again after step 8g — the service account's HOME is {data_dir}
 
 8. IF RUNNING AS ROOT - setup system resources BEFORE dropping privileges:
    a. Check/create system user:
       ├─ User {project_name} exists → use it
-      └─ User missing → create {internal_name}:{internal_name} (see PART 25)
+      └─ User missing → create {internal_name}:{internal_name} (see PART 24)
    b. Create ALL directories (while still root):
       ├─ {config_dir}/ and subdirs (ssl/, tor/)
       ├─ {data_dir}/ and subdirs (db/, security/, tor/, tor/site/)
@@ -11113,7 +11114,7 @@ PHASE 5: Server startup (actual server start)
       └─ {backup_dir}/
    c. Set ownership: chown -R {internal_name}:{internal_name} on all dirs
    d. Set permissions: 0755 general dirs, 0700 sensitive (security/, ssl/, tor/)
-   e. Determine ports (see PART 15 for full port rules):
+   e. Determine ports (see PART 5 for full port rules):
       ├─ Format 1: --port {port} (single port)
       │   ├─ HTTP by default
       │   ├─ If port is 443 → HTTPS-only mode
@@ -11268,7 +11269,7 @@ PHASE 5: Server startup (actual server start)
 - Starting child processes (tor, scheduler)
 - Signal handling
 
-**Port binding examples (see PART 15 for full rules):**
+**Port binding examples (see PART 5 for full rules):**
 
 | Config | Port(s) | Bind As | Protocol |
 |--------|---------|---------|----------|
@@ -24178,7 +24179,7 @@ document.addEventListener('click', function(e) {
 **All components use these CSS variables for consistent theming:**
 
 ```css
-:root {
+html.theme-dark {
   /* Backgrounds — dark palette */
   --color-bg: #282a36;
   --color-bg-secondary: #21222c;
@@ -26659,7 +26660,7 @@ src/server/static/
 ```css
 :root {
   /* Colors — reuse the --color-* variables from the CSS Variable Reference
-     above (defined once in :root / html.theme-light); never redefine them
+     above (defined once in html.theme-dark / html.theme-light); never redefine them
      here with different names or values. */
 
   /* Typography */
@@ -28637,8 +28638,8 @@ The opt-out is a POST form on the privacy page; the server sets the `ccpa_opt_ou
   left: 0;
   right: 0;
   width: 100%;
-  background: #7c5295;  /* Purple/magenta - or var(--accent-color) */
-  color: #ffffff;
+  background: var(--color-primary);
+  color: white;
   z-index: 9999;
 }
 
@@ -28660,7 +28661,7 @@ The opt-out is a POST form on the privacy page; the server sets the `ccpa_opt_ou
 }
 
 .cookie-banner .policy-link {
-  color: #ffffff;
+  color: white;
   text-decoration: underline;
 }
 
@@ -28678,7 +28679,7 @@ The opt-out is a POST form on the privacy page; the server sets the `ccpa_opt_ou
 .cookie-banner .btn-decline {
   background: transparent;
   border: none;
-  color: #ffffff;
+  color: white;
   padding: 0.625rem 1.5rem;
   cursor: pointer;
   font-size: 0.9rem;
@@ -28689,9 +28690,9 @@ The opt-out is a POST form on the privacy page; the server sets the `ccpa_opt_ou
 }
 
 .cookie-banner .btn-accept {
-  background: #ffffff;
+  background: white;
   border: none;
-  color: #7c5295;
+  color: var(--color-primary);
   padding: 0.625rem 1.5rem;
   cursor: pointer;
   font-size: 0.9rem;
@@ -33608,7 +33609,9 @@ In cluster mode, tasks are distributed to prevent duplicate execution:
 **Local Tasks (run on each node):**
 - `session_cleanup`
 - `token_cleanup`
+- `log_rotation`
 - `healthcheck_self`
+- `tor_health`
 - `cluster_heartbeat`
 
 ### Task Locking (Cluster Mode)
@@ -38388,6 +38391,7 @@ docker:
 		--build-arg VERSION="$(VERSION)" \
 		--build-arg BUILD_DATE="$(BUILD_DATE)" \
 		--build-arg COMMIT_ID="$(COMMIT_ID)" \
+		--build-arg OFFICIAL_SITE="$(OFFICIAL_SITE)" \
 		-t $(REGISTRY):$(VERSION) \
 		-t $(REGISTRY):latest \
 		.
@@ -38896,8 +38900,8 @@ All compose files mount two volumes:
 
 ```yaml
 volumes:
-  - './volumes/config:/config:z'
-  - './volumes/data:/data:z'
+  - ./volumes/config:/config:z
+  - ./volumes/data:/data:z
 ```
 
 | Host Path | Container Path |
@@ -39012,7 +39016,8 @@ ARG TARGETARCH
 ARG VERSION=dev
 ARG BUILD_DATE
 ARG COMMIT_ID
-ARG OFFICIAL_SITE=""
+# Optional: set via --build-arg OFFICIAL_SITE=... (empty by default)
+ARG OFFICIAL_SITE
 
 WORKDIR /app
 
@@ -39082,8 +39087,8 @@ EXPOSE 80
 # Stop signal for graceful shutdown
 STOPSIGNAL SIGRTMIN+3
 
-# Health check (start period allows for service initialization)
-HEALTHCHECK --start-period=90s --interval=10s --timeout=5s --retries=3 \
+# Health check (long start period for services that need initialization)
+HEALTHCHECK --start-period=10m --interval=5m --timeout=15s --retries=3 \
     CMD /usr/local/bin/{project_name} --status || exit 1
 
 # Use tini as init with signal propagation
@@ -39207,13 +39212,13 @@ exec $APP_BIN $FLAGS "$@"
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TZ` | `America/New_York` | Timezone for app and scheduler |
-| `MODE` | `development` | `production` (strict) or `development` (relaxed) |
+| `MODE` | `development` | `production` (strict) or `dev`/`devel`/`development` (relaxed, synonymous) |
 | `DEBUG` | `false` | Enable ALL debug features (pprof, expvar, detailed logging) |
 | `ADDRESS` | `0.0.0.0` | Listen address |
 | `PORT` | `80` | Listen port (update docker-compose ports: to match) |
 
 **MODE vs DEBUG:**
-- `MODE=development`: Relaxed security, verbose logging, no caching (sensible for local dev)
+- `MODE=development` (or `dev`/`devel` — synonymous): Relaxed security, verbose logging, no caching (sensible for local dev)
 - `MODE=production`: Strict security, minimal logging, caching enabled
 - `DEBUG=true`: Enables debug endpoints (`/debug/*`), regardless of MODE
 
@@ -39265,9 +39270,7 @@ services:
     environment:
       PORT: 80
       TZ: ${TZ:-America/New_York}
-      CONTAINER_NAME: {project_name}-app
-      HOSTNAME: ${BASE_HOST_NAME:-$HOSTNAME}
-      CACHE_URL: valkey://{project_name}-cache:6379
+      CONTAINER_NAME: {project_name}-app      CACHE_URL: valkey://{project_name}-cache:6379
     volumes:
       - ./volumes/config:/config:z
       - ./volumes/data:/data:z
@@ -39369,9 +39372,7 @@ services:
     environment:
       PORT: 80
       TZ: ${TZ:-America/New_York}
-      CONTAINER_NAME: {project_name}-app
-      HOSTNAME: ${BASE_HOST_NAME:-$HOSTNAME}
-      DB_HOST: {project_name}-db
+      CONTAINER_NAME: {project_name}-app      DB_HOST: {project_name}-db
       DB_NAME: {project_name}
       DB_USER: {project_name}
       CACHE_URL: valkey://{project_name}-cache:6379
@@ -39506,9 +39507,7 @@ services:
     environment:
       PORT: 80
       TZ: ${TZ:-America/New_York}
-      CONTAINER_NAME: {project_name}-app
-      HOSTNAME: ${BASE_HOST_NAME:-$HOSTNAME}
-    volumes:
+      CONTAINER_NAME: {project_name}-app    volumes:
       - ./volumes/config:/config:z
       - ./volumes/data:/data:z
     ports:
@@ -39579,11 +39578,12 @@ COPY src/ ./src/
 
 # Build static binary (CGO_ENABLED=0)
 ARG VERSION=dev
-ARG COMMIT=unknown
-ARG BUILD_TIME=unknown
+ARG COMMIT_ID=unknown
+ARG BUILD_DATE=unknown
+ARG OFFICIAL_SITE=
 
 RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT} -X main.BuildTime=${BUILD_TIME}" \
+    -ldflags="-s -w -X 'main.Version=${VERSION}' -X 'main.CommitID=${COMMIT_ID}' -X 'main.BuildDate=${BUILD_DATE}' -X 'main.OfficialSite=${OFFICIAL_SITE}'" \
     -o {project_name} ./src
 
 # =============================================================================
@@ -39637,10 +39637,10 @@ ENV PORT=80 \
 # Only expose app port - db/cache are internal
 EXPOSE 80
 
-HEALTHCHECK --interval=10s --timeout=5s --start-period=90s --retries=3 \
+HEALTHCHECK --start-period=10m --interval=5m --timeout=15s --retries=3 \
     CMD /usr/local/bin/{project_name} --status || exit 1
 
-ENTRYPOINT ["tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh"]
+ENTRYPOINT [ "tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh" ]
 ```
 
 **All-in-One supervisor config (`docker/rootfs/etc/supervisor/conf.d/services.conf`):**
@@ -40106,9 +40106,7 @@ services:
     environment:
       PORT: 80
       TZ: ${TZ:-America/New_York}
-      CONTAINER_NAME: {project_name}-app
-      HOSTNAME: ${BASE_HOST_NAME:-$HOSTNAME}
-      CACHE_URL: valkey://{project_name}-cache:6379
+      CONTAINER_NAME: {project_name}-app      CACHE_URL: valkey://{project_name}-cache:6379
       # DOMAIN (optional - auto-detects from reverse proxy headers)
       # DOMAIN: myapp.com,www.myapp.com
     volumes:
@@ -40468,7 +40466,8 @@ networks:
 | `release.yml` | Tag push (`v*`, `*.*.*`) | Production releases |
 | `beta.yml` | Push to `beta` branch | Beta releases |
 | `daily.yml` | Daily at 3am UTC + push to main/master | Daily builds |
-| `docker.yml` | Any push (all branches) + version tags | Docker images |
+| `docker.yml` | Any push (all branches) + version tags + daily at 4am UTC | Standard Docker image (`build-standard` job) + development image (`build-devel` job, `:devel`) |
+| `docker-aio.yml` | Any push (all branches) + version tags | All-in-one Docker image (`-aio` tags) — the only image type with its own dedicated workflow file |
 **Branch push auto-cancel policy:** Any workflow triggered by pushes to `main`, `master`, `devel`, `dev`, or `beta` MUST use workflow concurrency to cancel older in-progress runs for the same ref. This applies to branch-based CI (for example `beta.yml`, `daily.yml`, `docker.yml`, and any project-specific branch-push workflow).
 
 **Tag release auto-cancel policy:** Tag-only release workflows like `release.yml` MUST also use workflow concurrency, but only per exact tag ref. A newer run for `refs/tags/v1.2.3` should cancel the older `refs/tags/v1.2.3` run. A run for `v1.2.4` must NOT cancel `v1.2.3`.
@@ -41065,13 +41064,14 @@ jobs:
 |-------|------------|------------|------|----------|
 | **Standard** | `docker/Dockerfile` | (none) | alpine | App only |
 | **All-in-One** | `docker/Dockerfile.aio` | `-aio` | debian | App + PostgreSQL + Valkey + Tor |
+| **Development** | `docker/Dockerfile.dev` | n/a | alpine | App binary + debug tooling, dedicated `:devel` tag |
 
 ### Triggers and Tags
 
 | Trigger | Standard Tags | All-in-One Tags |
 |---------|---------------|-----------------|
-| **Any push** (all branches) | `devel`, `{commit_id}` | `devel-aio`, `{commit_id}-aio` |
-| Push to beta branch | `devel`, `beta`, `{commit_id}` | `devel-aio`, `beta-aio`, `{commit_id}-aio` |
+| **Any push** (all branches) | `{commit_id}` | `{commit_id}-aio` |
+| Push to beta branch | `beta`, `{commit_id}` | `beta-aio`, `{commit_id}-aio` |
 | Version tag (`v*`, `*.*.*`) | `{version}`, `latest`, `YYMM` | `{version}-aio`, `latest-aio`, `YYMM-aio` |
 
 **Notes:**
@@ -41080,6 +41080,8 @@ jobs:
 - Built for `linux/amd64` and `linux/arm64` using `docker buildx`
 - Registry: `ghcr.io`
 - Standard uses `latest`, All-in-One uses `latest-aio`
+- `:devel` (Standard only — no `Dockerfile.dev.aio` variant is defined, so there is no `:devel-aio` tag) is built by the `build-devel` job inside this same `docker.yml` workflow, from `docker/Dockerfile.dev`, on a daily schedule (`0 4 * * *`) and on every non-tag push — see the YAML below
+- All-in-One (`-aio` tags) is built by its own dedicated workflow, `docker-aio.yml` — it is the only image type that gets a separate workflow file, since it is a materially different image (debian base, extra services), not just a different build mode; see "Docker AIO Workflow" below
 
 **File:** `.github/workflows/docker.yml`
 
@@ -41093,6 +41095,8 @@ on:
     tags:
       - 'v*'
       - '*.*.*'
+  schedule:
+    - cron: '0 4 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -41107,6 +41111,7 @@ env:
 jobs:
   build-standard:
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
     permissions:
       contents: read
       packages: write
@@ -41151,7 +41156,6 @@ jobs:
             TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
             TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.YYMM }}"
           else
-            TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:devel"
             if [[ "${{ github.ref }}" == refs/heads/beta ]]; then
               TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:beta"
             fi
@@ -41199,6 +41203,113 @@ jobs:
             manifest:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}
             manifest:org.opencontainers.image.licenses=MIT
 
+  build-devel:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/'))
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3  # v4.1.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set build info
+        run: |
+          echo "COMMIT_ID=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "BUILD_DATE=$(date +"%a %b %d, %Y at %H:%M:%S %Z")" >> $GITHUB_ENV
+
+      - name: Build and push (devel)
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+        with:
+          context: .
+          file: docker/Dockerfile.dev
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:devel
+          build-args: |
+            VERSION=devel
+            BUILD_DATE=${{ env.BUILD_DATE }}
+            COMMIT_ID=${{ env.COMMIT_ID }}
+          labels: |
+            org.opencontainers.image.vendor={project_org}
+            org.opencontainers.image.authors={project_org}
+            org.opencontainers.image.title=${{ env.PROJECT_NAME }}-devel
+            org.opencontainers.image.base.name=${{ env.PROJECT_NAME }}
+            org.opencontainers.image.description=${{ env.PROJECT_NAME }} - development image (alpine, debug mode)
+            org.opencontainers.image.version=devel
+            org.opencontainers.image.created=${{ env.BUILD_DATE }}
+            org.opencontainers.image.revision=${{ env.COMMIT_ID }}
+            org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.licenses=MIT
+          annotations: |
+            manifest:org.opencontainers.image.vendor={project_org}
+            manifest:org.opencontainers.image.authors={project_org}
+            manifest:org.opencontainers.image.title=${{ env.PROJECT_NAME }}-devel
+            manifest:org.opencontainers.image.base.name=${{ env.PROJECT_NAME }}
+            manifest:org.opencontainers.image.description=${{ env.PROJECT_NAME }} - development image (alpine, debug mode)
+            manifest:org.opencontainers.image.version=devel
+            manifest:org.opencontainers.image.created=${{ env.BUILD_DATE }}
+            manifest:org.opencontainers.image.revision=${{ env.COMMIT_ID }}
+            manifest:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
+            manifest:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            manifest:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}
+            manifest:org.opencontainers.image.licenses=MIT
+```
+
+**Image Tag Summary (Standard):**
+
+| Use Case | Image Tag |
+|----------|-----------|
+| Latest stable | `{name}:latest` |
+| Specific version | `{name}:1.2.3` |
+| Development | `{name}:devel` (built by the `build-devel` job above) |
+| Beta | `{name}:beta` |
+| Commit | `{name}:abc1234` |
+
+### Docker AIO Workflow (GitHub Actions)
+
+The All-in-One image is the only image type built by its own dedicated workflow file — it is a materially different image (debian base, bundled PostgreSQL/Valkey/Tor), not just a different build mode, so it does not share `docker.yml`. There is no `Dockerfile.dev.aio`, so this workflow has no devel job and no `:devel-aio` tag.
+
+**File:** `.github/workflows/docker-aio.yml`
+
+```yaml
+name: Docker AIO Build
+
+on:
+  push:
+    # ALL branches
+    branches: ['**']
+    tags:
+      - 'v*'
+      - '*.*.*'
+  workflow_dispatch:
+
+concurrency:
+  group: docker-aio-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/devel' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/beta' }}
+
+env:
+  PROJECT_NAME: {project_name}
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
   build-aio:
     runs-on: ubuntu-latest
     permissions:
@@ -41247,7 +41358,6 @@ jobs:
             TAGS="$TAGS,${IMAGE}:latest-aio"
             TAGS="$TAGS,${IMAGE}:${{ env.YYMM }}-aio"
           else
-            TAGS="$TAGS,${IMAGE}:devel-aio"
             if [[ "${{ github.ref }}" == refs/heads/beta ]]; then
               TAGS="$TAGS,${IMAGE}:beta-aio"
             fi
@@ -41294,15 +41404,14 @@ jobs:
             manifest:org.opencontainers.image.licenses=MIT
 ```
 
-**Image Tag Summary:**
+**Image Tag Summary (All-in-One):**
 
-| Use Case | Standard Image | All-in-One Image |
-|----------|----------------|------------------|
-| Latest stable | `{name}:latest` | `{name}:latest-aio` |
-| Specific version | `{name}:1.2.3` | `{name}:1.2.3-aio` |
-| Development | `{name}:devel` | `{name}:devel-aio` |
-| Beta | `{name}:beta` | `{name}:beta-aio` |
-| Commit | `{name}:abc1234` | `{name}:abc1234-aio` |
+| Use Case | Image Tag |
+|----------|-----------|
+| Latest stable | `{name}:latest-aio` |
+| Specific version | `{name}:1.2.3-aio` |
+| Beta | `{name}:beta-aio` |
+| Commit | `{name}:abc1234-aio` |
 
 ---
 
@@ -41357,7 +41466,8 @@ For self-hosted runners, change `runs-on: ubuntu-latest` to your runner label.
 | `release.yml` | Tag push (`v*`, `*.*.*`) | Production releases |
 | `beta.yml` | Push to `beta` branch | Beta releases |
 | `daily.yml` | Daily at 3am UTC + push to main/master | Daily builds |
-| `docker.yml` | Any push (all branches) + version tags | Docker images |
+| `docker.yml` | Any push (all branches) + version tags + daily at 4am UTC | Standard Docker image (`build-standard` job) + development image (`build-devel` job, `:devel`) |
+| `docker-aio.yml` | Any push (all branches) + version tags | All-in-one Docker image (`-aio` tags) — the only image type with its own dedicated workflow file |
 
 ## Release Workflow — Stable (Gitea/Forgejo Actions)
 
@@ -41865,6 +41975,8 @@ on:
     tags:
       - 'v*'
       - '*.*.*'
+  schedule:
+    - cron: '0 4 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -41880,6 +41992,7 @@ env:
 jobs:
   build-standard:
     runs-on: ubuntu-latest
+    if: gitea.event_name != 'schedule'
     permissions:
       contents: read
       packages: write
@@ -41936,10 +42049,7 @@ jobs:
             TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
             TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.YYMM }}"
           else
-            # All pushes get devel tag
-            TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:devel"
-
-            # Beta branch also gets beta tag
+            # Beta branch gets beta tag
             if [[ "${{ gitea.ref }}" == refs/heads/beta ]]; then
               TAGS="$TAGS,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:beta"
             fi
@@ -41987,6 +42097,119 @@ jobs:
             manifest:org.opencontainers.image.documentation=${{ gitea.server_url }}/${{ gitea.repository }}
             manifest:org.opencontainers.image.licenses=MIT
 
+  build-devel:
+    runs-on: ubuntu-latest
+    if: gitea.event_name == 'schedule' || gitea.event_name == 'workflow_dispatch' || (gitea.event_name == 'push' && !startsWith(gitea.ref, 'refs/tags/'))
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3  # v4.1.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+
+      - name: Set registry from server URL
+        run: |
+          SERVER_URL="${{ gitea.server_url }}"
+          REGISTRY="${SERVER_URL#https://}"
+          REGISTRY="${REGISTRY#http://}"
+          echo "REGISTRY=${REGISTRY}" >> $GITEA_ENV
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ gitea.actor }}
+          password: ${{ secrets.GITEA_TOKEN }}
+
+      - name: Set build info
+        run: |
+          echo "COMMIT_ID=$(git rev-parse --short HEAD)" >> $GITEA_ENV
+          echo "BUILD_DATE=$(date +"%a %b %d, %Y at %H:%M:%S %Z")" >> $GITEA_ENV
+
+      - name: Build and push (devel)
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+        with:
+          context: .
+          file: docker/Dockerfile.dev
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:devel
+          build-args: |
+            VERSION=devel
+            BUILD_DATE=${{ env.BUILD_DATE }}
+            COMMIT_ID=${{ env.COMMIT_ID }}
+          labels: |
+            org.opencontainers.image.vendor={project_org}
+            org.opencontainers.image.authors={project_org}
+            org.opencontainers.image.title=${{ env.PROJECT_NAME }}-devel
+            org.opencontainers.image.base.name=${{ env.PROJECT_NAME }}
+            org.opencontainers.image.description=${{ env.PROJECT_NAME }} - development image (alpine, debug mode)
+            org.opencontainers.image.version=devel
+            org.opencontainers.image.created=${{ env.BUILD_DATE }}
+            org.opencontainers.image.revision=${{ env.COMMIT_ID }}
+            org.opencontainers.image.url=${{ gitea.server_url }}/${{ gitea.repository }}
+            org.opencontainers.image.source=${{ gitea.server_url }}/${{ gitea.repository }}
+            org.opencontainers.image.documentation=${{ gitea.server_url }}/${{ gitea.repository }}
+            org.opencontainers.image.licenses=MIT
+          annotations: |
+            manifest:org.opencontainers.image.vendor={project_org}
+            manifest:org.opencontainers.image.authors={project_org}
+            manifest:org.opencontainers.image.title=${{ env.PROJECT_NAME }}-devel
+            manifest:org.opencontainers.image.base.name=${{ env.PROJECT_NAME }}
+            manifest:org.opencontainers.image.description=${{ env.PROJECT_NAME }} - development image (alpine, debug mode)
+            manifest:org.opencontainers.image.version=devel
+            manifest:org.opencontainers.image.created=${{ env.BUILD_DATE }}
+            manifest:org.opencontainers.image.revision=${{ env.COMMIT_ID }}
+            manifest:org.opencontainers.image.url=${{ gitea.server_url }}/${{ gitea.repository }}
+            manifest:org.opencontainers.image.source=${{ gitea.server_url }}/${{ gitea.repository }}
+            manifest:org.opencontainers.image.documentation=${{ gitea.server_url }}/${{ gitea.repository }}
+            manifest:org.opencontainers.image.licenses=MIT
+```
+
+**Image Tag Summary (Standard):**
+
+| Use Case | Image Tag |
+|----------|-----------|
+| Latest stable | `{name}:latest` |
+| Specific version | `{name}:1.2.3` |
+| Development | `{name}:devel` (built by the `build-devel` job above) |
+| Beta | `{name}:beta` |
+| Commit | `{name}:abc1234` |
+
+### Docker AIO Workflow (Gitea/Forgejo Actions)
+
+Like GitHub Actions, the All-in-One image is the only image type built by its own dedicated workflow file. There is no `Dockerfile.dev.aio`, so this workflow has no devel job and no `:devel-aio` tag.
+
+**File:** `.gitea/workflows/docker-aio.yml`
+
+```yaml
+name: Docker AIO Build
+
+on:
+  push:
+    # ALL branches
+    branches: ['**']
+    tags:
+      - 'v*'
+      - '*.*.*'
+  workflow_dispatch:
+
+concurrency:
+  group: docker-aio-${{ gitea.ref }}
+  cancel-in-progress: ${{ gitea.ref == 'refs/heads/main' || gitea.ref == 'refs/heads/master' || gitea.ref == 'refs/heads/devel' || gitea.ref == 'refs/heads/dev' || gitea.ref == 'refs/heads/beta' }}
+
+env:
+  PROJECT_NAME: {project_name}
+  IMAGE_NAME: ${{ gitea.repository }}
+
+jobs:
   build-aio:
     runs-on: ubuntu-latest
     permissions:
@@ -42042,7 +42265,6 @@ jobs:
             TAGS="$TAGS,${IMAGE}:latest-aio"
             TAGS="$TAGS,${IMAGE}:${{ env.YYMM }}-aio"
           else
-            TAGS="$TAGS,${IMAGE}:devel-aio"
             if [[ "${{ gitea.ref }}" == refs/heads/beta ]]; then
               TAGS="$TAGS,${IMAGE}:beta-aio"
             fi
@@ -42088,6 +42310,15 @@ jobs:
             manifest:org.opencontainers.image.documentation=${{ gitea.server_url }}/${{ gitea.repository }}
             manifest:org.opencontainers.image.licenses=MIT
 ```
+
+**Image Tag Summary (All-in-One):**
+
+| Use Case | Image Tag |
+|----------|-----------|
+| Latest stable | `{name}:latest-aio` |
+| Specific version | `{name}:1.2.3-aio` |
+| Beta | `{name}:beta-aio` |
+| Commit | `{name}:abc1234-aio` |
 
 ## Variable Mapping (GitHub → Gitea → Forgejo)
 
@@ -42530,10 +42761,10 @@ docker:build:
         TAGS="-t $CI_REGISTRY_IMAGE:$VERSION -t $CI_REGISTRY_IMAGE:latest -t $CI_REGISTRY_IMAGE:$YYMM -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
       elif [ "$CI_COMMIT_BRANCH" = "beta" ]; then
         VERSION="beta-$CI_COMMIT_SHORT_SHA"
-        TAGS="-t $CI_REGISTRY_IMAGE:beta -t $CI_REGISTRY_IMAGE:devel -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+        TAGS="-t $CI_REGISTRY_IMAGE:beta -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
       else
-        VERSION="devel-$CI_COMMIT_SHORT_SHA"
-        TAGS="-t $CI_REGISTRY_IMAGE:devel -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+        VERSION="dev-$CI_COMMIT_SHORT_SHA"
+        TAGS="-t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
       fi
       BUILD_DATE="$(date -Iseconds)"
     - |
@@ -42544,6 +42775,7 @@ docker:build:
         --build-arg VERSION="${VERSION}" \
         --build-arg COMMIT_ID="${CI_COMMIT_SHORT_SHA}" \
         --build-arg BUILD_DATE="${BUILD_DATE}" \
+        --build-arg OFFICIAL_SITE="${OFFICIAL_SITE}" \
         --label "org.opencontainers.image.vendor=${PROJECT_ORG}" \
         --label "org.opencontainers.image.authors=${PROJECT_ORG}" \
         --label "org.opencontainers.image.title=${PROJECT_NAME}" \
@@ -42575,7 +42807,7 @@ docker:build:
     - if: $CI_COMMIT_TAG =~ /^v?\d+\.\d+\.\d+/
     - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"
     - if: $CI_COMMIT_BRANCH == "beta"
-    # Any other branch builds/pushes :devel (equivalent to docker.yml on all branches)
+    # Any other branch also builds/pushes {commit_id} (no :devel tag — see docker:build-devel)
     - if: $CI_COMMIT_BRANCH
 
 docker:build-aio:
@@ -42599,10 +42831,10 @@ docker:build-aio:
         TAGS="-t ${IMAGE}:${VERSION}-aio -t ${IMAGE}:latest-aio -t ${IMAGE}:${YYMM}-aio -t ${IMAGE}:${CI_COMMIT_SHORT_SHA}-aio"
       elif [ "$CI_COMMIT_BRANCH" = "beta" ]; then
         VERSION="beta-$CI_COMMIT_SHORT_SHA"
-        TAGS="-t ${IMAGE}:beta-aio -t ${IMAGE}:devel-aio -t ${IMAGE}:${CI_COMMIT_SHORT_SHA}-aio"
+        TAGS="-t ${IMAGE}:beta-aio -t ${IMAGE}:${CI_COMMIT_SHORT_SHA}-aio"
       else
-        VERSION="devel-$CI_COMMIT_SHORT_SHA"
-        TAGS="-t ${IMAGE}:devel-aio -t ${IMAGE}:${CI_COMMIT_SHORT_SHA}-aio"
+        VERSION="dev-$CI_COMMIT_SHORT_SHA"
+        TAGS="-t ${IMAGE}:${CI_COMMIT_SHORT_SHA}-aio"
       fi
       BUILD_DATE="$(date -Iseconds)"
     - |
@@ -42613,6 +42845,7 @@ docker:build-aio:
         --build-arg VERSION="${VERSION}" \
         --build-arg COMMIT_ID="${CI_COMMIT_SHORT_SHA}" \
         --build-arg BUILD_DATE="${BUILD_DATE}" \
+        --build-arg OFFICIAL_SITE="${OFFICIAL_SITE}" \
         --label "org.opencontainers.image.vendor=${PROJECT_ORG}" \
         --label "org.opencontainers.image.authors=${PROJECT_ORG}" \
         --label "org.opencontainers.image.title=${PROJECT_NAME}-aio" \
@@ -42642,7 +42875,65 @@ docker:build-aio:
     - if: $CI_COMMIT_TAG =~ /^v?\d+\.\d+\.\d+/
     - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"
     - if: $CI_COMMIT_BRANCH == "beta"
-    # Any other branch builds/pushes :devel (equivalent to docker.yml on all branches)
+    # Any other branch also builds/pushes {commit_id}-aio (no :devel-aio tag — Dockerfile.dev.aio does not exist)
+    - if: $CI_COMMIT_BRANCH
+
+# =============================================================================
+# DEVEL IMAGE (dedicated job — never folded into docker:build)
+# =============================================================================
+
+docker:build-devel:
+  stage: docker
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_BUILDKIT: "1"
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker buildx create --name multiarch-builder --use 2>/dev/null || docker buildx use multiarch-builder
+  script:
+    - |
+      BUILD_DATE="$(date -Iseconds)"
+    - |
+      # Build multi-arch devel image with OCI labels and manifest annotations
+      docker buildx build \
+        -f docker/Dockerfile.dev \
+        --platform linux/amd64,linux/arm64 \
+        --build-arg VERSION="devel" \
+        --build-arg COMMIT_ID="${CI_COMMIT_SHORT_SHA}" \
+        --build-arg BUILD_DATE="${BUILD_DATE}" \
+        --build-arg OFFICIAL_SITE="${OFFICIAL_SITE}" \
+        --label "org.opencontainers.image.vendor=${PROJECT_ORG}" \
+        --label "org.opencontainers.image.authors=${PROJECT_ORG}" \
+        --label "org.opencontainers.image.title=${PROJECT_NAME}-devel" \
+        --label "org.opencontainers.image.base.name=${PROJECT_NAME}" \
+        --label "org.opencontainers.image.description=${PROJECT_NAME} - development image (alpine, debug mode)" \
+        --label "org.opencontainers.image.licenses=MIT" \
+        --label "org.opencontainers.image.version=devel" \
+        --label "org.opencontainers.image.created=${BUILD_DATE}" \
+        --label "org.opencontainers.image.revision=${CI_COMMIT_SHORT_SHA}" \
+        --label "org.opencontainers.image.url=${CI_PROJECT_URL}" \
+        --label "org.opencontainers.image.source=${CI_PROJECT_URL}" \
+        --label "org.opencontainers.image.documentation=${CI_PROJECT_URL}" \
+        --annotation "manifest:org.opencontainers.image.vendor=${PROJECT_ORG}" \
+        --annotation "manifest:org.opencontainers.image.authors=${PROJECT_ORG}" \
+        --annotation "manifest:org.opencontainers.image.title=${PROJECT_NAME}-devel" \
+        --annotation "manifest:org.opencontainers.image.base.name=${PROJECT_NAME}" \
+        --annotation "manifest:org.opencontainers.image.description=${PROJECT_NAME} - development image (alpine, debug mode)" \
+        --annotation "manifest:org.opencontainers.image.licenses=MIT" \
+        --annotation "manifest:org.opencontainers.image.version=devel" \
+        --annotation "manifest:org.opencontainers.image.created=${BUILD_DATE}" \
+        --annotation "manifest:org.opencontainers.image.revision=${CI_COMMIT_SHORT_SHA}" \
+        --annotation "manifest:org.opencontainers.image.url=${CI_PROJECT_URL}" \
+        --annotation "manifest:org.opencontainers.image.source=${CI_PROJECT_URL}" \
+        --annotation "manifest:org.opencontainers.image.documentation=${CI_PROJECT_URL}" \
+        -t $CI_REGISTRY_IMAGE:devel \
+        --push \
+        .
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_BRANCH
 ```
 
@@ -42665,6 +42956,18 @@ Create in GitLab Project → Build → Pipeline schedules:
 |-------|-------|
 | Description | Daily Build |
 | Interval Pattern | `0 3 * * *` (3am UTC daily) |
+| Cron Timezone | UTC |
+| Target Branch | `main` or `master` |
+| Activated | Yes |
+
+## GitLab Scheduled Pipelines (for Devel Builds)
+
+Create a second pipeline schedule so `docker:build-devel` also runs daily, independent of pushes:
+
+| Field | Value |
+|-------|-------|
+| Description | Devel Image Build |
+| Interval Pattern | `0 4 * * *` (4am UTC daily) |
 | Cron Timezone | UTC |
 | Target Branch | `main` or `master` |
 | Activated | Yes |
@@ -42712,6 +43015,7 @@ Jenkins provides equivalent functionality to GitHub Actions, Gitea Actions, and 
 | Main/master | `when { anyOf { branch 'main'; branch 'master' } }` | `daily.yml` |
 | Scheduled | `triggers { cron('0 3 * * *') }` | `daily.yml` schedule |
 | All branches | Default (no `when`) | `docker.yml` |
+| Devel image | `triggers { cron('0 4 * * *') }` + `when { not { buildingTag() } }` | `docker.yml` `build-devel` job |
 
 ## Jenkinsfile
 
@@ -42724,6 +43028,8 @@ pipeline {
     triggers {
         // Daily build at 3am UTC (matches GitHub Actions daily.yml)
         cron('0 3 * * *')
+        // Devel image build at 4am UTC (matches GitHub Actions docker.yml build-devel job)
+        cron('0 4 * * *')
     }
 
     environment {
@@ -43350,13 +43656,10 @@ pipeline {
                         tags += " -t ${REGISTRY}:latest"
                         tags += " -t ${REGISTRY}:${yymm}"
                     } else if (env.BUILD_TYPE == 'beta') {
-                        // Beta branch - beta, devel
+                        // Beta branch - beta
                         tags += " -t ${REGISTRY}:beta"
-                        tags += " -t ${REGISTRY}:devel"
-                    } else {
-                        // All other branches - devel only
-                        tags += " -t ${REGISTRY}:devel"
                     }
+                    // All other branches - {commit_id} only (no :devel tag — see Docker Devel stage)
 
                     // Login to container registry
                     // Works with: ghcr.io, registry.gitlab.com, gitea/forgejo, docker.io
@@ -43373,6 +43676,7 @@ pipeline {
                             --build-arg VERSION="${VERSION}" \
                             --build-arg COMMIT_ID="${COMMIT_ID}" \
                             --build-arg BUILD_DATE="${BUILD_DATE}" \
+                            --build-arg OFFICIAL_SITE="${OFFICIAL_SITE}" \
                             --label "org.opencontainers.image.vendor=${PROJECT_ORG}" \
                             --label "org.opencontainers.image.authors=${PROJECT_ORG}" \
                             --label "org.opencontainers.image.title=${PROJECT_NAME}" \
@@ -43420,13 +43724,10 @@ pipeline {
                         tags += " -t ${REGISTRY}:latest-aio"
                         tags += " -t ${REGISTRY}:${yymm}-aio"
                     } else if (env.BUILD_TYPE == 'beta') {
-                        // Beta branch - beta, devel
+                        // Beta branch - beta-aio
                         tags += " -t ${REGISTRY}:beta-aio"
-                        tags += " -t ${REGISTRY}:devel-aio"
-                    } else {
-                        // All other branches - devel only
-                        tags += " -t ${REGISTRY}:devel-aio"
                     }
+                    // All other branches - {commit_id}-aio only (no :devel-aio tag — Dockerfile.dev.aio does not exist)
 
                     // Login to container registry
                     sh """
@@ -43442,6 +43743,7 @@ pipeline {
                             --build-arg VERSION="${VERSION}" \
                             --build-arg COMMIT_ID="${COMMIT_ID}" \
                             --build-arg BUILD_DATE="${BUILD_DATE}" \
+                            --build-arg OFFICIAL_SITE="${OFFICIAL_SITE}" \
                             --label "org.opencontainers.image.vendor=${PROJECT_ORG}" \
                             --label "org.opencontainers.image.authors=${PROJECT_ORG}" \
                             --label "org.opencontainers.image.title=${PROJECT_NAME}-aio" \
@@ -43465,6 +43767,62 @@ pipeline {
                             --annotation "manifest:org.opencontainers.image.source=https://${GIT_FQDN}/${PROJECT_ORG}/${PROJECT_NAME}" \
                             --annotation "manifest:org.opencontainers.image.documentation=https://${GIT_FQDN}/${PROJECT_ORG}/${PROJECT_NAME}" \
                             ${tags} \
+                            --push \
+                            .
+                    """
+                }
+            }
+        }
+
+        // Docker Devel - matches docker.yml build-devel job (ALL branches, excl. tags, + daily 4am cron)
+        // Dedicated stage, never folded into Docker/Docker AIO — no :devel-aio (Dockerfile.dev.aio does not exist)
+        stage('Docker Devel') {
+            agent { label 'amd64' }
+            when {
+                not { buildingTag() }
+            }
+            steps {
+                script {
+                    // Login to container registry
+                    sh """
+                        echo "\${GIT_TOKEN}" | docker login ${REGISTRY.split('/')[0]} -u ${PROJECT_ORG} --password-stdin
+                    """
+
+                    // Build multi-arch devel image with OCI labels and manifest annotations
+                    sh """
+                        docker buildx create --name ${PROJECT_NAME}-builder --use 2>/dev/null || docker buildx use ${PROJECT_NAME}-builder
+                        docker buildx build \
+                            -f docker/Dockerfile.dev \
+                            --platform linux/amd64,linux/arm64 \
+                            --build-arg VERSION="devel" \
+                            --build-arg COMMIT_ID="${COMMIT_ID}" \
+                            --build-arg BUILD_DATE="${BUILD_DATE}" \
+                            --build-arg OFFICIAL_SITE="${OFFICIAL_SITE}" \
+                            --label "org.opencontainers.image.vendor=${PROJECT_ORG}" \
+                            --label "org.opencontainers.image.authors=${PROJECT_ORG}" \
+                            --label "org.opencontainers.image.title=${PROJECT_NAME}-devel" \
+                            --label "org.opencontainers.image.base.name=${PROJECT_NAME}" \
+                            --label "org.opencontainers.image.description=${PROJECT_NAME} - development image (alpine, debug mode)" \
+                            --label "org.opencontainers.image.licenses=MIT" \
+                            --label "org.opencontainers.image.version=devel" \
+                            --label "org.opencontainers.image.created=${BUILD_DATE}" \
+                            --label "org.opencontainers.image.revision=${COMMIT_ID}" \
+                            --label "org.opencontainers.image.url=https://${GIT_FQDN}/${PROJECT_ORG}/${PROJECT_NAME}" \
+                            --label "org.opencontainers.image.source=https://${GIT_FQDN}/${PROJECT_ORG}/${PROJECT_NAME}" \
+                            --label "org.opencontainers.image.documentation=https://${GIT_FQDN}/${PROJECT_ORG}/${PROJECT_NAME}" \
+                            --annotation "manifest:org.opencontainers.image.vendor=${PROJECT_ORG}" \
+                            --annotation "manifest:org.opencontainers.image.authors=${PROJECT_ORG}" \
+                            --annotation "manifest:org.opencontainers.image.title=${PROJECT_NAME}-devel" \
+                            --annotation "manifest:org.opencontainers.image.base.name=${PROJECT_NAME}" \
+                            --annotation "manifest:org.opencontainers.image.description=${PROJECT_NAME} - development image (alpine, debug mode)" \
+                            --annotation "manifest:org.opencontainers.image.licenses=MIT" \
+                            --annotation "manifest:org.opencontainers.image.version=devel" \
+                            --annotation "manifest:org.opencontainers.image.created=${BUILD_DATE}" \
+                            --annotation "manifest:org.opencontainers.image.revision=${COMMIT_ID}" \
+                            --annotation "manifest:org.opencontainers.image.url=https://${GIT_FQDN}/${PROJECT_ORG}/${PROJECT_NAME}" \
+                            --annotation "manifest:org.opencontainers.image.source=https://${GIT_FQDN}/${PROJECT_ORG}/${PROJECT_NAME}" \
+                            --annotation "manifest:org.opencontainers.image.documentation=https://${GIT_FQDN}/${PROJECT_ORG}/${PROJECT_NAME}" \
+                            -t ${REGISTRY}:devel \
                             --push \
                             .
                     """
@@ -46072,7 +46430,7 @@ docker run --name "{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -
 ## Links
 
 - [Repository]({PLATFORM_REPO_URL})
-- [Live Demo](https://{project_name}.{project_org}.us) (if applicable)
+- [Live Demo]({official_site}) (if applicable)
 - [API Documentation](/server/docs/swagger) (Swagger UI)
 - [GraphQL Playground](/server/docs/graphql)
 
@@ -49810,6 +50168,37 @@ func ValidateTorConfig(config *TorConfig) []ValidationError {
         errors = append(errors, ValidationError{
             Field:   "num_intro_points",
             Message: "Must be between 3 and 10",
+        })
+    }
+
+    if config.VirtualPort < 1 || config.VirtualPort > 65535 {
+        errors = append(errors, ValidationError{
+            Field:   "virtual_port",
+            Message: "Must be a valid port (1-65535)",
+        })
+    }
+
+    // Performance validation (bootstrap + streams)
+    if config.BootstrapTimeout < 30 || config.BootstrapTimeout > 600 {
+        errors = append(errors, ValidationError{
+            Field:   "bootstrap_timeout",
+            Message: "Must be between 30 and 600 seconds",
+        })
+    }
+
+    if config.MaxStreamsPerCircuit < 10 || config.MaxStreamsPerCircuit > 500 {
+        errors = append(errors, ValidationError{
+            Field:   "max_streams_per_circuit",
+            Message: "Must be between 10 and 500",
+        })
+    }
+
+    // Bandwidth validation (monthly cap) — number + GB/TB, or the literal "unlimited"
+    monthlyPattern := regexp.MustCompile(`^(\d+\s*(GB|TB)|unlimited)$`)
+    if !monthlyPattern.MatchString(strings.TrimSpace(config.MaxMonthlyBandwidth)) {
+        errors = append(errors, ValidationError{
+            Field:   "max_monthly_bandwidth",
+            Message: "Format: number + GB/TB or 'unlimited' (e.g., '100 GB')",
         })
     }
 
@@ -55692,9 +56081,9 @@ User receives: "Password reset requested by administrator.
 | Scenario | Error Message |
 |----------|---------------|
 | Blocklisted username | `Username contains blocked word: {word}` |
-| Username too short | `Username must be at least 3 characters` |
-| Username too long | `Username cannot exceed 32 characters` |
-| Invalid characters | `Username can only contain lowercase letters, numbers, underscore, and hyphen` |
+| Username too short | `Username must be at least 2 characters` |
+| Username too long | `Username cannot exceed 39 characters` |
+| Invalid characters | `Username can only contain lowercase letters, numbers, and hyphen` |
 | Invalid email format | `Please enter a valid email address` |
 | Password too weak | `Password must be at least 8 characters` |
 
@@ -56201,6 +56590,10 @@ server:
           auto_generate_cert: true
           sp_cert_path: ""
           sp_key_path: ""
+          # For auto_generate_cert: true — validity of the generated self-signed
+          # cert; the server rotates before expiry and re-publishes metadata.
+          # Ignored when auto_generate_cert: false (operator owns rotation).
+          cert_expiry_days: 3650
           # Single Logout (SLO) — SP-initiated and IdP-initiated
           slo_enabled: true
           idp_slo_url: "https://example.okta.com/app/abc123/slo/saml"
@@ -56288,7 +56681,12 @@ server:
 - **IdP-initiated login:** the IdP POSTs an unsolicited `Response` to the ACS with no stored `InResponseTo`. This is accepted ONLY when the provider is explicitly configured to allow it (`allow_idp_initiated: true`; unsolicited assertions weaken CSRF guarantees), and is rejected by default. Signature, audience, and replay checks are unchanged.
 - If the IdP does not emit a groups attribute, group-based admin mapping is unavailable for that provider and this MUST be documented, exactly as for OIDC/LDAP
 - With a `persistent` NameID format, the NameID becomes the stable `external_id`; with a transient format the SP MUST fall back to a documented stable attribute for `external_id`
-- SP signing/encryption keys MUST be auto-generated (self-signed) on provider creation when `auto_generate_cert: true` (zero-config default), or supplied by the admin via `sp_cert_path`/`sp_key_path`; the private key MUST be stored encrypted and included in backups
+- SP signing/encryption keys MUST be auto-generated (self-signed) on provider creation when `auto_generate_cert: true` (zero-config default), or supplied by the admin via `sp_cert_path`/`sp_key_path`; the private key MUST be stored encrypted and included in backups. See "SAML SP Certificate Management" below for rotation.
+
+### SAML SP Certificate Management
+
+- **Default (zero-config):** on first enable of a provider, the server generates a self-signed SP signing/encryption keypair (`auto_generate_cert: true`), persists the private key encrypted at rest (same store as 2FA secrets), and publishes the public cert in SP metadata. The server rotates before `cert_expiry_days` expiry and re-publishes metadata.
+- **Admin-supplied:** `auto_generate_cert: false` uses operator PEM `sp_cert_path`/`sp_key_path` (e.g. a cert already trusted by the IdP). Rotation is the operator's responsibility.
 
 ### Starter Group Mapping Presets
 
@@ -56947,13 +57345,18 @@ Appearance Settings (/users/settings/appearance)
 
 **Preferences are created on first access (lazy initialization):**
 ```go
-func GetOrCreatePreferences(userID int) (*UserPreferences, error) {
+func GetOrCreatePreferences(db *sql.DB, userID int) (*UserPreferences, error) {
     prefs := &UserPreferences{}
-    err := db.Where("user_id = ?", userID).First(prefs).Error
-    if err == gorm.ErrRecordNotFound {
-        // Uses DB defaults
+    err := db.QueryRow(`SELECT * FROM user_preferences WHERE user_id = ?`, userID).
+        Scan(&prefs.UserID /* ...remaining fields */)
+    if err == sql.ErrNoRows {
+        // Insert with DB-level defaults and re-read
+        if _, err := db.Exec(`INSERT INTO user_preferences (user_id) VALUES (?)`, userID); err != nil {
+            return nil, err
+        }
         prefs = &UserPreferences{UserID: userID}
-        db.Create(prefs)
+    } else if err != nil {
+        return nil, err
     }
     return prefs, nil
 }
@@ -58115,8 +58518,8 @@ mysql://[username[:password]@]host[:port]/database[?params]
 
 ```yaml
 # All tables go in same database with prefixes:
-# - srv_* tables (config, admin_sessions, rate_limits, audit_log, scheduler_*, backups)
-# - usr_* tables (admins, users, api_keys, password_resets, email_verifications, totp_secrets, passkeys, trusted_devices, user_sessions)
+# - srv_* tables (config, admins, admin_sessions, rate_limits, audit_log, scheduler_*, backups)
+# - usr_* tables (users, api_keys, password_resets, email_verifications, totp_secrets, passkeys, trusted_devices, user_sessions)
 ```
 
 ### Table Prefixes in Shared Database
@@ -59501,13 +59904,18 @@ Organization Email Settings (/orgs/acme-corp/email)
 
 **Preferences are created on first access (lazy initialization):**
 ```go
-func GetOrCreateOrgPreferences(orgID int) (*OrgPreferences, error) {
+func GetOrCreateOrgPreferences(db *sql.DB, orgID int) (*OrgPreferences, error) {
     prefs := &OrgPreferences{}
-    err := db.Where("org_id = ?", orgID).First(prefs).Error
-    if err == gorm.ErrRecordNotFound {
-        // Uses DB defaults
+    err := db.QueryRow(`SELECT * FROM org_preferences WHERE org_id = ?`, orgID).
+        Scan(&prefs.OrgID /* ...remaining fields */)
+    if err == sql.ErrNoRows {
+        // Insert with DB-level defaults and re-read
+        if _, err := db.Exec(`INSERT INTO org_preferences (org_id) VALUES (?)`, orgID); err != nil {
+            return nil, err
+        }
         prefs = &OrgPreferences{OrgID: orgID}
-        db.Create(prefs)
+    } else if err != nil {
+        return nil, err
     }
     return prefs, nil
 }
@@ -59607,7 +60015,7 @@ GET /api/{api_version}/orgs/acme-corp/members/very-private-user
 
 ```sql
 -- Add org_visibility to users table
-ALTER TABLE users ADD COLUMN org_visibility INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS org_visibility INTEGER NOT NULL DEFAULT 1;
 -- 1 = show basic info in orgs, 0 = username only
 
 -- Index for efficient org member queries
@@ -59944,9 +60352,9 @@ server:
 **Environment variable override:**
 
 ```bash
-CUSTOM_DOMAINS_ENABLED=true
-CUSTOM_DOMAINS_MAX_PER_USER=5
-CUSTOM_DOMAINS_MAX_PER_ORG=20
+{PROJECT_NAME}_CUSTOM_DOMAINS_ENABLED=true
+{PROJECT_NAME}_CUSTOM_DOMAINS_MAX_PER_USER=5
+{PROJECT_NAME}_CUSTOM_DOMAINS_MAX_PER_ORG=20
 ```
 
 ## Database Schema
@@ -60016,7 +60424,6 @@ CREATE TABLE IF NOT EXISTS custom_domains (
     updated_at          INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_custom_domains_domain ON custom_domains(domain);
 CREATE INDEX IF NOT EXISTS idx_custom_domains_owner ON custom_domains(owner_type, owner_id);
 CREATE INDEX IF NOT EXISTS idx_custom_domains_status ON custom_domains(status);
 CREATE INDEX IF NOT EXISTS idx_custom_domains_ssl_expires ON custom_domains(ssl_expires_at);
@@ -60859,8 +61266,10 @@ project_org:     {project_org}
 internal_name:   {project_name}
 app_name:        {project_name}
 official_site:   {fqdn}
-maintainer_name: {maintainer_name — defaults to {project_org} if unset}
-maintainer_email: {maintainer_email — or empty; used only if set}
+# Defaults to project_org if unset
+maintainer_name: {maintainer_name}
+# Optional — used only if set
+maintainer_email: {maintainer_email}
 
 ## Business logic
 
@@ -62669,7 +63078,8 @@ When bootstrapping a new project from this specification:
 1. **Create src/server/server.go** - HTTP server setup
 2. **Create src/server/handler/health.go** - Health check
 3. **Add CLI flags** per PART 8 specification
-4. **Create Makefile** per PART 26
+4. **Add service support** per PART 25
+5. **Create Makefile** per PART 26
 
 **Test:** Server starts and responds to `/server/healthz`
 
