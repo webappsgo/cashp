@@ -1975,7 +1975,7 @@ Instructions for how this agent should behave...
 | `docker/` | ✓ | Dockerfile, compose files, and build-time `rootfs/` overlay | No |
 | `docs/` | ✓ | MkDocs documentation only | No |
 | `scripts/` | ✓ | Production/install scripts | No |
-| `tests/` | ✓ | Repository-root executable integration test scripts (`run_tests.sh`, `docker.sh`, `incus.sh`, optional helpers). Go unit tests live alongside code as `*_test.go` | No |
+| `tests/` | ✓ | Repository-root executable integration test scripts (`run_tests.sh`, `docker.sh`, `incus.sh`, `e2e.sh`, optional helpers). Go unit tests live alongside code as `*_test.go` | No |
 | `.github/` | If GitHub / public repo | GitHub Actions, community files, templates | No |
 | `.gitea/` | If Gitea | Gitea Actions, templates | No |
 | `.claude/` | Auto | Claude Code config — team config (rules, agents, hooks, `settings.json`) committed; personal/runtime files gitignored | Partial (see AI-Specific Files table) |
@@ -6255,7 +6255,8 @@ PROJECT_ORG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+
 ├── tests/                  # Repository-root executable integration test scripts (Go unit tests stay next to code as *_test.go)
 │   ├── run_tests.sh        # Auto-detect and run tests (REQUIRED)
 │   ├── docker.sh           # Beta testing with Docker (REQUIRED)
-│   └── incus.sh            # Beta testing with Incus (REQUIRED)
+│   ├── incus.sh            # Beta testing with Incus (REQUIRED)
+│   └── e2e.sh              # Browser E2E beta testing, headless Chromium (REQUIRED — PART 29)
 ├── docker/                 # Docker files
 │   ├── Dockerfile          # Production Dockerfile
 │   ├── Dockerfile.dev      # devel image — same as release but binary runs in debug mode; tagged :devel (project-specific)
@@ -14339,6 +14340,7 @@ func GetUserWithVersion(ctx context.Context, userID int, version int) (*User, er
 | Static assets with matching `?v=` build stamp | `public, max-age=31536000, immutable` | 1 year — URL changes every release, so this can never go stale |
 | Static assets without / with mismatched `?v=` | `no-cache` + `ETag` | Always revalidated — never trusted across updates |
 | HTML pages | `no-store` | Always fetch fresh |
+| `/sw.js` and `/manifest.json` | `no-cache` + `ETag` | Browser must see the new service worker on its next update check — never immutable |
 | API responses (public) | `public, max-age=60` | Short cache for CDN |
 | API responses (private) | `private, no-store` | User-specific data |
 | Authenticated pages | `private, no-store` | Never cache |
@@ -14356,7 +14358,8 @@ update. The fix is mandatory URL stamping:
 | **`asset()` template helper** | Every static asset reference in every template goes through a shared helper that appends the build stamp: `/static/app.css?v={project_version}-{short_commit}`. Hand-written bare `/static/...` URLs in templates are a bug. |
 | **`immutable` only on a matching stamp** | The static handler sends `public, max-age=31536000, immutable` ONLY when the request's `?v=` equals the running build's stamp. Missing or mismatched stamp → `no-cache` + `ETag` (the bytes still serve — cached HTML from an old version never breaks, it just revalidates). |
 | **HTML is never cached** | All HTML documents: `Cache-Control: no-store` plus an `ETag` derived from the build stamp, so any intermediary that ignores `no-store` still revalidates. |
-| **Service worker (if the project adds one)** | Cache name MUST embed `{project_version}`; `activate` deletes all caches from other versions. |
+| **Service worker (if the project adds one)** | Cache name MUST embed `{project_version}`; `activate` deletes all caches from other versions. `/sw.js` and `/manifest.json` are served `no-cache` + build-stamp `ETag` — a cached service worker script delays every other update mechanism. |
+| **Version-change purge (`Clear-Site-Data`)** | Recovery layer for already-poisoned browsers — see "Version-Change Purge" below. Value is `"cache", "storage"` ONLY; `"cookies"` would destroy the session and cookie-stored preferences. |
 
 **Result:** deploying a new version changes every asset URL, so browsers fetch the
 new frontend on the first page load after an update — no manual cache clearing, ever.
@@ -14380,11 +14383,45 @@ func setCacheHeaders(w http.ResponseWriter, r *http.Request, contentType string,
         w.Header().Set("Cache-Control", "public, max-age=60")
     case "html":
         w.Header().Set("Cache-Control", "no-store")
+    case "sw":
+        // /sw.js and /manifest.json - never long-cached, or updates stall
+        w.Header().Set("Cache-Control", "no-cache")
+        w.Header().Set("ETag", `"`+buildinfo.AssetStamp()+`"`)
     }
 }
 ```
 
 `AssetStamp()` returns `{project_version}-{short_commit}`.
+
+### Version-Change Purge (Clear-Site-Data)
+
+Asset stamping and `no-store` HTML are the primary defenses — but a browser that
+cached HTML or a service worker under an older, buggier build can keep serving
+the old site anyway. The purge is the forced recovery path: the server detects
+the stale client and evicts its caches in one response.
+
+| Rule | Detail |
+|------|--------|
+| **Build-stamp cookie** | Every HTML response sets `{project_name}_build={asset_stamp}` (`Path=/`, `Max-Age=31536000`, `Secure`, `SameSite=Lax`, NOT HttpOnly-sensitive — the stamp is public). Essential cookie — no consent required. |
+| **Mismatch → purge** | If an HTML request carries a `{project_name}_build` cookie whose value ≠ the running stamp, the response adds `Clear-Site-Data: "cache", "storage"` — evicts the HTTP cache, all Cache API caches, and unregisters service workers in one shot. |
+| **`"cookies"` is FORBIDDEN here** | It would destroy the session and every cookie-stored preference (theme, language, consent). The session-revoke `Clear-Site-Data` keeps `"cookies"`; the version purge never includes it. |
+| **Naturally one-shot** | The same response re-sets the cookie to the new stamp, so the next request matches and no purge loop is possible. First-ever visit (no cookie) never purges. |
+| **Safe by design** | `"storage"` wipes localStorage/IndexedDB — safe because nothing stored there is load-bearing (PART 16): preferences live in cookies, sessions in HttpOnly cookies. |
+
+```go
+func versionPurge(w http.ResponseWriter, r *http.Request) {
+    stamp := buildinfo.AssetStamp()
+    if c, err := r.Cookie("{project_name}_build"); err == nil && c.Value != stamp {
+        w.Header().Set("Clear-Site-Data", `"cache", "storage"`)
+    }
+    http.SetCookie(w, &http.Cookie{
+        Name: "{project_name}_build", Value: stamp, Path: "/",
+        MaxAge: 31536000, Secure: true, SameSite: http.SameSiteLaxMode,
+    })
+}
+```
+
+Called from the HTML middleware only — never on static, API, or `/sw.js` responses.
 
 ### Cache Warming
 
@@ -15497,7 +15534,7 @@ web:
 |--------|-----------|---------|----------|
 | `Sec-GPC: 1` (Global Privacy Control) | inbound | honored | When received, treat the request as opt-out of "sale or sharing of personal data" (CCPA/CPRA), opt-out of behavioral profiling (GDPR Art. 21), and skip non-essential cookies. Logged to audit (`compliance.gpc_honored`). |
 | `DNT: 1` (Do Not Track) | inbound | NOT honored by default | DNT was de-facto removed from Firefox/Chrome — honoring it now penalizes users on browsers that still emit it for legacy reasons. Operators with EU-only audiences can opt in via `web.headers.honor_dnt: true`. |
-| `Clear-Site-Data` | outbound | emitted on session-revoke | Sent on logout, account-delete, password-change, and consent-withdrawal responses. Default value `"cache", "cookies", "storage"`. `"executionContexts"` opt-in only. |
+| `Clear-Site-Data` | outbound | emitted on session-revoke | Sent on logout, account-delete, password-change, and consent-withdrawal responses. Default value `"cache", "cookies", "storage"`. `"executionContexts"` opt-in only. Also sent on version-change purge (PART 9) with value `"cache", "storage"` only — never `"cookies"` there. |
 
 **`Sec-GPC` is the load-bearing one.** When received, the binary MUST:
 1. Set the request's `gpc_opt_out=true` flag throughout the request lifecycle.
@@ -25070,6 +25107,8 @@ textarea:user-invalid,
 
 **Progressive Web App = Native-like web app (installable, offline, push notifications, GPS)**
 
+**No-JS-first (PART 16 rule):** build the server-rendered form → POST → redirect path FIRST and verify it works with JavaScript disabled; JS may only enhance what already works. The PWA layer itself is an enhancement — the site must be fully usable if the service worker never installs.
+
 **Goal: Indistinguishable from native app** - same UX, capabilities, and performance.
 
 | Feature | Implementation | Notes |
@@ -29655,6 +29694,8 @@ server:
 
 **ALL projects MUST have a full admin panel.**
 
+**No-JS-first (PART 16 rule):** build the server-rendered form → POST → redirect path FIRST and verify it works with JavaScript disabled; JS may only enhance what already works.
+
 ## Admin Panel Isolation
 
 **The admin panel is completely isolated from the public site.**
@@ -33123,6 +33164,8 @@ Do not reply to this email.
 ## WebUI Notification System
 
 **The WebUI has a built-in notification system for both Server Admins and users. This is ALWAYS available regardless of SMTP configuration.**
+
+**No-JS-first (PART 16 rule):** build the server-rendered form → POST → redirect path FIRST and verify it works with JavaScript disabled; JS may only enhance what already works.
 
 ### How It Works
 
@@ -38837,6 +38880,7 @@ docker run --rm \
 | `./tests/run_tests.sh` | Auto-detect | General testing (picks best available) |
 | `./tests/docker.sh` | Docker `alpine:latest` | Quick binary validation |
 | `./tests/incus.sh` | Incus `debian:latest` | **PREFERRED** - Full OS, systemd, realistic |
+| `./tests/e2e.sh` | Docker + Chromium | Browser E2E beta testing — frontend with and without JS (PART 29) |
 
 **Typical workflow:**
 ```bash
@@ -44470,7 +44514,7 @@ rm -rf "${TMPDIR:-/tmp}/${PROJECT_ORG}/"
 - Tests project-specific functionality (from IDEA.md)
 - Run with `./tests/run_tests.sh`
 - `./tests/*` means executable shell scripts in the repository-root `tests/` directory
-- Minimum required scripts: `./tests/run_tests.sh`, `./tests/docker.sh`, `./tests/incus.sh`
+- Minimum required scripts: `./tests/run_tests.sh`, `./tests/docker.sh`, `./tests/incus.sh`, `./tests/e2e.sh` (browser E2E — see "Browser E2E Testing" below; standalone entry point, not invoked by `./tests/run_tests.sh`)
 - Additional helper scripts are allowed (for example `./tests/test_content_negotiation.sh`)
 - These scripts complement binary coverage; they do **NOT** replace required Go unit tests in `*_test.go`
 
@@ -45617,7 +45661,7 @@ fi
 
 | Rule | Requirement |
 |------|-------------|
-| **Location** | `tests/run_tests.sh`, `tests/docker.sh`, `tests/incus.sh` |
+| **Location** | `tests/run_tests.sh`, `tests/docker.sh`, `tests/incus.sh`, `tests/e2e.sh` |
 | **Permissions** | Executable (`chmod +x tests/*.sh`) |
 | **Build method** | ALWAYS use Docker (casjaysdev/go:latest) with host cache dirs (`GO_CACHE`/`GO_BUILD`) |
 | **Go cache** | Host cache dirs (`GO_CACHE`/`GO_BUILD`) bind-mounted into container |
@@ -45895,6 +45939,92 @@ docker run --rm \
   -w /app \
   casjaysdev/go:latest sh
 ```
+
+## Browser E2E Testing (Headless Browser, On-Demand Beta Testing)
+
+The web frontend (PART 16) is verified end to end by driving the real frontend in a real headless browser. This suite is the project's beta-testing harness: it is built alongside the frontend and run **on demand** — when the user asks for beta testing, before a release, or after major frontend work. It is **NOT part of the commit gate** (`make test` does not run it). When it does run, every requirement in this section is non-negotiable: route unit tests and `curl` smoke tests are not a substitute for verifying what a user actually sees and does, with and without JavaScript.
+
+**Engine:** `github.com/chromedp/chromedp` driving headless Chromium over CDP — pure Go, no Node toolchain. Test code lives in `tests/e2e/` behind the `e2e` build tag, so `make test` never sees it; the entry point is `./tests/e2e.sh`, which Docker-wraps `go test -tags e2e ./tests/e2e/...` and joins the existing manual `./tests/*.sh` script family (this PART → "Testing Strategy"). No new Makefile target — the six-target set is fixed. Everything runs inside Docker like every other test (this PART → "Host System Safety Applies to All Testing & Debugging").
+
+### Three Mandatory Tiers
+
+| Tier | Engine | JavaScript | Verifies |
+|------|--------|------------|----------|
+| 1 — SSR | plain `net/http` client (no browser) | n/a (raw HTML) | Server renders complete, correct HTML: real page content in the initial response, correct `<title>`, meta tags, valid structure — never an empty shell that JS fills in later |
+| 2 — No-JS browser | chromedp, script execution disabled | OFF | Progressive enhancement (PART 16): every core flow works without JS — native form POSTs, links, redirects, pagination |
+| 3 — Full browser | chromedp | ON | Full flows with JS enhancements; zero console errors; zero failed asset/XHR requests |
+
+All three tiers are REQUIRED. A feature that only passes Tier 3 is a PART 16 progressive-enhancement violation, not a passing test.
+
+Tier 2 disables JavaScript via CDP before navigation:
+
+```go
+// tests/e2e/nojs_test.go (build tag: e2e)
+chromedp.Run(ctx,
+    // Tier 2: verify the page without any client-side JavaScript
+    emulation.SetScriptExecutionDisabled(true),
+    chromedp.Navigate(baseURL+"/"),
+    chromedp.OuterHTML("html", &html),
+)
+```
+
+### SSR Correctness (Tier 1)
+
+- The initial HTML response contains the actual page content — assert on real domain data (the paste body, the search result titles, the item name), never just HTTP 200
+- No loading spinners, empty `<div id="app">` shells, or client-side-only rendering — that violates PART 16 and MUST fail the test
+- Correct status per route: 200 for pages, 302 + `Location` for redirects, 404 for unknown paths
+- `<title>`, `lang`, charset, and viewport meta present and correct on every page
+- Content negotiation honored where PART 14 defines it (HTML vs JSON vs text by `Accept`)
+
+### Project-Scoped Feature Coverage (NON-NEGOTIABLE)
+
+Generic route checks alone are NON-COMPLIANT. The suite MUST exercise this project's actual domain features end to end, derived feature-by-feature from IDEA.md — every user-facing feature gets at least one Tier-1 assertion, one Tier-2 scenario, and one Tier-3 scenario, each a named test.
+
+| Example project | Minimum required E2E scenarios |
+|-----------------|-------------------------------|
+| Pastebin | Create paste via form POST → view rendered paste → raw view matches input exactly; syntax highlighting present; expired paste → 404/410; delete works; unknown ID → 404 |
+| Meta search engine | Query → results render (providers stubbed locally); result links point at the right targets; empty query handled; no-results page; pagination; special characters in query |
+| URL shortener | Shorten → redirect fires (301/302 + correct `Location`); stats page reflects the hit; invalid/dangerous URL rejected with a rendered error |
+| Monitoring server | Fixture agents listed; metrics present in the SSR output; agent detail pages render; stale agent shown as offline |
+
+The table is illustrative — the rule is universal: enumerate IDEA.md's features and map each to E2E scenarios covering create/read/update/delete/error paths as applicable. A feature without an E2E scenario is untested.
+
+### Universal Coverage (Every Project)
+
+- **Full crawl**: start at `/`, follow every internal link — no dead links, no 500s, every navigable route visited
+- **Admin login (PART 17)**: valid credentials at `/server/auth/login` → session established and `/server/{admin_path}/*` reachable; invalid credentials → error page with no user-existence hints; logout ends the session
+- **User accounts (PART 34, when multi-user mode is implemented)**: registration per the configured registration mode; login/logout; `/users/*` reachable only when authenticated
+- **Theme**: dark, light, and auto all render; assert computed styles actually change (PART 16 theme rules)
+- **Responsive**: 375×812 viewport — no horizontal scroll, navigation usable (PART 16 mobile rules)
+- **i18n (PART 31)**: switching language changes rendered strings
+- **Forms**: validation errors render server-side (Tier 2) and inline (Tier 3); CSRF token present and enforced
+- **Error pages**: 404 and 500 render the PART 16 themed error pages, not blank bodies or stack traces
+- **Static assets**: every referenced CSS/JS/image/font loads with 200
+- **Console**: zero JavaScript errors on every page visited (Tier 3)
+
+### Determinism & Hermeticity
+
+- Fixture data seeded into a fresh test database before the suite; never depends on prior runs
+- **Zero external network**: every outbound dependency (search providers, webhooks, GeoIP downloads, update checks) is stubbed with local `httptest` servers — the whole suite MUST pass offline
+- Server under test starts once per suite on a port from the 64000-64999 range (PART 8), PID captured, killed and cleaned in teardown
+- Failure artifacts (screenshots, page HTML, server log) go to the tempdir structure (this PART → "Temporary Directory Structure") — never the project tree
+
+### Invocation & CI
+
+| Command | Runs | When |
+|---------|------|------|
+| `make test` | Unit + route tests only — the commit gate; NEVER runs E2E | Before every commit |
+| `./tests/e2e.sh` | Full E2E suite (all three tiers) | On demand: beta testing, pre-release, after major frontend work |
+
+`./tests/e2e.sh` follows the same manual, developer-initiated pattern as `./tests/incus.sh` and is Docker-wrapped: the E2E container needs Chromium (`chromedp/headless-shell` as a sidecar, or Chromium installed in the test image). In CI, E2E is at most a manually triggered job (`workflow_dispatch`) that uploads failure artifacts — it is never a required check and never blocks commits, merges, or releases.
+
+### AI Exploratory Pass (Discovery Only — NEVER the Gate)
+
+In addition to the committed suite, AI-driven exploratory testing with a real browser (e.g. Claude driving the Playwright MCP server) is the defined workflow for finding what the scripted suite misses: walk every page, try hostile input, resize, toggle themes, read console/network errors.
+
+- Every finding is either fixed immediately or logged in `TODO.AI.md` — never left only in conversation
+- Every confirmed finding is converted into a committed deterministic chromedp test so it can never regress silently
+- Agent runs are not reproducible: they are NEVER a gate of any kind — the committed deterministic suite is the repeatable record of frontend correctness, run on demand alongside this pass
 
 ## Build and Test
 
@@ -55464,6 +55594,8 @@ PARTS 34-36 ship marked `OPTIONAL - NON-NEGOTIABLE WHEN IMPLEMENTED`. A project 
 
 **This PART covers Regular User accounts (end-users). Server Admin accounts are covered in PART 17: ADMIN PANEL.**
 
+**No-JS-first (PART 16 rule):** build the server-rendered form → POST → redirect path FIRST and verify it works with JavaScript disabled; JS may only enhance what already works.
+
 **Projects can operate in two modes: admin-only or multi-user.**
 
 | Mode | Use Case | Default |
@@ -58089,6 +58221,7 @@ curl -q -LSsf https://api.example.com/api/autodiscover
 |--------|-------|---------|-------|
 | `admin_session` | `/server/{admin_path}/` | 30 days | Admin web sessions |
 | `user_session` | `/users/`, `/orgs/` | 7 days | User web sessions |
+| `{project_name}_build` | `/` | 1 year | Build stamp for the PART 9 version-change purge — not a session cookie |
 
 ## Web Routes
 
@@ -59744,6 +59877,8 @@ See PART 16 (Web Frontend) for the complete reserved names list.
 
 **Requires PART 34: MULTI-USER to be implemented first.**
 
+**No-JS-first (PART 16 rule):** build the server-rendered form → POST → redirect path FIRST and verify it works with JavaScript disabled; JS may only enhance what already works.
+
 ## When Organizations Are Needed vs Not Needed
 
 **Key Question: Do users need to collaborate as teams/groups with shared resources?**
@@ -60435,6 +60570,8 @@ See PART 16 (Web Frontend) for the complete reserved names list. Users and orgs 
 ## Overview
 
 **Custom domains is an OPTIONAL feature that allows users or organizations to use their own domains with the application.** Not all projects need this feature.
+
+**No-JS-first (PART 16 rule):** build the server-rendered form → POST → redirect path FIRST and verify it works with JavaScript disabled; JS may only enhance what already works.
 
 **IMPORTANT: Once a project implements custom domains, this entire PART becomes NON-NEGOTIABLE.** The implementation must follow all standards defined here exactly.
 
@@ -61992,6 +62129,8 @@ make docker
 - [ ] Cache headers set correctly
 - [ ] ETag support for cacheable resources
 - [ ] Cache-Control headers appropriate per resource type
+- [ ] Version-change purge: build-stamp cookie + `Clear-Site-Data: "cache", "storage"` on mismatch (PART 9)
+- [ ] `/sw.js` and `/manifest.json` served `no-cache` + build-stamp ETag
 
 ### Phase 3: Data Layer (PARTS 10-11)
 
@@ -62218,10 +62357,12 @@ make docker
 - [ ] tests/run_tests.sh - Auto-detect environment
 - [ ] tests/docker.sh - Docker-based tests
 - [ ] tests/incus.sh - Incus-based tests
+- [ ] tests/e2e.sh - Browser E2E beta testing, on demand (PART 29)
 - [ ] All tests pass in CI
 - [ ] Test coverage measured
 - [ ] API testing included
 - [ ] Beta testing procedures documented
+- [ ] Browser E2E suite (PART 29) exists and covers every IDEA.md feature with project-scoped scenarios across all three tiers (SSR, no-JS, full-JS) — run on demand for beta testing, never part of the commit gate
 
 ### Phase 10: Documentation (PARTS 30-31)
 
