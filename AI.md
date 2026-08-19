@@ -1603,7 +1603,7 @@ On EVERY new conversation or after "context compacted" message:
 9. Guess or assume values that a command can produce → Run the command (`date`, `basename "$PWD"`, `git config user.email`, `git rev-parse --short HEAD`, `uname -m`, etc.) — when no command applies, read spec or ask user
 10. Skip platforms → Build all 8 (linux/darwin/windows/freebsd × amd64/arm64)
 11. Client-side rendering (React/Vue) → Server-side Go templates
-12. Require JavaScript for core features → Progressive enhancement only
+12. Add JavaScript for anything HTML5+CSS already does (forms, validation, show/hide, dialogs, tabs) → JS is a LAST RESORT; every `<script>` must name a capability impossible without it; default answer to "add JS?" is NO (PART 16)
 13. Let long strings break mobile → Use word-break CSS
 14. Skip validation → Server validates EVERYTHING
 15. Implement without reading spec → Read relevant PART first
@@ -20700,6 +20700,31 @@ OS/Arch: {GOOS}/{GOARCH}
 | **No dead ends** | Every action has a result (success message, error, redirect) |
 
 **Frontend MUST work without JavaScript for core functionality (progressive enhancement).**
+
+#### JavaScript Is a LAST RESORT (Necessity Gate)
+
+⚠️ **Progressive enhancement is a build-*order* rule; this is a necessity *gate*. Both apply.** ⚠️
+
+No-JS-first guarantees the baseline works. This gate stops JavaScript being added on top of it for things the platform already does. **The default answer to "should I add JS here?" is NO.**
+
+- **JS is prohibited for anything HTML5 + CSS already does.** Reach for a script only when a specific interaction is genuinely impossible without one.
+- **Every `<script>` MUST name the capability that is impossible in HTML5 + CSS.** If you cannot name one, delete the script.
+- **Layer in order: HTML5 → CSS → (only then) a thin JS layer** that enhances a path already fully working without it.
+
+**NEVER reach for JS when an HTML/CSS-native mechanism exists:**
+
+| Desired behavior | HTML/CSS-native mechanism (use this) | JS only if… |
+|------------------|--------------------------------------|-------------|
+| Form submit | native `<form method>` POST/GET + server redirect | never — forms submit without JS |
+| Field validation | HTML5 `required`, `pattern`, `type=`, `min`/`max`, `minlength`; server re-render authoritative | mirroring `validationMessage` into an inline span (enhancement only) |
+| Show/hide, accordion | `<details>`/`<summary>`, `:target`, checkbox+`:checked` | never for basic disclosure |
+| Modal / dialog | `<dialog>` element or `:target` | focus-trap polish only |
+| Tabs, carousels | radio inputs + `:checked` + CSS | never for the core switch |
+| Styling, theming, layout, animation | CSS custom properties, media queries, transitions/keyframes | never |
+| Navigation, pagination | `<a href>`, native form GET | prefetch hint only |
+| Formatting (dates, numbers) | server-rendered | never |
+
+**Legitimate JS** names a concrete capability with no HTML/CSS equivalent: live search-as-you-type (`fetch`), client-side charts on canvas, drag-and-drop reordering, WebSocket streams, clipboard copy. Even then, the feature it decorates MUST work without it.
 
 ### Server-Side Processing Philosophy
 
@@ -63871,6 +63896,7 @@ make docker
 - [ ] Color contrast meets AA standards (both themes)
 - [ ] Server-side rendering (Go templates) - NO client-side rendering (React/Vue)
 - [ ] Core functionality works WITHOUT JavaScript (progressive enhancement)
+- [ ] No gratuitous JS - grep the diff for `<script>`; each must cite a capability impossible in HTML5+CSS (forms/validation/disclosure/dialogs/tabs use native mechanisms - PART 16)
 - [ ] Long strings have `word-break: break-all` CSS (IPv6, .onion, tokens, hashes)
 - [ ] Touch targets minimum 44x44px on mobile
 
