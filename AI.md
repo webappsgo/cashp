@@ -541,6 +541,12 @@ primaryIP := "192.168.1.50"
 - Provide sensible defaults that work on minimal systems (1 CPU, 512MB RAM)
 - Allow config overrides for users who want manual control
 
+**Concurrency & connection scale requirement:**
+- MUST sustain at least 500,000 concurrently OPEN connections held by the process at once, with no degradation — no dropped connections, no unbounded latency growth, no crashes, no OOM. This is an "idle-capable" target: keep-alive, long-poll, and websocket connections sitting mostly idle between requests. It is NOT a claim that 500,000 requests execute in parallel — work actively being processed at any instant is CPU-bound and must stay behind a capped worker pool sized to available cores, never scaled 1:1 with the connection count
+- Achieve this with non-blocking I/O (goroutines over Go's epoll-backed netpoller), bounded worker pools, backpressure/load shedding once saturated, and keep-alive/idle timeouts that reclaim dead connections
+- Scale horizontally behind a load balancer once a single instance's OS file-descriptor limit or hardware ceiling is reached — the code itself must not be the bottleneck
+- This is why the security and resource-safety rules elsewhere in this spec are non-negotiable: bounded queues, closed file handles/sockets, capped goroutines, panic/recover boundaries, and leak-free code are what keeps a fault that's harmless at 100 connections from becoming an outage at 500,000
+
 **Example scaling:**
 ```go
 // Worker pool scales to available CPUs
@@ -1578,7 +1584,7 @@ On EVERY new conversation or after "context compacted" message:
 ## Key Placeholders
 - `{project_name}` = [actual project name]
 - `{project_org}` = [organization name]
-- `{admin_path}` = [admin URL path, default: admin]
+- `{admin_path}` = [admin URL path, default: administration]
 
 ## Account Types (CRITICAL)
 - **Server Admin** = manages the app (NOT a privileged OS user)
@@ -2107,7 +2113,7 @@ See the single authoritative table earlier in this file (search: `### Allowed Ro
 | `{official_site}` | Official project website | `https://jokes.example.com` |
 | `{fqdn}` | Fully qualified domain name | `api.example.com` |
 | `{baseurl}` | URL path prefix (auto-detected from reverse proxy) | `/`, `/myproject` |
-| `{admin_path}` | Admin panel URL path (configurable, default: `admin`) | `admin`, `manage`, `control` |
+| `{admin_path}` | Admin panel URL path (configurable, default: `administration`) | `administration`, `manage`, `control` |
 | `{api_version}` | API version prefix (default: `v1`) | `v1`, `v2` |
 
 **Directory placeholders (with platform-specific defaults):**
@@ -2259,7 +2265,7 @@ This distinction exists for clarity. When referring to OS-level resources that b
 | **TUI** | Terminal User Interface - interactive terminal app with menus/panels (client supports TUI mode) |
 | **Text Browsers** | INTERACTIVE browsers (lynx, w3m, links, elinks) that receive **no-JS HTML** and render it in text mode; NO JavaScript support - forms via POST, server-rendered only |
 | **HTTP Tools** | NON-INTERACTIVE tools (curl, wget, httpie) that receive pre-formatted text via HTML2TextConverter; they just dump output |
-| **Admin Panel** | WebUI at `/server/{admin_path}` for server administration (path is configurable, default: `admin`) |
+| **Admin Panel** | WebUI at `/server/{admin_path}` for server administration (path is configurable, default: `administration`) |
 | **WebUI** | Web User Interface - browser-based interface served by the server |
 | **SCM** | Windows Service Control Manager - manages Windows services (replaces PID files on Windows) |
 | **Hostname** | Short hostname (e.g., `web01`) - equivalent to `hostname -s` |
@@ -4180,6 +4186,8 @@ User preferences like theme, language, and UI settings can be stored client-side
 
 These work for anonymous visitors and don't require user accounts. Server-side user preferences (stored in `user_preferences` table) require PART 34.
 
+**Cross-device preference sync (export/import — stateless, no PART 34 required):** only `theme` and `lang` are portable across browsers/devices — never `cookie_consent`/`ccpa_opt_out` (per-browser legal acknowledgments) or the build-stamp cookie. Since preferences aren't tied to identity, the same values always produce the same code/URL — the code/URL *is* the state, not a lookup key, so nothing is ever stored server-side. Guest preferences live at `/server/preferences` (distinct from the authenticated `/server/{admin_path}/{admin_username}/preferences` and PART-34 `/users/settings/preferences` routes), API-mirrored at `/api/{api_version}/server/preferences` — the export/import actions are sub-routes of it, never the standalone `/prefs/*` path, nor bare `/preferences` without the `/server` prefix — and `preferences` MUST be added to the `{admin_path}` reserved-word list (see "Route Conflict Detection") so an operator can never set `admin_path=preferences` and collide with it. If an old/non-canonical route (e.g. a bare `/preferences` or `/prefs/*`) exists in already-written code, delete it outright and update all callers to `/server/preferences` — never keep it as a redirect or alias "for backward compatibility" (see "Canonical Terms Only"). `GET /server/preferences/export` returns both a full import URL (`https://{host}/server/preferences/import?theme=dark&lang=fr`, plain query string, stable across schema changes) and a short code (`base64url` of the same query string, for manual retyping without paste). `GET /server/preferences/import?theme=dark&lang=fr` validates each value against its normal enum/BCP-47 allowlist — an imported value is still untrusted input — sets the matching cookies, and `303 See Other`s to a clean URL so the code never lingers in the address bar or history.
+
 ## AI Implementation Process
 
 ```
@@ -5395,7 +5403,7 @@ sudo mv {project_name}-cli-linux-amd64 /usr/local/bin/{project_name}-cli
 
 ## Configuration
 
-Configuration is auto-generated on first run. Edit via admin panel at `{proto}://{fqdn}/server/{admin_path}` (admin_path defaults to "admin").
+Configuration is auto-generated on first run. Edit via admin panel at `{proto}://{fqdn}/server/{admin_path}` (admin_path defaults to "administration").
 
 Key settings:
 - `server.port` - Listen port (default: random 64xxx)
@@ -9083,8 +9091,8 @@ server:
   address: "[::]"
   # production or development
   mode: production
-  # Admin panel path (default: admin) - see PART 17
-  admin_path: admin
+  # Admin panel path (default: administration) - see PART 17
+  admin_path: administration
   # API version prefix (default: v1) - used in /api/{api_version}/ routes
   api_version: v1
   healthz:
@@ -16152,7 +16160,7 @@ func extractContextFromPath(path string) (*Context, error) {
 
 | Account Type | Stored In | After Login Redirect |
 |--------------|-----------|---------------------|
-| **Server Admin** | `admins` table | `/server/{admin_path}` (default: `/server/admin`) |
+| **Server Admin** | `admins` table | `/server/{admin_path}` (default: `/server/administration`) |
 | **Regular User** | `users` table | `/users` or `?redirect=` param |
 
 **Login Flow:**
@@ -17181,6 +17189,8 @@ server:
 | Export | Button | Download filtered results as JSON/CSV |
 | Retention | Display | Show current retention policy |
 | Stats | Cards | Event counts by category/severity |
+
+**Export follows the "Import/Export UI Convention" section** — a plain link/GET response with `Content-Disposition: attachment`, never a JS Blob/download-attribute trick.
 
 **Log Viewer Columns:**
 | Column | Description |
@@ -24566,6 +24576,61 @@ html.theme-light {
 
 ---
 
+## Reuse Before Creating
+
+**Before writing new code for anything — a function, a variable/constant, a UI component, or a style — check whether an equivalent already exists in the project and reuse or extend it. Only create something new when nothing existing covers the need.** This is a general project-wide rule; it governs every artifact type, not just CSS/UI, and it is not restricted to any one feature.
+
+### Functions
+
+Before writing a new function, search for an existing one with the same or similar behavior — in the same package, in `helpers.go`/`helpers.rs`, in existing handlers/validators/middleware — and call or extend it instead of re-implementing the logic. Two near-identical functions that differ only in a hardcoded value are a sign the existing function should take that value as a parameter instead of being copy-pasted.
+
+### Variables & Constants
+
+Before adding a new constant, config key, or enum value, check existing constants, the config schema, and enum definitions for one that already means the same thing. Two names for the same underlying value is a bug waiting to happen, not two separate settings.
+
+### Components
+
+Before building a new template, partial, or UI component, check for an existing one — buttons, modals, cards, form groups, banners, badges — and reuse or extend it instead of building a near-duplicate with a different name.
+
+### Styling (CSS)
+
+**Every UI element in this spec — every button, link, form, input, label, table, card, banner, badge, toast, modal, tooltip, status message, and any other visible element, in every feature described anywhere in this document — MUST be styled. None of it is left at raw/unstyled browser default.**
+
+Before writing CSS for any element, check whether an existing class (`.btn`, `.btn-primary`, `.btn-secondary`, `.btn-danger`, `.form-group`, alert/message classes, etc.) or an existing `--color-*`/`--font-*` custom property from the CSS Variable Reference above already covers it, and reuse it. Only write new CSS when nothing existing fits — and when new CSS is genuinely needed, it still draws its colors from the existing `--color-*` custom properties rather than hardcoding new values.
+
+```html
+<!-- CORRECT — new feature, reuses the existing button classes; no new class invented -->
+<a href="/audit/export" class="btn btn-secondary">Export</a>
+```
+
+```css
+/* CORRECT — a genuinely new component still draws its colors from the
+   existing --color-* custom properties in the CSS Variable Reference,
+   instead of inventing new hex values */
+.domain-status-badge {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+}
+```
+
+```css
+/* WRONG — duplicates .btn-secondary with a new one-off class and
+   hardcoded colors instead of reusing the existing class/variables */
+.my-export-btn {
+  background: #44475a;
+  color: #f8f8f2;
+  padding: 8px 16px;
+  border-radius: 4px;
+  border: 1px solid #6272a4;
+}
+```
+
+This rule governs the entire spec — it is not restricted to buttons, not restricted to import/export controls, and not restricted to whatever the reader might assume is the "main" UI. Every section describing a function, variable, component, or UI element inherits this rule automatically; sections do not need to restate it.
+
 ## Technology Stack
 
 | Rule | Description | Details |
@@ -25220,6 +25285,24 @@ textarea:user-invalid,
   border-color: var(--color-success);
 }
 ```
+
+## Import/Export UI Convention
+
+**Applies project-wide to every feature that lets a user export or import data** — audit log exports, GDPR/CCPA data exports, PGP key exports, settings/config export, domain lists, created/shortened links, and any future export/import feature. This is a generic rule, not a spec for one named feature.
+
+**Export — never a forced/silent direct download:**
+- Export is a plain `<a href="...">` link or a plain `<button>`/`<form method="get">` — **no JavaScript required**, consistent with the "Text Browsers" no-JS convention (see Terminology).
+- The server responds with the correct `Content-Type` and `Content-Disposition: attachment; filename="..."`. This hands the download to the browser's own native save flow — a "Save As" dialog if the browser is configured to ask where to save, the default downloads folder otherwise. That choice belongs to the browser/user, not the app; the app's job is only to return a real HTTP file response the browser can act on.
+- **Never** implement export via JavaScript `Blob` + `URL.createObjectURL()` + a synthetic clicked `<a download>`, and never make the File System Access API (`showSaveFilePicker()`) the *only* path — both require JavaScript and are unavailable (or fail silently) in Text Browsers and with JS disabled. A plain link/GET response is the platform-agnostic mechanism: it behaves the same in Chrome, Firefox, Safari, lynx, w3m, and any other HTTP client.
+
+**Import — native file picker, not a JS-only upload widget:**
+- Import uses a plain `<input type="file">` inside a plain `<form method="post" enctype="multipart/form-data">` — the browser's native file picker, no JavaScript required to select or submit a file.
+- The server parses the uploaded file from the multipart body; server-side validation is always authoritative regardless of any client-side JS mirroring.
+- Never hide the native `<input type="file">` behind a custom-styled JS trigger/fake button, or the feature stops working with JavaScript disabled.
+
+**Styling:** every element in the flow — trigger link/button, `<form>`, `<label>`, `<input type="file">`, filename/status/progress text, success/error messaging — follows the "Reuse Before Creating" section, Styling (CSS) subsection, (above): fully styled, reusing existing classes and `--color-*` custom properties, no exceptions and no new one-off CSS when an existing class fits. "No-JS" governs markup/mechanism only (a real `<a>`/`<form>`, no JS-only click handler) — not appearance; CSS applies regardless of JavaScript.
+
+**Applies to (non-exhaustive — this is a rule, not a feature list):** audit log export, GDPR/CCPA data export, PGP key export, settings/config export, domain lists, created/shortened links, and any future export- or import-capable feature.
 
 ## Accessibility
 
@@ -29922,7 +30005,7 @@ server:
 
 **The admin panel is completely isolated from the public site.**
 
-**Note:** `/server/admin` is the default admin root. `{admin_path}` is configurable via `server.admin_path`. See "Configurable Admin Path" section below.
+**Note:** `/server/administration` is the default admin root (unambiguous — avoids confusion with a Linux `admin`/`sudo` group or account). `{admin_path}` is configurable via `server.admin_path`. See "Configurable Admin Path" section below.
 
 | Rule | Description |
 |------|-------------|
@@ -29941,6 +30024,18 @@ server:
 | **Normal User** | `/**` (except `/server/{admin_path}`) | User account (if multi-user enabled) |
 
 **Admin credentials are stored in `users.db` (admins table), NOT in config file.**
+
+### Access Control on Admin Routes
+
+Any request to `/server/{admin_path}/**` is gated identically regardless of HTTP method or sub-path:
+
+| Requester | Result |
+|-----------|--------|
+| **Unauthenticated (no session)** | Redirect to the shared `/server/auth/login` form — same as any other protected route, no admin-specific hint |
+| **Authenticated Regular User (non-admin)** | Redirect to their own `/users` dashboard — NEVER shown the login form again, NEVER told an admin panel exists |
+| **Authenticated Server Admin** | Request proceeds normally |
+
+Unauthenticated and non-admin requests both fall through the same admin-auth middleware check; only the destination differs (login form vs. own dashboard). An outside observer probing `/server/{admin_path}` while unauthenticated cannot distinguish it from any other protected route, and a logged-in non-admin user is bounced to their own space, never given a bypass or a hint that an admin panel exists.
 
 ### Testing Admin Routes
 
@@ -30105,24 +30200,26 @@ func validateAdminRoute(path string) error {
 
 ## Configurable Admin Path
 
-**The default `/server/admin` admin root can be changed for security (obscurity).**
+**The default `/server/administration` admin root can be changed for security (obscurity).**
 
 ### Configuration
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `server.admin_path` | `admin` | Path segment for admin panel (no leading slash) |
+| `server.admin_path` | `administration` | Path segment for admin panel (no leading slash) |
 
 **When changed, ALL admin routes update:**
-- `/server/admin/**` → `/server/{admin_path}/**`
-- `/api/{api_version}/server/admin/**` → `/api/{api_version}/server/{admin_path}/**`
+- `/server/administration/**` → `/server/{admin_path}/**`
+- `/api/{api_version}/server/administration/**` → `/api/{api_version}/server/{admin_path}/**`
+
+**`{admin_path}` is a single path segment relative to `/server/` — it is substituted directly after `/server/`, never in place of it.** Setting `server.admin_path: my-admin` produces `/server/my-admin`, NOT `/server/server/my-admin`. Because "Valid characters only" (below) forbids `/`, an operator cannot set `admin_path` to `server/my-admin`, `/my-admin`, or anything containing a slash — those are rejected like any other invalid value; `admin_path` NEVER embeds a `server/` prefix. Deeper sub-paths compose normally after that one segment: `/server/{admin_path}/me` → `/server/my-admin/me`.
 
 ### Validation Rules
 
 | Rule | Action |
 |------|--------|
-| **Cannot conflict with existing routes** | Error and revert to `admin` |
-| **Reserved paths blocked** | `api`, `static`, `assets`, `health`, `version`, etc. |
+| **Cannot conflict with existing routes** | Error and revert to `administration` |
+| **Reserved paths blocked** | `api`, `static`, `assets`, `health`, `version`, etc. — `administration` itself (the default) is NEVER added to this list, since the revert-on-error fallback above depends on `administration` always remaining a valid value |
 | **Valid characters only** | `[a-z0-9-]` (lowercase, numbers, hyphens) |
 | **Min/max length** | 2-32 characters |
 | **No leading/trailing hyphens** | `my-admin` ✓, `-admin-` ✗ |
@@ -30137,9 +30234,11 @@ func validateAdminPath(newPath string, router *mux.Router) error {
     // Normalize first
     newPath = normalizePath(newPath)
     // 1. Check reserved paths
+    // "administration" is the documented default admin_path and MUST NEVER
+    // be added here — doing so would make the default config reject itself.
     reserved := []string{
         "api", "health", "healthz", "metrics", "version", ".well-known",
-        "about", "privacy", "contact", "help", "terms",
+        "about", "privacy", "contact", "help", "terms", "preferences",
         "docs", "auth", "security",
         "static", "assets",
     }
@@ -30218,7 +30317,7 @@ async function changeAdminPath(newPath) {
 ```go
 // Global admin path accessor
 func AdminPath() string {
-    // default: "admin"
+    // default: "administration"
     return config.Get().Server.AdminPath
 }
 
@@ -31167,7 +31266,7 @@ Admin Panel Header:
 
 | Setting | Control | Default | Restart | Description |
 |---------|---------|---------|---------|-------------|
-| `admin_path` | Text | `admin` | Reload | Custom admin panel path (see PART 17) |
+| `admin_path` | Text | `administration` | Reload | Custom admin panel path (see PART 17) |
 | `rate_limit.enabled` | Toggle | On | No | Enable rate limiting |
 | `rate_limit.read.requests` | Number | `120` | No | Read (GET/HEAD) requests per window, per IP |
 | `rate_limit.write.requests` | Number | `10` | No | Write (POST/PUT/PATCH/DELETE) requests per window, per IP |
@@ -54712,8 +54811,8 @@ server:
   cluster: []
   # API version prefix (default: v1, must match server)
   api_version: v1
-  # Admin path (default: admin, must match server)
-  admin_path: admin
+  # Admin path (default: administration, must match server)
+  admin_path: administration
   # Request timeout (match server default)
   timeout: 30s
   # Retry attempts on failure
@@ -56791,8 +56890,8 @@ server:
   cluster: []
   # API version prefix (default: v1, must match server)
   api_version: v1
-  # Admin path (default: admin, must match server)
-  admin_path: admin
+  # Admin path (default: administration, must match server)
+  admin_path: administration
   # Request timeout (match server default)
   timeout: 30s
   # Retry attempts on failure
@@ -64493,11 +64592,12 @@ make docker
 
 ### Resource Usage
 
-- [ ] Memory usage reasonable
+- [ ] Memory usage stable under sustained load (no unbounded growth over a 24h soak test / profiling run)
 - [ ] No memory leaks
 - [ ] Goroutine count stable
 - [ ] Connection pool sized correctly
 - [ ] File handles closed properly
+- [ ] Sustains 500,000+ concurrently open (idle-capable) connections without degradation — not 500,000 requests executing in parallel, which stays bounded by available CPU cores via a capped worker pool
 
 ### Caching
 
