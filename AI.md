@@ -268,6 +268,7 @@ permission rules, business invariants. The HOW lives in AI.md PARTS 0-36; PART 3
 **Rules:**
 - **Project root** = Where AI.md lives (this file's directory)
 - **ALL file operations** = Relative to project root
+- **Never edit files outside project root as a workaround** — a failing build/test/tool is fixed inside the project, never by touching host system files, shell rc files, systemd units, other repos, or global tool configs; the only exception is an external path the user explicitly names for that specific task
 - **Use `git rev-parse --show-toplevel`** when in a git repo to find project root
 - **Never assume** cwd is the project root - always verify
 
