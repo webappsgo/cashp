@@ -59,7 +59,7 @@ In scope:
   simultaneously; per-user isolated networks; support for a custom/private
   OCI registry.
 - **VM management**: libvirt/KVM-based VMs, multiple CPU architectures,
-  VNC/SPICE console access, live migration, GPU/USB/PCI passthrough.
+  VNC/SPICE console access, live migration, GPU/USB/PCI passthrough with autodetection of capabilities(IE: if host does not support virtualization it will be disabled).
 - **Email stack**: full mail server (send/receive/webmail), anti-spam/AV
   scanning, always on.
 - **DNS management**: authoritative DNS hosting, DNSSEC, dynamic DNS updates.
@@ -157,7 +157,8 @@ their 2FA directly.
   project layouts for each supported language (Node.js, Python, Ruby, PHP,
   Go, Java, .NET, Rust) without hand-written buildpacks.
 - Must support running Docker, Incus, and Podman workloads side by side on
-  the same node — not a choice made once at install time.
+  the same node — not a choice made once at install time
+- The frontend and backend reflects what is actually avaliable/enabled.
 
 ### Constraints & trust boundaries
 
