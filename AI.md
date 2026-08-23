@@ -50068,6 +50068,7 @@ func TestAccessibility(t *testing.T) {
 **Tor is NOT used for:**
 - SOCKS proxy / browsing through Tor (client-side)
 - Tor relay or exit node functionality
+- Proxying or relaying requests on behalf of hidden-service visitors — the managed Tor process is **app-scoped only** (see "App-Scoped Only" below)
 
 Tor integration uses **external Tor binary** via `github.com/cretz/bine`. This maintains `CGO_ENABLED=0` compatibility for static binaries while providing full Tor hidden service functionality.
 
@@ -50151,9 +50152,35 @@ server:
 - **App handles EVERYTHING** - directory creation, permissions, torrc generation, process management
 - No external scripts needed - all Tor management is built into the server binary
 
+## App-Scoped Only — No Relay, Exit, or Proxy Abuse
+
+**The app's outbound Tor client may only be used for app-determined destinations — never for a destination supplied by an inbound hidden-service visitor.**
+
+The app is free to route any of its own outbound behavior through Tor when `use_network` is enabled — anything it already does over clearnet is fair game over Tor too. The boundary is not *what* the app does over Tor, it's *who* controls the destination:
+
+| Destination origin | Allowed over the app's Tor client? |
+|---|---|
+| App/server-determined (config-defined external API, the app's own federation peer, a URL the app itself constructed) | Yes |
+| A URL, host, or callback/webhook target supplied by an inbound `.onion` request | **No — never** |
+
+This closes the `onion visitor → app → onion/clearnet target` path (e.g. an anonymous visitor using the app as a relay to flood a third party). Concretely:
+
+- No endpoint may accept an arbitrary URL/host from a request and fetch it through the outbound Tor client (classic SSRF, made worse by Tor's anonymity)
+- Any feature that fetches a caller-supplied URL (link preview, webhook delivery, avatar-by-URL, etc.) either never uses the Tor outbound client, or validates the destination against an app-owned allowlist first
+- The hidden service (inbound) and the outbound Tor client (outbound) are separate code paths — a request arriving via `.onion` must never be able to select or influence the destination of an outbound Tor request
+
+**torrc hardening (in addition to the settings above):**
+- `ExitRelay 0`, `ExitPolicy reject *:*` — never act as an exit
+- No `ORPort` directive — client + hidden service only, never a relay
+- `PublishServerDescriptor 0`, `DirPort 0` — never publish as a relay/directory
+- `SocksPort` bound to `127.0.0.1:auto` only — never `0.0.0.0`, never reachable from the hidden-service listener
+- `SocksPolicy accept 127.0.0.1` (implicit reject all else)
+
 ## Tor Network for Outbound Connections
 
 **Server can route outbound HTTP requests through Tor network for privacy.**
+
+**These are illustrative examples, not an exhaustive or restrictive allowlist** — the app may route any of its own outbound behavior through Tor. The only hard rule is destination origin: see "App-Scoped Only — No Relay, Exit, or Proxy Abuse" above.
 
 This is separate from hosting a hidden service - it uses Tor's SOCKS5 proxy for outbound traffic.
 

@@ -30,11 +30,11 @@ Target users:
 
 ```
 project_name:     cashp
-project_org:      casapps
+project_org:      webappsgo
 internal_name:    cashp
 app_name:         CasHp
 maintainer_name:  CasjaysDev
-maintainer_email: casjay@yahoo.com
+maintainer_email: git-admin@casjaysdev.pro
 binary_name:      cashp
 cli_binary_name:  cashp-cli
 ```
@@ -199,3 +199,4 @@ their 2FA directly.
 - A deleted tenant's username must never become available for reuse
   (tombstoned), preventing a new registrant from impersonating a former
   tenant's identity (e.g. inheriting old inbound email/DNS references).
+
