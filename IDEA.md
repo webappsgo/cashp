@@ -32,6 +32,7 @@ Target users:
 project_name:     cashp
 project_org:      webappsgo
 internal_name:    cashp
+internal_org:     webappsgo
 app_name:         CasHp
 maintainer_name:  CasjaysDev
 maintainer_email: git-admin@casjaysdev.pro
@@ -39,10 +40,11 @@ binary_name:      cashp
 cli_binary_name:  cashp-cli
 ```
 
-`internal_name` is FROZEN — it was set once at first-time setup and is never
-edited. A project rename only changes `project_name`; `internal_name` stays so
-`{config_dir}` / `{data_dir}` / `{log_dir}` / `{cache_dir}` / systemd unit /
-`{plist_name}` remain stable on every host.
+`internal_name` and `internal_org` are FROZEN — set once at first-time setup
+and never edited. A project rename only changes `project_name`/`project_org`;
+`internal_name`/`internal_org` stay so `{config_dir}` / `{data_dir}` /
+`{log_dir}` / `{cache_dir}` / systemd unit / `{plist_name}` remain stable on
+every host. `internal_org` defaults to `project_org` at first-time setup.
 
 ## Business logic
 

@@ -100,4 +100,34 @@ $RECYCLE.BIN/
 **/*.rewrite.sh
 **/*.refactor.sh
 
+# Go build output
+binaries/
+releases/
+/cashp
+/cashp-cli
+*.test
+*.out
+
+# Runtime volume data (local docker-compose)
+volumes/
+
+# Claude Code personal/local files
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/*.lock
+.claude/backups/
+.claude/cache/
+.claude/history.jsonl
+
+# Cursor/Windsurf/Aider personal settings
+.cursor/settings.json
+.windsurf/settings.json
+.aider/
+.ai/
+
+# Environment / secrets
+.env
+app.env
+default.env
+*.local
 
