@@ -1,0 +1,17 @@
+{
+  "model": "",
+  "thinking": "off",
+  "permissions": {
+    "allow": [],
+    "deny": [],
+    "ask": []
+  },
+  "preferences": {
+    "auto_commit": false
+  },
+  "hooks": {
+    "PreToolUse": [],
+    "PostToolUse": []
+  },
+  "env": {}
+}

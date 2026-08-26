@@ -23,14 +23,15 @@ domain work (depends on PART 9-17 core being in place).
 Ref: `.claude/rules/binary-rules.md`, AI.md PART 7 (line 9913)
 - [x] Server binary skeleton at `src/main.go` (mode/debug resolution wired)
 - [ ] Verify CGO_ENABLED=0, pure-Go deps only (no mattn/go-sqlite3) once DB lands
-- [ ] Wire `main.Version`/`main.CommitID`/`main.BuildEpoch`/`main.OfficialSite`
-      vars (Makefile LDFLAGS already targets them, main.go needs the vars)
+- [x] Wire `main.Version`/`main.CommitID`/`main.BuildEpoch`/`main.BuildDate`
+      vars (Makefile LDFLAGS targets them, main.go declares them)
 
 ## PART 8 — Server Binary CLI
 Ref: `.claude/rules/binary-rules.md`, AI.md PART 8 (line 10548)
 - [x] `--mode`/`--debug` flags with flag > env > default priority (`src/mode`)
 - [ ] `--config`/`--server` and remaining flags per spec
-- [ ] `--help`/`--version` output per spec format
+- [x] `-h`/`--help` (stdlib default), `-v`/`--version` output wired
+- [x] `--color`/`NO_COLOR`/`COLOR` resolution wired (`resolveColor` in `src/main.go`)
 
 ## PART 9 — Error Handling & Caching
 Ref: `.claude/rules/backend-rules.md`, AI.md PART 9 (line 14067)

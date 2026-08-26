@@ -38,6 +38,12 @@ maintainer_name:  CasjaysDev
 maintainer_email: git-admin@casjaysdev.pro
 binary_name:      cashp
 cli_binary_name:  cashp-cli
+# PART 34 flipped (business logic requires end-user accounts: global_admin/account_admin/end_user roles)
+multi_user:       true
+# PART 35 flipped (business logic requires multi-tenant hosting accounts)
+organizations:    true
+# PART 36 flipped (business logic requires per-tenant custom domains)
+custom_domains:   true
 ```
 
 `internal_name` and `internal_org` are FROZEN — set once at first-time setup
