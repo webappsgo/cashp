@@ -1245,7 +1245,7 @@ Quick reference: Accept `yes/no`, `true/false`, `1/0`, `on/off`, `enable/disable
 | `.claude/settings.local.json` | ✓ | Personal local overrides — gitignored |
 | `.claude/*.lock` | ✓ | Claude Code lock files — gitignored |
 | `.claude/backups/`, `.claude/cache/`, `.claude/history.jsonl` | ✓ | Runtime state — gitignored |
-| `.claude/CLAUDE.md`, `.claude/agents/`, `.claude/hooks/`, `.claude/commands/`, `.claude/plans/`, `.claude/rules/` | — | Team config — **committed** |
+| `.claude/CLAUDE.md`, `.claude/agents/`, `.claude/hooks/`, `.claude/commands/`, `.claude/plans/`, `.claude/rules/`, `.claude/memory/` | — | Team config — **committed** |
 | `.cursor/rules/`, `.cursor/mcp.json` | — | Cursor team config — **committed** |
 | `.cursor/settings.json` | ✓ | Cursor personal settings — gitignored |
 | `.windsurf/rules/` | — | Windsurf team config — **committed** |
@@ -1443,6 +1443,20 @@ Apply to: IPv6, Tor .onion, API tokens, hashes, UUIDs, Base64
 ---
 For complete details, see AI.md PART 16, 17
 ```
+
+**Claude Code Project Memory (.claude/memory/):**
+
+Distinct from `.claude/rules/` (spec-derived cheatsheets, regenerated whenever AI.md changes) and the Project Memory File below (`CLAUDE.md`/`.claude/CLAUDE.md`, the always-loaded loader pointer): `.claude/memory/` holds durable, project-specific knowledge that accumulates DURING development and is never part of the generic AI.md spec — decisions made, gotchas discovered, domain-specific conventions unique to this one codebase. It exists so a fact worth keeping permanently doesn't only live in conversation, where it is lost to compaction.
+
+Format mirrors the `claudemgr/config` global `~/.claude/memory/` convention: each file is markdown with YAML frontmatter (`name`, `description`, `type: project`), one topic per file, indexed by `.claude/memory/MEMORY.md`. Read on demand — for any file over ~400 lines, `grep -n "^## "` it first and read only the relevant section rather than the whole file.
+
+**Read-only vs. read/write:** `~/.claude/**` (global) is read-only from inside a project session — it is deployed from the `claudemgr/config` repo's own `home/**` via `install.sh`, so edits go through that repo's source-then-deploy pipeline, never in place. `{project_dir}/.claude/**` (including `.claude/memory/`) is read/write directly, in this repo, in the same session doing the work — edit it in place and commit it with the rest of the change, exactly like any other project file. That is what keeps it current: there is no separate deploy step for project-local memory.
+
+**Security:** identical rules to global memory files — never store secrets, tokens, or passwords in these files; the credential masking rule (`key=xxxxx`) applies exactly as it does everywhere else in the repo.
+
+**Committed to the repo** (not gitignored) — team-shared like `.claude/rules/`, `.claude/agents/`, and `.claude/settings.json`. Only `.claude/settings.local.json` and other explicitly personal/runtime paths (see AI-Specific Files and Directories table above) stay gitignored.
+
+**When to add an entry:** after any nontrivial decision, workaround, or discovered fact that would otherwise need re-explaining in a future session — why a particular library/pattern was chosen over the obvious one, a footgun in this codebase's tooling, an external constraint not visible from the code itself. Do not duplicate content that already lives in `AI.md` (spec) or `.claude/rules/` (spec cheatsheets) — this directory is for knowledge that exists only because of this project's own history, not generic conventions.
 
 **Cursor Rules (.cursor/rules/):**
 
@@ -2694,11 +2708,13 @@ Before I proceed, can you confirm [specific question]?
 2. If IDEA.md is missing and either Claude loader file contains project-specific content: migrate that content into IDEA.md before proceeding
 3. Check if .claude/rules/ directory exists
 4. If missing or outdated: CREATE/UPDATE all rule files (see table below)
-5. If CLAUDE.md is missing: create the efficient loader version
-6. If a Claude loader file exists and starts with `# Project SPEC`: treat it as the standard loader format; update only if references/rules are stale
-7. If a Claude loader file exists but is not in the standard loader format: migrate project-specific content to IDEA.md, then merge remaining valid loader guidance into the efficient loader structure - NEVER overwrite blindly
-8. If TODO.AI.md or TODO.md exists: read both and check for needed updates (treat both files the same; never delete or empty the human-owned TODO.md)
-9. Commit all COMMIT, NEVER, and MUST rules to memory
+5. Check if .claude/memory/ directory exists; if missing, create it with an empty `.claude/memory/MEMORY.md` index (do not fabricate entries - it starts empty and grows only from real project-specific discoveries)
+6. If CLAUDE.md is missing: create the efficient loader version
+7. If a Claude loader file exists and starts with `# Project SPEC`: treat it as the standard loader format; update only if references/rules are stale
+8. If a Claude loader file exists but is not in the standard loader format: migrate project-specific content to IDEA.md, then merge remaining valid loader guidance into the efficient loader structure - NEVER overwrite blindly
+9. If TODO.AI.md or TODO.md exists: read both and check for needed updates (treat both files the same; never delete or empty the human-owned TODO.md)
+10. Read `.claude/memory/MEMORY.md` (if non-empty) and load referenced files as needed
+11. Commit all COMMIT, NEVER, and MUST rules to memory
 ```
 
 **Rule Files to Create/Update:**
@@ -3481,7 +3497,7 @@ type Config struct {
 enabled: false
 
 # User registration creation mode (when enabled)
-# Options: open (default), invite, admin_only, disabled
+# Options: open (default), private
 registration:
   mode: open
 ```
@@ -5233,7 +5249,7 @@ For code that runs in the application, NEVER use bare `/path`. Always use `{fqdn
 | **JavaScript** | `fetch('/api/{api_version}/users')` | `fetch(\`${window.location.origin}/api/${apiVersion}/users\`)` |
 | **HTML templates** | `href="/api/docs"` | `href="https://{{.FQDN}}/api/docs"` |
 | **Config files** | `url: /callback` | `url: https://{fqdn}/callback` |
-| **Email templates** | `<a href="/verify">` | `<a href="https://{{.FQDN}}/verify">` |
+| **Email templates** | `<a href="/verify">` | `<a href="https://{fqdn}/verify?token={token}">` (PART 18: `{variable}` syntax, not Go templates) |
 
 **Why:** Bare paths break when:
 - Behind reverse proxy with different base path
@@ -5306,7 +5322,7 @@ if cfg.Server.Healthz.Root.Enabled {
 | docs/*.md | `{official_site}/path` | `curl -q -LSsf https://api.example.com/api/v1/users` |
 | Go code | `{fqdn}/path` | `fmt.Sprintf("https://%s/path", cfg.FQDN)` |
 | JS code | `origin/path` | `${window.location.origin}/path` |
-| Email templates | `{fqdn}/path` | `https://{{.FQDN}}/verify` |
+| Email templates | `{fqdn}/path` (PART 18: `{variable}` syntax, not Go templates) | `https://{fqdn}/verify?token={token}` |
 | Router registration | `/path` | `router.GET("/api/"+apiVersion+"/users", ...)` (internal only) |
 
 **Platform-Specific URLs:**
@@ -37866,7 +37882,7 @@ Common Configuration Keys:
   server.fqdn           Server FQDN (fully qualified domain name)
   branding.title        Server display title
   branding.description  Server description
-  registration.mode     Registration mode (public|private|disabled)
+  registration.mode     Registration mode (open|private)
   auth.session_timeout  Session timeout duration
   email.smtp_host       SMTP server hostname
   email.from_address    From email address
@@ -57418,7 +57434,7 @@ PARTS 34-36 ship marked `OPTIONAL - NON-NEGOTIABLE WHEN IMPLEMENTED`. A project 
 
 
 
-# PART 34: MULTI-USER (REQUIRED - NON-NEGOTIABLE)
+# PART 34: MULTI-USER (OPTIONAL - NON-NEGOTIABLE WHEN IMPLEMENTED)
 
 
 ## Overview
@@ -57459,7 +57475,7 @@ users:
   enabled: true
 
   registration:
-    # Registration mode: open, invite, admin_only, disabled
+    # Registration mode: open, private
     # Default: anyone can self-register
     mode: open
 ```
@@ -57468,23 +57484,21 @@ users:
 
 | Mode | Public Self-Registration | Admin Invite | Direct Admin Create | Default | Use Case |
 |------|--------------------------|--------------|---------------------|---------|----------|
-| **open** | ✓ Anyone | Optional | Optional | **YES** | Open community, public service |
-| **invite** | ✗ No | ✓ Required | ✗ No | No | Controlled access, invite-only onboarding |
-| **admin_only** | ✗ No | ✗ No | ✓ Required | No | Enterprise/internal tools where admins provision accounts |
-| **disabled** | ✗ No | ✗ No | ✗ No | No | Closed systems with no new regular-user accounts |
+| **open** | ✓ Anyone | ✓ Yes | ✓ Yes | **YES** | Open community, public service |
+| **private** | ✗ No | ✓ Yes | ✓ Yes | No | Controlled access, invite-only/enterprise onboarding |
 
-**Note:** Registration mode controls how NEW regular-user accounts are created. It does **not** control login for existing users or user profile visibility.
+**Note:** Registration mode controls only whether the **public** self-registration form is reachable. It does **not** control login for existing users, user profile visibility, or the Server Admin's ability to add Regular User accounts — Server Admin account management (PART 17) and Regular User account creation (this PART) are separate scopes, so Server Admin can always invite or directly create a Regular User account, in either mode. There is no "disabled" mode: to stop growth, an admin simply stops inviting/creating users under `private`.
 
 **External identity note:** OIDC/LDAP/SAML-backed regular users count as "new regular-user accounts" when the system creates the first local user record for that external identity. Their first-login account creation MUST respect `auto_register` and the username collision rules in PART 34.
 
 **Admin Permission Reminder (see PART 17):**
 - Admin CANNOT set user passwords (only user can, via invite link or reset)
 - Admin CANNOT view user passwords, 2FA secrets, or private data
-- Admin CAN: issue invite links, create users directly when the mode allows it, send password reset, suspend/unsuspend, disable 2FA
+- Admin CAN: issue invite links, create users directly, send password reset, suspend/unsuspend, disable 2FA — in both modes
 
 ### Mode: open (DEFAULT)
 
-**Anyone can register. This is the default when multi-user is enabled.**
+**Anyone can register. This is the default when multi-user is enabled. Server Admin may additionally invite or directly create users, using the same flows as `private` mode.**
 
 - `/server/auth/register` → Registration form
 - User submits username, email, password
@@ -57493,9 +57507,9 @@ users:
 - No admin action required
 - Use for: Public services, open communities, SaaS apps
 
-### Mode: invite
+### Mode: private
 
-**Only admin-issued invite links/codes can create accounts.**
+**No public self-registration form. Only Server Admin can add new Regular User accounts — by invite link or by direct creation. Both paths end the same way: the user sets their own password via a one-time link.**
 
 ```
 Admin Panel (/server/{admin_path}/config/users)
@@ -57539,46 +57553,31 @@ Admin clicks "Invite New User"
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Invite Flow:**
+**Invite flow:**
 1. Admin sets username for new user
 2. System generates one-time invite URL
 3. Admin shares URL with new user (email, chat, etc.)
 4. New user clicks link → sets their own password
 5. Account active after password set
 
-**Invite Rules (same as Server Admin invites):**
+**Direct-create flow (equivalent — Admin creates the record, then delivers the link):**
+1. Admin creates the user record at `/server/{admin_path}/config/users`
+2. System generates a one-time activation/password-setup link for that specific user
+3. If SMTP is enabled, the link is emailed automatically; otherwise a copyable link is shown for manual delivery
+4. New user opens link → sets their own password (admin cannot set it)
+5. Account active after password set
+
+**Invite/activation rules (same as Server Admin invites):**
 - Single-use by default (`max_uses` = 1, invalidated after first use or expiry); admin may raise `max_uses` (0 = unlimited)
 - Default expiry: 7 days (configurable: 1h, 6h, 24h, 48h, 7d)
-- Only Server Admin can generate invites (users cannot invite other users)
+- Only Server Admin can generate invites or activation links (users cannot invite other users)
 
-**Invite mode behavior:**
+**Private mode behavior:**
 - `/server/auth/register` → 404 (no public registration form)
 - `/server/auth/invite/user/{token}` → Password setup form (if valid token)
-- Only Server Admin can initiate user creation
+- Only Server Admin can initiate user creation (invite or direct create)
+- Existing users can still log in
 - Use for: Internal tools, controlled access, enterprise deployments
-
-### Mode: admin_only
-
-**Only Server Admin can create the account record directly. No invite-only self-service flow exists.**
-
-- `/server/auth/register` → 404 (no public registration form)
-- Server Admin creates the user at `/server/{admin_path}/config/users`
-- System generates a one-time activation/password-setup link for that specific user
-- If SMTP is enabled, send the activation link automatically; otherwise show a copyable link for manual delivery
-- Admin still cannot set the user's password
-- Existing users can still log in
-- Use for: Enterprise provisioning, tightly controlled internal systems
-
-### Mode: disabled
-
-**No new regular-user accounts can be created.**
-
-- `/server/auth/register` → 404 (no public registration form)
-- New `/server/auth/invite/user/{token}` links are not issued
-- Existing unused invite/activation links must be rejected once mode is set to `disabled`
-- Server Admin cannot create new regular-user accounts through the normal UI/API
-- Existing users can still log in
-- Use for: Closed systems where account creation is frozen or intentionally unavailable
 
 ### Server Setup to User Registration Workflow
 
@@ -57602,22 +57601,22 @@ Admin clicks "Invite New User"
 │                                                                          │
 │  3. ADMIN OPTIONALLY CHANGES REGISTRATION MODE                           │
 │     └── /server/{admin_path}/config/settings → registration mode                       │
-│     └── Mode: open (default) | invite | admin_only | disabled            │
-│     └── Mode controls how NEW regular-user accounts are created          │
+│     └── Mode: open (default) | private                                   │
+│     └── Mode controls whether the public self-registration form exists   │
 │                                                                          │
 │  4. USER CREATION METHODS                                                │
-│     ┌────────────────────────────────────────────────────────────────────────┐ │
-│     │ Method                │ open │ invite │ admin_only │ disabled │      │ │
-│     ├────────────────────────────────────────────────────────────────────────┤ │
-│     │ /server/auth/register        │  ✓   │   ✗    │     ✗      │    ✗     │      │ │
-│     │ Admin invite→user     │  ✓   │   ✓    │     ✗      │    ✗     │      │ │
-│     │ Admin create→activate │  ✓   │   ✗    │     ✓      │    ✗     │      │ │
-│     └────────────────────────────────────────────────────────────────────────┘ │
+│     ┌───────────────────────────────────────────────┐                   │ │
+│     │ Method                 │ open │ private │      │                   │ │
+│     ├───────────────────────────────────────────────┤                   │ │
+│     │ /server/auth/register  │  ✓   │    ✗    │      │                   │ │
+│     │ Admin invite→user      │  ✓   │    ✓    │      │                   │ │
+│     │ Admin create→activate  │  ✓   │    ✓    │      │                   │ │
+│     └───────────────────────────────────────────────┘                   │ │
 │                                                                          │
-│  5. ADMIN-CONTROLLED FLOWS                                               │
+│  5. ADMIN-CONTROLLED FLOWS (available in both modes)                     │
 │     └── invite: Admin sets username → generates one-time invite URL      │
-│     └── admin_only: Admin creates account → system generates activation  │
-│        URL/email                                                          │
+│     └── direct create: Admin creates account → system generates          │
+│        activation URL/email                                              │
 │     └── User opens link → sets own password (admin cannot set)           │
 │     └── Account active                                                   │
 │                                                                          │
@@ -57631,17 +57630,13 @@ Admin clicks "Invite New User"
 | Fresh server (no setup) | N/A | N/A | N/A | **YES** |
 | Multi-user feature disabled | N/A | N/A | N/A | **YES** |
 | Multi-user enabled, mode=open | ✓ Open | ✓ Yes | ✓ Yes | **YES** |
-| Multi-user enabled, mode=invite | ✗ No | ✓ Yes | ✗ No | **YES** |
-| Multi-user enabled, mode=admin_only | ✗ No | ✗ No | ✓ Yes | **YES** |
-| Multi-user enabled, mode=disabled | ✗ No | ✗ No | ✗ No | **YES** |
+| Multi-user enabled, mode=private | ✗ No | ✓ Yes | ✓ Yes | **YES** |
 
-**All registration modes are VALID operational states, NOT errors.**
+**Both registration modes are VALID operational states, NOT errors.**
 
 **Mode summary:**
-- `open`: Anyone can self-register; admins may also invite or provision directly
-- `invite`: Only admin-issued invite links/codes create accounts
-- `admin_only`: Only direct admin-created accounts are allowed
-- `disabled`: No new regular-user accounts are allowed
+- `open`: Anyone can self-register; Server Admin may also invite or directly create users
+- `private`: No public self-registration form; only Server Admin can add users, by invite link or direct creation — both complete via a one-time link where the user sets their own password
 
 ## Regular User Behavior
 
@@ -59118,11 +59113,9 @@ server:
     enabled: false
 
     registration:
-      # Registration mode: open (default), invite, admin_only, disabled
-      # - open: Anyone can self-register
-      # - invite: Only admin-issued invite links/codes can create accounts
-      # - admin_only: Only Server Admin can create the account record directly
-      # - disabled: No new regular-user accounts can be created
+      # Registration mode: open (default), private
+      # - open: Anyone can self-register; Server Admin may also invite or directly create users
+      # - private: No public self-registration form; only Server Admin can add users, by invite or direct creation
       mode: open
 
       # Email verification (applies to open mode)
@@ -59220,9 +59213,7 @@ server:
 | Mode | Public Reg | Admin Invite | Direct Admin Create | Default |
 |------|------------|--------------|---------------------|---------|
 | **open** | ✓ Anyone | ✓ Allowed | ✓ Allowed | **YES** |
-| **invite** | ✗ No | ✓ Required | ✗ No | No |
-| **admin_only** | ✗ No | ✗ No | ✓ Required | No |
-| **disabled** | ✗ No | ✗ No | ✗ No | No |
+| **private** | ✗ No | ✓ Allowed | ✓ Allowed | No |
 
 **Key rule:** Registration mode defines how new regular-user accounts are created. Profile visibility remains a separate setting.
 
@@ -59236,7 +59227,7 @@ server:
 4. Account active
 ```
 
-**Invite Mode:**
+**Private Mode — invite:**
 ```
 1. Admin creates invite at /server/{admin_path}/config/users (sets username)
 2. Admin shares invite URL with new user
@@ -59244,7 +59235,7 @@ server:
 4. Account active
 ```
 
-**Admin-Only Mode:**
+**Private Mode — direct create:**
 ```
 1. Admin creates the user record at /server/{admin_path}/config/users
 2. System generates a one-time activation/password-setup link
@@ -61705,7 +61696,7 @@ See PART 16 (Web Frontend) for the complete reserved names list.
 
 
 
-# PART 35: ORGANIZATIONS (REQUIRED - NON-NEGOTIABLE)
+# PART 35: ORGANIZATIONS (OPTIONAL - NON-NEGOTIABLE WHEN IMPLEMENTED)
 
 **Requires PART 34: MULTI-USER to be implemented first.**
 
@@ -62397,7 +62388,7 @@ See PART 16 (Web Frontend) for the complete reserved names list. Users and orgs 
 ---
 
 
-# PART 36: CUSTOM DOMAINS (REQUIRED - NON-NEGOTIABLE)
+# PART 36: CUSTOM DOMAINS (OPTIONAL - NON-NEGOTIABLE WHEN IMPLEMENTED)
 
 ## Overview
 
@@ -63716,6 +63707,14 @@ maintainer_email: jane@example.com
 - [ ] **CRITICAL - ALWAYS DO section** - lists mandatory requirements from relevant PARTs
 - [ ] **Reference line** - `For complete details, see AI.md PART X, Y, Z`
 - [ ] **Not outdated** - rule files regenerated when AI.md modified
+
+### Project Memory (.claude/memory/)
+
+- [ ] **Directory exists and is committed** - not gitignored, same as `.claude/rules/`
+- [ ] **`.claude/memory/MEMORY.md` index exists** - even if empty (starts empty, grows only from real discoveries)
+- [ ] **Each file has YAML frontmatter** - `name`, `description`, `type: project`
+- [ ] **No secrets or credentials** - same masking rule as everywhere else in the repo
+- [ ] **No duplication of AI.md or `.claude/rules/` content** - only project-specific knowledge that exists solely because of this codebase's own history
 
 ### Behavior Rules
 
