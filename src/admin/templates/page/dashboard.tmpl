@@ -1,0 +1,105 @@
+{{ define "content" }}
+{{ if not .Data.SetupComplete }}
+<div class="flash flash-warning">
+  <span class="flash-icon" aria-hidden="true">!</span>
+  <p class="flash-message">Initial setup has not been completed. <a href="{{ .Data.SetupURL }}">Finish setup</a>.</p>
+</div>
+{{ end }}
+
+{{ if .Data.Maintenance }}
+<div class="flash flash-info">
+  <span class="flash-icon" aria-hidden="true">i</span>
+  <p class="flash-message">Maintenance mode is on. The public site is showing the maintenance page.</p>
+</div>
+{{ end }}
+
+{{ $stats := .Data.Stats }}
+<div class="card-grid">
+  <section class="card">
+    <h2 class="card-title">Server</h2>
+    <dl class="panel-facts">
+      <dt>Host</dt><dd>{{ fallback "unknown" $stats.Hostname }}</dd>
+      <dt>Uptime</dt><dd>{{ $stats.Uptime }}</dd>
+      <dt>Started</dt><dd>{{ formatTime $stats.StartedAt }}</dd>
+      <dt>Platform</dt><dd>{{ $stats.OS }}/{{ $stats.Arch }} · {{ $stats.NumCPU }} {{ pluralize $stats.NumCPU "CPU" "CPUs" }}</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Memory</h2>
+    {{ if $stats.MemTotal }}
+    <div class="meter">
+      <div class="meter-head">
+        <span class="meter-value">{{ $stats.MemUsedPct }}%</span>
+      </div>
+      <!-- A native progress element carries the fill, so no inline style and no
+           script is needed to draw the bar. -->
+      <progress class="meter-bar" max="100" value="{{ $stats.MemUsedPct }}">{{ $stats.MemUsedPct }}% of physical memory in use</progress>
+      <p class="meter-note">{{ bytes $stats.MemAvailable }} available of {{ bytes $stats.MemTotal }}</p>
+    </div>
+    {{ else }}
+    <p class="note">Physical memory usage is not reported on this host.</p>
+    {{ end }}
+    <dl class="panel-facts">
+      <dt>Heap in use</dt><dd>{{ bytes $stats.HeapAlloc }}</dd>
+      <dt>Goroutines</dt><dd>{{ $stats.Goroutines }}</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Database</h2>
+    <dl class="panel-facts">
+      <dt>Driver</dt><dd>{{ $stats.DBDriver }}</dd>
+      <dt>Status</dt>
+      <dd><span class="badge {{ if $stats.DBHealthy }}badge-success{{ else }}badge-error{{ end }}">{{ if $stats.DBHealthy }}Healthy{{ else }}Unreachable{{ end }}</span></dd>
+      <dt>Connections</dt><dd>{{ $stats.DBInUse }} in use · {{ $stats.DBIdle }} idle</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Load</h2>
+    {{ if $stats.Load1 }}
+    <dl class="panel-facts">
+      <dt>1 minute</dt><dd>{{ $stats.Load1 }}</dd>
+      <dt>5 minutes</dt><dd>{{ $stats.Load5 }}</dd>
+      <dt>15 minutes</dt><dd>{{ $stats.Load15 }}</dd>
+    </dl>
+    {{ else }}
+    <p class="note">Load averages are not reported on this host.</p>
+    {{ end }}
+  </section>
+</div>
+
+<section class="card">
+  <h2 class="card-title">Quick actions</h2>
+  <ul class="nav-list panel-quick">
+    {{ range .Data.Quick }}<li class="nav-item"><a class="nav-link" href="{{ .Href }}">{{ .Label }}</a></li>{{ end }}
+  </ul>
+</section>
+
+<section class="card">
+  <h2 class="card-title">Recent activity</h2>
+  {{ if .Data.Recent }}
+  <div class="table-scroll">
+    <table class="table">
+      <caption class="table-caption">The ten most recent administrative events.</caption>
+      <thead>
+        <tr><th scope="col">When</th><th scope="col">Event</th><th scope="col">Who</th><th scope="col">Detail</th></tr>
+      </thead>
+      <tbody>
+        {{ range .Data.Recent }}
+        <tr>
+          <td>{{ relTime .OccurredAt }}</td>
+          <td>{{ humanize .Event }}</td>
+          <td>{{ fallback "system" .Actor }}</td>
+          <td class="table-detail">{{ .Detail }}</td>
+        </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+  {{ else }}
+  <p class="note">No administrative activity has been recorded yet.</p>
+  {{ end }}
+</section>
+{{ end }}

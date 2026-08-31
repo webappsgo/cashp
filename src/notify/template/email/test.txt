@@ -1,0 +1,16 @@
+Subject: Test Notification - {app_name}
+---
+TEST NOTIFICATION
+
+This email was sent to: {recipient_email}
+Server: {fqdn}
+
+If you are reading this, outbound delivery works. Nothing else about
+your configuration changed.
+
+Time: {timestamp}
+
+--
+{app_name}
+{app_url}
+(c) {year}

@@ -1,0 +1,235 @@
+{{define "content" -}}
+<nav class="tabs" aria-label="Account sections">
+  <ul>
+    <li><a href="#profile">Profile</a></li>
+    <li><a href="#password">Password</a></li>
+    <li><a href="#twofactor">Two-factor</a></li>
+    <li><a href="#sessions">Sessions</a></li>
+    <li><a href="#tokens">API tokens</a></li>
+    <li><a href="#danger">Close account</a></li>
+  </ul>
+</nav>
+
+<section class="card" id="profile">
+  <h2>Profile</h2>
+  <dl class="facts">
+    <dt>Username</dt><dd>{{.User.Username}}</dd>
+    <dt>Email</dt>
+    <dd>
+      {{.User.Email}}
+      {{if .User.EmailVerified}}<span class="tag tag-ok">verified</span>
+      {{else}}<span class="tag tag-warn">unverified</span>{{end}}
+    </dd>
+    <dt>Member since</dt><dd>{{date .User.CreatedAt}}</dd>
+  </dl>
+  {{if not .User.EmailVerified}}
+  <form method="post" action="{{.BasePath}}/account/email/resend" class="inline">
+    {{template "csrf" .}}
+    <button type="submit" class="btn">Resend verification email</button>
+  </form>
+  {{end}}
+  <form method="post" action="{{.BasePath}}/account/profile" class="stack">
+    {{template "csrf" .}}
+    <div class="field">
+      <label for="display_name">Display name</label>
+      <input id="display_name" name="display_name" type="text" maxlength="64" value="{{.User.DisplayName}}">
+    </div>
+    <div class="field">
+      <label for="bio">Bio</label>
+      <textarea id="bio" name="bio" rows="3" maxlength="500">{{.User.Bio}}</textarea>
+    </div>
+    <div class="field">
+      <label for="website">Website</label>
+      <input id="website" name="website" type="url" inputmode="url" value="{{.User.Website}}">
+    </div>
+    <div class="field">
+      <label for="location">Location</label>
+      <input id="location" name="location" type="text" maxlength="64" value="{{.User.Location}}">
+    </div>
+    <div class="field">
+      <label for="visibility">Profile visibility</label>
+      <select id="visibility" name="visibility">
+        <option value="public" {{if eqs .User.Visibility "public"}}selected{{end}}>Public</option>
+        <option value="private" {{if eqs .User.Visibility "private"}}selected{{end}}>Private</option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Save profile</button>
+  </form>
+</section>
+
+<section class="card" id="password">
+  <h2>Password</h2>
+  <form method="post" action="{{.BasePath}}/account/password" class="stack">
+    {{template "csrf" .}}
+    <div class="field">
+      <label for="current_password">Current password</label>
+      <input id="current_password" name="current_password" type="password"
+             autocomplete="current-password" required>
+    </div>
+    <div class="field">
+      <label for="new_password">New password</label>
+      <input id="new_password" name="new_password" type="password" autocomplete="new-password"
+             minlength="12" required aria-describedby="pw-hint">
+      <p class="hint" id="pw-hint">Changing your password signs out every other session.</p>
+    </div>
+    <button type="submit" class="btn btn-primary">Change password</button>
+  </form>
+</section>
+
+<section class="card" id="twofactor">
+  <h2>Two-factor authentication</h2>
+  {{if .User.TOTPEnabled}}
+  <p>Two-factor authentication is <strong>on</strong> for this account.</p>
+  <form method="post" action="{{.BasePath}}/account/totp/disable" class="stack">
+    {{template "csrf" .}}
+    <div class="field">
+      <label for="totp_off_password">Confirm your password</label>
+      <input id="totp_off_password" name="password" type="password" autocomplete="current-password" required>
+    </div>
+    <div class="field">
+      <label for="totp_off_code">Current authenticator code</label>
+      <input id="totp_off_code" name="code" type="text" inputmode="numeric" pattern="[0-9]*"
+             autocomplete="one-time-code" maxlength="8" required>
+    </div>
+    <button type="submit" class="btn btn-danger">Turn off two-factor</button>
+  </form>
+  {{else if .TOTP}}
+  <p>Add this secret to your authenticator app, then enter the code it shows to finish.</p>
+  <dl class="facts">
+    <dt>Secret</dt><dd><code class="mono">{{.TOTP.Secret}}</code></dd>
+    <dt>Setup URI</dt><dd><code class="mono wrap">{{.TOTP.URI}}</code></dd>
+  </dl>
+  <form method="post" action="{{.BasePath}}/account/totp/confirm" class="stack">
+    {{template "csrf" .}}
+    <input type="hidden" name="secret" value="{{.TOTP.Secret}}">
+    <div class="field">
+      <label for="totp_confirm">Code from your app</label>
+      <input id="totp_confirm" name="code" type="text" inputmode="numeric" pattern="[0-9]*"
+             autocomplete="one-time-code" maxlength="8" required autofocus>
+    </div>
+    <button type="submit" class="btn btn-primary">Finish setup</button>
+  </form>
+  {{else}}
+  <p>Two-factor authentication is off. Turning it on asks for a one-time code at every sign-in.</p>
+  <form method="post" action="{{.BasePath}}/account/totp/begin" class="inline">
+    {{template "csrf" .}}
+    <button type="submit" class="btn btn-primary">Set up two-factor</button>
+  </form>
+  {{end}}
+</section>
+
+<section class="card" id="sessions">
+  <h2>Active sessions</h2>
+  {{if .Sessions}}
+  <div class="tablewrap">
+    <table>
+      <caption class="sr-only">Sessions currently signed in to this account</caption>
+      <thead>
+        <tr><th scope="col">Device</th><th scope="col">Address</th><th scope="col">Started</th><th scope="col">Expires</th><th scope="col">Action</th></tr>
+      </thead>
+      <tbody>
+        {{range .Sessions}}
+        <tr>
+          <td>{{fallbackText .UserAgent}}{{if .Current}} <span class="tag tag-ok">this device</span>{{end}}</td>
+          <td>{{fallbackText .IPAddress}}</td>
+          <td>{{date .CreatedAt}}</td>
+          <td>{{date .ExpiresAt}}</td>
+          <td>
+            {{if .Current}}
+            <span class="muted">Current</span>
+            {{else}}
+            <form method="post" action="{{$.BasePath}}/account/sessions/{{.ID}}/revoke" class="inline">
+              {{template "csrf" $}}
+              <button type="submit" class="btn btn-danger btn-sm">Sign out</button>
+            </form>
+            {{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="muted">No other sessions.</p>
+  {{end}}
+  <form method="post" action="{{.BasePath}}/account/sessions/revoke-all" class="inline">
+    {{template "csrf" .}}
+    <button type="submit" class="btn btn-danger">Sign out every other session</button>
+  </form>
+</section>
+
+<section class="card" id="tokens">
+  <h2>API tokens</h2>
+  {{if .NewToken}}
+  <p class="alert alert-ok" role="status">
+    Copy this token now. It is shown once and cannot be retrieved again.<br>
+    <code class="mono wrap">{{.NewToken}}</code>
+  </p>
+  {{end}}
+  {{if .Tokens}}
+  <div class="tablewrap">
+    <table>
+      <caption class="sr-only">API tokens issued for this account</caption>
+      <thead>
+        <tr><th scope="col">Name</th><th scope="col">Prefix</th><th scope="col">Scopes</th><th scope="col">Last used</th><th scope="col">Expires</th><th scope="col">Action</th></tr>
+      </thead>
+      <tbody>
+        {{range .Tokens}}
+        <tr>
+          <td>{{.Name}}</td>
+          <td><code class="mono">{{.TokenPrefix}}</code></td>
+          <td>{{join ", " .Scopes}}</td>
+          <td>{{date .LastUsedAt}}</td>
+          <td>{{date .ExpiresAt}}</td>
+          <td>
+            <form method="post" action="{{$.BasePath}}/account/tokens/{{.ID}}/revoke" class="inline">
+              {{template "csrf" $}}
+              <button type="submit" class="btn btn-danger btn-sm">Revoke</button>
+            </form>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="muted">No tokens yet.</p>
+  {{end}}
+  <form method="post" action="{{.BasePath}}/account/tokens" class="stack">
+    {{template "csrf" .}}
+    <div class="field">
+      <label for="token_name">Token name</label>
+      <input id="token_name" name="name" type="text" maxlength="64" required>
+    </div>
+    <fieldset class="field">
+      <legend>Scopes</legend>
+      <label class="check"><input type="checkbox" name="scopes" value="read" checked><span>Read</span></label>
+      <label class="check"><input type="checkbox" name="scopes" value="write"><span>Write</span></label>
+      <label class="check"><input type="checkbox" name="scopes" value="admin"><span>Manage own resources</span></label>
+    </fieldset>
+    <div class="field">
+      <label for="token_expires">Expires in days <span class="hint">(0 means no expiry)</span></label>
+      <input id="token_expires" name="expires_in_days" type="number" min="0" max="3650" value="90">
+    </div>
+    <button type="submit" class="btn btn-primary">Create token</button>
+  </form>
+</section>
+
+<section class="card danger" id="danger">
+  <h2>Close account</h2>
+  <p>Closing your account removes your profile and signs out every session. Your username is
+    retired and cannot be claimed by anyone else.</p>
+  <form method="post" action="{{.BasePath}}/account/delete" class="stack">
+    {{template "csrf" .}}
+    <div class="field">
+      <label for="confirm_username">Type <strong>{{.User.Username}}</strong> to confirm</label>
+      <input id="confirm_username" name="confirm" type="text" autocapitalize="none" spellcheck="false" required>
+    </div>
+    <div class="field">
+      <label for="delete_password">Confirm your password</label>
+      <input id="delete_password" name="password" type="password" autocomplete="current-password" required>
+    </div>
+    <button type="submit" class="btn btn-danger">Close my account</button>
+  </form>
+</section>
+{{- end}}

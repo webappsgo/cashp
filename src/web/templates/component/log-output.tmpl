@@ -1,0 +1,16 @@
+{{ define "log_output" }}
+<!-- Args: a web.LogOutput. Console and log output: monospace, scrollable in its
+     own box, and announced as a live region so appended lines are read out. -->
+<section class="log-block">
+  <header class="log-head">
+    <h3 class="log-title">{{ .Title }}</h3>
+    {{ if .Source }}<span class="log-source">{{ .Source }}</span>{{ end }}
+  </header>
+  {{ if .Lines }}
+  <pre class="log-output" tabindex="0" role="log" aria-live="polite" aria-label="{{ .Title }} output">{{ range .Lines }}{{ . }}
+{{ end }}</pre>
+  {{ else }}
+  <p class="log-empty">{{ fallback "No output has been produced yet." .Empty }}</p>
+  {{ end }}
+</section>
+{{ end }}

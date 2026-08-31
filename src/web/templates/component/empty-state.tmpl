@@ -1,0 +1,12 @@
+{{ define "empty_state" }}
+<!-- Args: a web.EmptyState. An empty list always explains what belongs here
+     and how to add the first item — never a bare "no data". -->
+<div class="state state-empty">
+  <span class="state-icon" aria-hidden="true">{{ fallback "◍" .Icon }}</span>
+  <h3 class="state-title">{{ .Title }}</h3>
+  <p class="state-message">{{ .Message }}</p>
+  {{ if and .ActionLabel .ActionHref }}
+  <p><a class="btn btn-primary" href="{{ .ActionHref }}">{{ .ActionLabel }}</a></p>
+  {{ end }}
+</div>
+{{ end }}

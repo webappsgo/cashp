@@ -1,0 +1,23 @@
+{{define "content" -}}
+<section class="card narrow">
+  <form method="post" action="/{{.AdminPath}}/login" class="stack">
+    {{template "csrf" .}}
+    <input type="hidden" name="next" value="{{.Next}}">
+    <div class="field">
+      <label for="username">Administrator username</label>
+      <input id="username" name="username" type="text" autocomplete="username" autocapitalize="none"
+             spellcheck="false" required autofocus>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+    </div>
+    <div class="field">
+      <label for="totp">Two-factor code <span class="hint">(only if enabled on your account)</span></label>
+      <input id="totp" name="totp_code" type="text" inputmode="numeric" pattern="[0-9]*"
+             autocomplete="one-time-code" maxlength="8">
+    </div>
+    <button type="submit" class="btn btn-primary">Sign in</button>
+  </form>
+</section>
+{{- end}}

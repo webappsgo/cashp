@@ -1,0 +1,42 @@
+{{ define "title" }}Contact{{ end }}
+{{ define "page_class" }}page-contact{{ end }}
+
+{{ define "content" }}
+<article class="contact-page prose">
+  <h1>Contact</h1>
+  <p>Send a message to the operator of this instance. All fields are required, and you will receive the reply at the address you give here.</p>
+
+  <form class="form contact-form" method="post" action="/server/contact" novalidate>
+    {{ template "csrf" . }}
+
+    {{ template "form_field" dict "Name" "name" "Label" "Your name" "Value" (index .Data.Values "name") "Error" (index .Data.Errors "name") "Required" true "Autocomplete" "name" }}
+    {{ template "form_field" dict "Name" "email" "Label" "Your email address" "Type" "email" "Value" (index .Data.Values "email") "Error" (index .Data.Errors "email") "Required" true "Autocomplete" "email" "Hint" "Used only to reply to this message." }}
+    {{ template "form_field" dict "Name" "subject" "Label" "Subject" "Value" (index .Data.Values "subject") "Error" (index .Data.Errors "subject") "Required" true }}
+    {{ template "form_field" dict "Name" "message" "Label" "Message" "Value" (index .Data.Values "message") "Error" (index .Data.Errors "message") "Required" true "Rows" 8 "Hint" "Up to 5000 characters." }}
+
+    <!-- Honeypot: hidden from people by CSS, filled in by automated submitters. -->
+    <div class="honeypot" aria-hidden="true">
+      <label for="field-website">Leave this field empty</label>
+      <input id="field-website" name="website" type="text" tabindex="-1" autocomplete="off">
+    </div>
+
+    {{ template "form_field" dict "Name" "captcha_answer" "Label" .Data.Question "Value" "" "Error" (index .Data.Errors "captcha") "Required" true "Hint" "A simple question that keeps automated submissions out." }}
+    <input type="hidden" name="captcha_token" value="{{ .Data.Token }}">
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Send message</button>
+      <button type="reset" class="btn btn-secondary">Clear form</button>
+    </div>
+  </form>
+
+  <section id="security-issues" aria-labelledby="security-issues-title">
+    <h2 id="security-issues-title">Security issues</h2>
+    <p>To report a security vulnerability, consult our <a href="/server/security">security policy</a>.</p>
+  </section>
+
+  <section id="abuse-reports" aria-labelledby="abuse-reports-title">
+    <h2 id="abuse-reports-title">Abuse reports</h2>
+    <p>To report abusive content or policy violations, use this contact form.</p>
+  </section>
+</article>
+{{ end }}

@@ -1,0 +1,140 @@
+{{ define "title" }}Help{{ end }}
+{{ define "page_class" }}page-help{{ end }}
+
+{{ define "content" }}
+<article class="help-page prose">
+  <h1>Help</h1>
+  <p>How to use this instance from the browser, the command line and the API.</p>
+
+  <nav class="toc" aria-label="On this page">
+    <h2 class="toc-title">On this page</h2>
+    <ul>
+      <li><a href="#getting-started">Getting started</a></li>
+      <li><a href="#features">Using the features</a></li>
+      <li><a href="#api-docs">API documentation</a></li>
+      <li><a href="#faq">FAQ</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+    </ul>
+  </nav>
+
+  <section id="getting-started" aria-labelledby="getting-started-title">
+    <h2 id="getting-started-title">Getting started</h2>
+    <p>The first global administrator is created with the one-time setup token that the server prints to its console on first start. There is no "first user becomes admin" shortcut.</p>
+    {{ template "code_block" dict "Label" "Claim the administrator account" "Value" "cashp-cli setup --token TOKEN-FROM-CONSOLE" }}
+    <p>Once signed in, install the command line client on your workstation and point it at this instance:</p>
+    {{ template "code_block" dict "Label" "Log in from the CLI" "Value" "cashp-cli login --url https://example.com" }}
+    <p>Confirm the instance is healthy at any time:</p>
+    {{ template "code_block" dict "Label" "Health check" "Value" "curl -H 'Accept: application/json' https://example.com/api/healthz" }}
+  </section>
+
+  <section id="features" aria-labelledby="features-title">
+    <h2 id="features-title">Using the features</h2>
+
+    <h3>Hosting a website</h3>
+    <p>Create the site, point your domain's A and AAAA records at this server, then request a certificate. The certificate renews itself from then on.</p>
+    {{ template "code_block" dict "Label" "Create a site and issue a certificate" "Value" "cashp-cli site create --domain example.com --php 8.3\ncashp-cli cert issue --domain example.com" }}
+
+    <h3>Deploying an application</h3>
+    <p>Applications deploy blue-green: the new release starts alongside the running one and only takes over once it answers its health check. If it does not, the previous release keeps serving.</p>
+    {{ template "code_block" dict "Label" "Deploy and roll back" "Value" "cashp-cli app deploy --name api --git https://git.example.com/api.git\ncashp-cli app rollback --name api" }}
+
+    <h3>Containers and virtual machines</h3>
+    <p>Docker, Podman and Incus can all be enabled at once; each account gets its own isolated network. Virtual machines expose a console in the browser, and passthrough devices appear only when the host actually supports them.</p>
+    {{ template "code_block" dict "Label" "Run a container, then a virtual machine" "Value" "cashp-cli container run --image nginx:alpine --name web\ncashp-cli vm create --name build01 --cpus 4 --memory 8G --disk 80G" }}
+
+    <h3>Email, DNS and databases</h3>
+    <p>Mailboxes, DNS zones and databases are managed the same way in the panel and on the command line. DNSSEC signing is enabled per zone; database replicas can be added to an existing instance without downtime.</p>
+    {{ template "code_block" dict "Label" "Mailbox, zone and database" "Value" "cashp-cli mail mailbox create --address you@example.com\ncashp-cli dns zone create --name example.com --dnssec\ncashp-cli db create --engine postgres --name appdb" }}
+
+    <h3>Backups</h3>
+    <p>Backups are deduplicated and compressed, kept on a grandfather-father-son schedule, and can be restored to the same server or to bare metal on a new one.</p>
+    {{ template "code_block" dict "Label" "Back up and restore" "Value" "cashp-cli backup run --target site:example.com\ncashp-cli backup restore --id BACKUP-ID" }}
+  </section>
+
+  <section id="api-docs" class="api-docs" aria-labelledby="api-docs-title">
+    <h2 id="api-docs-title">API documentation</h2>
+    <p>Everything the panel does is available over the API — there is no browser-only feature.</p>
+    <ul>
+      <li><a href="/server/docs/swagger">Swagger UI</a> — interactive REST API explorer</li>
+      <li><a href="/server/docs/graphql">GraphiQL</a> — interactive GraphQL explorer</li>
+    </ul>
+  </section>
+
+  {{ if .Data.TorAddress }}
+  <section id="tor-access" class="tor-access" aria-labelledby="tor-access-title">
+    <h2 id="tor-access-title">Tor access</h2>
+    <p>This instance is also published as a Tor onion service, so you can reach it without exposing your address.</p>
+    {{ template "code_block" dict "Label" "Onion address" "Value" .Data.TorAddress }}
+    <h3>How to connect</h3>
+    <ol>
+      <li>Download <a href="https://www.torproject.org/download/" target="_blank" rel="noopener noreferrer">Tor Browser</a>.</li>
+      <li>Open Tor Browser and wait for it to connect to the network.</li>
+      <li>Paste the address above into the address bar.</li>
+    </ol>
+  </section>
+  {{ end }}
+
+  {{ if .Data.I2PAddress }}
+  <section id="i2p-access" class="i2p-access" aria-labelledby="i2p-access-title">
+    <h2 id="i2p-access-title">I2P access</h2>
+    <p>This instance is also published as an I2P eepsite.</p>
+    {{ template "code_block" dict "Label" "I2P address" "Value" .Data.I2PAddress }}
+    <h3>How to connect</h3>
+    <ol>
+      <li>Install <a href="https://geti2p.net/en/download" target="_blank" rel="noopener noreferrer">I2P</a> or <a href="https://i2pd.website/" target="_blank" rel="noopener noreferrer">i2pd</a> and let it integrate with the network.</li>
+      <li>Point your browser at the I2P HTTP proxy, by default <code class="long-string">127.0.0.1:4444</code>.</li>
+      <li>Paste the address above into the address bar.</li>
+    </ol>
+    <p class="note">Eepsites are served over plain HTTP: the I2P tunnel provides the encryption, so no certificate is involved.</p>
+  </section>
+  {{ end }}
+
+  <section id="faq" aria-labelledby="faq-title">
+    <h2 id="faq-title">FAQ</h2>
+
+    <details class="faq-item">
+      <summary>Do I need an account to use the API?</summary>
+      <p>Yes, apart from the health endpoint and the public information pages. Create an API token from your account settings and send it as a bearer token.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>Can I run Docker, Podman and Incus at the same time?</summary>
+      <p>Yes. They coexist by design, and each account's workloads are placed on its own isolated network regardless of which runtime is used.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>What happens to my sites if a node fails?</summary>
+      <p>In a clustered install the floating address moves to a healthy node and workloads restart there. On a single-server install, restore the latest backup onto a replacement machine.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>Are any features held back for a paid tier?</summary>
+      <p>No. Plans limit quotas — how much disk, memory or how many sites — never which features exist. There is no licence check and nothing phones home.</p>
+    </details>
+
+    <details class="faq-item">
+      <summary>Can I take my data elsewhere?</summary>
+      <p>Yes. Backups are portable archives, and every object the panel manages can be exported through the API.</p>
+    </details>
+  </section>
+
+  <section id="troubleshooting" aria-labelledby="troubleshooting-title">
+    <h2 id="troubleshooting-title">Troubleshooting</h2>
+
+    <h3>A certificate will not issue</h3>
+    <p>The domain must resolve to this server and port 80 must be reachable before the certificate authority can validate it. Check the DNS record first, then retry the issue command; the error page in the panel shows the exact validation failure.</p>
+
+    <h3>A deploy rolled itself back</h3>
+    <p>The new release failed its health check, so traffic stayed on the previous one. Open the deploy log for the failing release — the last lines contain the reason the process exited.</p>
+
+    <h3>Mail is being rejected by other providers</h3>
+    <p>Publish the SPF, DKIM and DMARC records this instance generates for the domain, and make sure the sending address has a matching reverse DNS entry.</p>
+
+    <h3>A virtual machine will not start after adding passthrough</h3>
+    <p>Passthrough requires IOMMU support enabled in firmware. The panel only offers devices the host actually supports; if the device disappears after a reboot, it was reclaimed by a host driver.</p>
+
+    <h3>429 Too many requests</h3>
+    <p>The API rate limit was reached. Wait for the window in the <code class="long-string">Retry-After</code> response header before retrying.</p>
+  </section>
+</article>
+{{ end }}

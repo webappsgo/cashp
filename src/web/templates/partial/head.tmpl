@@ -1,0 +1,27 @@
+{{ define "head" }}
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{ template "title" . }} · {{ .Site.AppName }}</title>
+<meta name="description" content="{{ template "description" . }}">
+<meta name="color-scheme" content="dark light">
+<meta name="generator" content="{{ .Site.AppName }} {{ .Site.Version }}">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="{{ .Site.AppName }}">
+<meta property="og:title" content="{{ template "title" . }}">
+<meta property="og:description" content="{{ template "description" . }}">
+{{ if .Site.BaseURL }}<meta property="og:url" content="{{ .Site.BaseURL }}{{ .Path }}">{{ end }}
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{{ template "title" . }}">
+<meta name="twitter:description" content="{{ template "description" . }}">
+
+{{ if .Site.BaseURL }}<link rel="canonical" href="{{ .Site.BaseURL }}{{ .Path }}">{{ end }}
+<link rel="stylesheet" href="/static/css/common.css">
+<link rel="stylesheet" href="/static/css/components.css">
+<link rel="stylesheet" href="/static/css/public.css">
+<link rel="stylesheet" href="/static/css/print.css" media="print">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icons/icon.svg">
+{{ end }}

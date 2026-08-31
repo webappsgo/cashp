@@ -1,0 +1,32 @@
+{{ define "content" }}
+  {{ $d := .Data }}
+  <form class="form support-inline-form" method="get" action="{{ .BasePath }}/kb" role="search">
+    <div class="form-group">
+      <label class="form-label" for="kb-query">Search articles</label>
+      <input class="form-input" id="kb-query" name="q" type="search" value="{{ $d.Query }}" maxlength="200">
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Search</button>
+    </div>
+  </form>
+
+  {{ if $d.Articles }}
+    <ul class="support-list">
+      {{ range $d.Articles }}
+        <li>
+          <h2><a href="{{ $.BasePath }}/kb/{{ .Slug }}">{{ .Title }}</a></h2>
+          <p class="support-meta">
+            <span class="badge badge-muted">{{ .ViewCount }} views</span>
+            <span class="badge badge-success">{{ .HelpfulCount }} found this helpful</span>
+          </p>
+        </li>
+      {{ end }}
+    </ul>
+    {{ template "support_pagination" $d }}
+  {{ else }}
+    <p class="support-empty">Nothing matched. Try different words, or ask for help.</p>
+    <p class="support-actions">
+      <a class="btn btn-primary" href="{{ .BasePath }}">Ask for help</a>
+    </p>
+  {{ end }}
+{{ end }}

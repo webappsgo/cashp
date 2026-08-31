@@ -1,0 +1,24 @@
+{{ define "title" }}You are offline{{ end }}
+{{ define "description" }}This page is shown when {{ .Site.AppName }} cannot be reached.{{ end }}
+{{ define "page_class" }}page-offline{{ end }}
+
+{{ define "content" }}
+<article class="offline-page">
+  <p class="offline-icon" aria-hidden="true">📡</p>
+  <h1>You are offline</h1>
+  <p>Your device cannot reach {{ .Site.AppName }} right now. The page you asked for needs a live connection to the panel.</p>
+  <p class="offline-hint">Nothing you had already submitted was lost — requests that reached the server were processed. Reload once you are back online.</p>
+  <div class="offline-actions">
+    <a class="btn btn-primary" href="/">Try again</a>
+    <a class="btn btn-secondary" href="/server/help">Read the help pages</a>
+  </div>
+  <section class="offline-checks" aria-labelledby="offline-checks-title">
+    <h2 id="offline-checks-title">Things worth checking</h2>
+    <ul>
+      <li>Your device still has network or Wi-Fi access.</li>
+      <li>A VPN, Tor or I2P tunnel you were using is still connected.</li>
+      <li>The panel host is reachable — ask another user on the same network if in doubt.</li>
+    </ul>
+  </section>
+</article>
+{{ end }}

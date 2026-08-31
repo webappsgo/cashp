@@ -1,0 +1,57 @@
+{{define "content" -}}
+
+<p><a href="{{.BasePath}}/invoices">&larr; All invoices</a></p>
+
+<section class="card">
+  <h2>Invoice {{.Invoice.Number}}</h2>
+  <dl class="facts">
+    <dt>State</dt><dd><span class="badge {{if eqs .Invoice.State "paid"}}badge-ok{{else if eqs .Invoice.State "overdue"}}badge-danger{{else if eqs .Invoice.State "due"}}badge-warn{{else}}badge-muted{{end}}">{{label .Invoice.State}}</span></dd>
+    <dt>Issued</dt><dd>{{date .Invoice.IssuedAt}}</dd>
+    <dt>Due</dt><dd>{{date .Invoice.DueAt}}</dd>
+    {{if .Invoice.PaidAt}}<dt>Paid</dt><dd>{{date .Invoice.PaidAt}}</dd>{{end}}
+    <dt>Period</dt><dd>{{date .Invoice.PeriodStart}} &ndash; {{date .Invoice.PeriodEnd}}</dd>
+    {{if .Invoice.ReverseCharge}}<dt>Tax</dt><dd>Reverse charge applied</dd>{{end}}
+  </dl>
+</section>
+
+<section class="card">
+  <h2>Line items</h2>
+  <div class="tablewrap">
+    <table>
+      <caption class="sr-only">Invoice line items</caption>
+      <thead><tr><th scope="col">Description</th><th scope="col">Amount</th><th scope="col">Tax</th></tr></thead>
+      <tbody>
+        {{range .Lines}}
+        <tr>
+          <td>{{.Description}}</td>
+          <td>{{money .AmountMinor $.Invoice.Currency}}</td>
+          <td>{{money .TaxMinor $.Invoice.Currency}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+      <tfoot>
+        <tr><th scope="row">Subtotal</th><td>{{money .Invoice.SubtotalMinor .Invoice.Currency}}</td><td></td></tr>
+        {{if .Invoice.DiscountMinor}}<tr><th scope="row">Discount</th><td>&minus;{{money .Invoice.DiscountMinor .Invoice.Currency}}</td><td></td></tr>{{end}}
+        <tr><th scope="row">Tax</th><td>{{money .Invoice.TaxMinor .Invoice.Currency}}</td><td></td></tr>
+        <tr><th scope="row">Total</th><td>{{money .Invoice.TotalMinor .Invoice.Currency}}</td><td></td></tr>
+        <tr><th scope="row">Paid</th><td>{{money .Invoice.PaidMinor .Invoice.Currency}}</td><td></td></tr>
+        <tr><th scope="row">Balance due</th><td>{{money .Invoice.BalanceDueMinor .Invoice.Currency}}</td><td></td></tr>
+      </tfoot>
+    </table>
+  </div>
+  {{if .Invoice.BalanceDueMinor}}
+  <form class="inline" method="post" action="{{.BasePath}}/invoices/{{.Invoice.ID}}/pay">
+    {{template "csrf" .}}
+    <button class="btn btn-primary" type="submit">Pay {{money .Invoice.BalanceDueMinor .Invoice.Currency}} now</button>
+  </form>
+  {{end}}
+</section>
+
+{{if .Invoice.Notes}}
+<section class="card">
+  <h2>Notes</h2>
+  <p class="wrap">{{.Invoice.Notes}}</p>
+</section>
+{{end}}
+
+{{- end}}

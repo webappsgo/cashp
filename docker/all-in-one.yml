@@ -1,0 +1,42 @@
+# nginx proxy address - http://172.17.0.1:64580
+# cashp - All-in-One (app + embedded PostgreSQL + Valkey + Tor)
+# Usage: docker compose -f all-in-one.yml up -d
+
+name: cashp
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "5m"
+    max-file: "1"
+
+services:
+  cashp:
+    image: ghcr.io/webappsgo/cashp:latest-aio
+    container_name: cashp-app
+    hostname: cashp
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    environment:
+      PORT: 80
+      TZ: ${TZ:-America/New_York}
+      CONTAINER_NAME: cashp-app
+    volumes:
+      - ./volumes/config:/config:z
+      - ./volumes/data:/data:z
+    ports:
+      - "172.17.0.1:64580:80"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/cashp", "--status"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    networks:
+      - cashp
+
+networks:
+  cashp:
+    name: cashp
+    external: false

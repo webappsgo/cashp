@@ -1,0 +1,43 @@
+{{ define "header" }}
+<header class="site-header panel-header">
+  <div class="panel-header-inner">
+    <a class="brand" href="{{ .Base }}">
+      <span class="brand-mark" aria-hidden="true">▤</span>
+      <span class="brand-name">{{ .Site.AppName }}</span>
+      <span class="badge badge-muted panel-badge">Server</span>
+    </a>
+
+    {{ if .Admin }}
+    <!-- CSS-only sidebar toggle: the checkbox drives the mobile navigation, so
+         the menu opens and closes with no JavaScript at all. -->
+    <input type="checkbox" id="panel-nav-toggle" class="panel-nav-toggle visually-hidden">
+    <label class="nav-toggle-label" for="panel-nav-toggle">
+      <span class="nav-toggle-icon" aria-hidden="true">☰</span>
+      <span class="nav-toggle-text">Menu</span>
+    </label>
+
+    <div class="panel-identity">
+      <span class="panel-identity-name">{{ .Admin.Username }}</span>
+      {{ if .Admin.IsPrimary }}<span class="badge badge-info">Primary</span>{{ end }}
+      <form class="inline-form" method="post" action="{{ .Base }}">
+        {{ template "csrf" . }}
+        <button class="btn btn-secondary" type="submit" name="action" value="logout">Sign out</button>
+      </form>
+    </div>
+    {{ end }}
+  </div>
+</header>
+{{ end }}
+
+{{ define "footer" }}
+<footer class="footer panel-footer">
+  <p class="panel-footer-line">
+    {{ .Site.AppName }} {{ .Site.Version }}{{ if .Site.BuildDate }} · built {{ .Site.BuildDate }}{{ end }} · {{ .Year }}
+  </p>
+  {{ if .Admin }}
+  <p class="panel-footer-line">
+    {{ .AdminCount }} {{ pluralize .AdminCount "administrator" "administrators" }} configured{{ if .Online }} · online now: {{ range $index, $name := .Online }}{{ if $index }}, {{ end }}{{ $name }}{{ end }}{{ end }}
+  </p>
+  {{ end }}
+</footer>
+{{ end }}

@@ -1,0 +1,172 @@
+{{ define "content" }}
+<ol class="steps-list panel-steps">
+  {{ $current := .Data.Step }}
+  {{ range .Data.Steps }}
+  <li class="step{{ if eq . $current }} step-current{{ else if lt . $current }} step-complete{{ end }}">
+    <span class="step-number">{{ . }}</span>
+  </li>
+  {{ end }}
+</ol>
+
+{{ template "form_error" .Data.Error }}
+
+<section class="card panel-setup-card">
+  <form class="form" method="post" action="{{ .Path }}" autocomplete="off">
+    {{ template "csrf" . }}
+    <input type="hidden" name="step" value="{{ .Data.Step }}">
+
+    {{ if eq .Data.Step 1 }}
+    <h2 class="card-title">Administrator account</h2>
+    <p class="form-hint">This is the primary administrator. It cannot be removed later.</p>
+
+    <div class="form-group">
+      <label class="form-label" for="field-username">Username</label>
+      <input class="form-input" id="field-username" name="username" type="text" value="{{ .Data.Defaults.Username }}" required spellcheck="false" autocapitalize="none">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="field-account-email">Account email</label>
+      <input class="form-input" id="field-account-email" name="account_email" type="email" required spellcheck="false" autocomplete="email">
+      <p class="form-hint">Used for security alerts and account recovery notices.</p>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="field-password">Password</label>
+      <input class="form-input" id="field-password" name="password" type="password" autocomplete="new-password">
+      <p class="form-hint">At least 12 characters using three of: lower case, upper case, digits, symbols. Leave blank to have one generated.</p>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="field-password-confirm">Confirm password</label>
+      <input class="form-input" id="field-password-confirm" name="password_confirm" type="password" autocomplete="new-password">
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Create account</button>
+    </div>
+
+    {{ else if eq .Data.Step 2 }}
+    <h2 class="card-title">API token</h2>
+    {{ if .Data.GeneratedPassword }}
+    {{ template "secret_once" dict "Label" "Generated password" "Value" .Data.GeneratedPassword }}
+    {{ end }}
+    {{ if .Data.Token }}
+    {{ template "secret_once" dict "Label" "API token" "Value" .Data.Token }}
+    {{ else }}
+    <p class="note">The API token was already shown. A replacement can be issued from the API tokens page.</p>
+    {{ end }}
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">I have saved these</button>
+    </div>
+
+    {{ else if eq .Data.Step 3 }}
+    <h2 class="card-title">Server configuration</h2>
+
+    <div class="form-group">
+      <label class="form-label" for="field-app-name">Server name</label>
+      <input class="form-input" id="field-app-name" name="app_name" type="text" value="{{ .Data.Defaults.AppName }}" required>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="field-fqdn">Fully qualified domain name</label>
+      <input class="form-input" id="field-fqdn" name="fqdn" type="text" value="{{ .Data.Defaults.FQDN }}" spellcheck="false" autocapitalize="none">
+      <p class="form-hint">The public host name clients use, such as panel.example.com.</p>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="field-mode">Mode</label>
+      <select class="form-input" id="field-mode" name="mode">
+        <option value="production"{{ if eq .Data.Defaults.Mode "production" }} selected{{ end }}>Production</option>
+        <option value="development"{{ if eq .Data.Defaults.Mode "development" }} selected{{ end }}>Development</option>
+      </select>
+      <p class="form-hint">Production enforces strict host validation and secure cookies.</p>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="field-timezone">Timezone</label>
+      <input class="form-input" id="field-timezone" name="timezone" type="text" value="{{ .Data.Defaults.Timezone }}" spellcheck="false">
+      <p class="form-hint">An IANA name such as Etc/UTC or America/New_York.</p>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Save configuration</button>
+    </div>
+
+    {{ else if eq .Data.Step 4 }}
+    <h2 class="card-title">Security</h2>
+
+    <div class="form-group">
+      <label class="form-label" for="field-backup-password">Backup encryption passphrase</label>
+      <input class="form-input" id="field-backup-password" name="backup_password" type="password" autocomplete="new-password">
+      <p class="form-hint">Backups are encrypted with this passphrase. Without it a backup cannot be restored.</p>
+    </div>
+
+    {{ if .Data.TOTPSecret }}
+    <h3 class="card-title">Authenticator</h3>
+    <p class="form-hint">Add this key to your authenticator app, then enter the code it shows.</p>
+    <div class="code-block">
+      <p class="code-label">Manual entry key</p>
+      <code class="code-content long-string">{{ .Data.TOTPSecret }}</code>
+    </div>
+    <div class="code-block">
+      <p class="code-label">Setup URI</p>
+      <code class="code-content long-string">{{ .Data.TOTPURI }}</code>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="field-totp-code">Verification code</label>
+      <input class="form-input" id="field-totp-code" name="totp_code" type="text" inputmode="numeric" autocomplete="one-time-code" spellcheck="false">
+    </div>
+    {{ end }}
+
+    <div class="checkbox-group">
+      <input class="checkbox" type="checkbox" id="field-enable-2fa" name="enable_2fa" value="true"{{ if .Data.TOTPSecret }} checked{{ end }}>
+      <label class="form-label" for="field-enable-2fa">Protect this account with an authenticator app</label>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Continue</button>
+    </div>
+
+    {{ else if eq .Data.Step 5 }}
+    <h2 class="card-title">Optional services</h2>
+
+    <div class="form-group">
+      <label class="form-label" for="field-cert-source">Certificate source</label>
+      <select class="form-input" id="field-cert-source" name="cert_source">
+        <option value="acme" selected>Automatic (ACME)</option>
+        <option value="self-signed">Self-signed</option>
+        <option value="manual">Supplied manually</option>
+      </select>
+    </div>
+
+    <div class="checkbox-group">
+      <input class="checkbox" type="checkbox" id="field-multi-user" name="multi_user" value="true">
+      <label class="form-label" for="field-multi-user">Allow more than one end-user account</label>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Continue</button>
+    </div>
+
+    {{ else }}
+    <h2 class="card-title">Finish</h2>
+    {{ if .Data.RecoveryCodes }}
+    <p class="form-hint">Store these recovery codes somewhere safe. Each one signs you in once if your authenticator is unavailable.</p>
+    <ul class="panel-codes">
+      {{ range .Data.RecoveryCodes }}<li><code class="long-string">{{ . }}</code></li>{{ end }}
+    </ul>
+    {{ end }}
+    <p class="note">
+      Completing setup invalidates every setup token. From then on this panel is
+      reachable only by signing in as {{ .Data.Username }}.
+    </p>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Complete setup</button>
+    </div>
+    {{ end }}
+  </form>
+</section>
+{{ end }}

@@ -1,0 +1,41 @@
+{
+  "name": "cashp hosting control panel",
+  "short_name": "cashp",
+  "description": "Self-hostable all-in-one hosting control panel for sites, containers, mail, DNS and databases.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#282a36",
+  "theme_color": "#bd93f9",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/static/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Help",
+      "short_name": "Help",
+      "url": "/server/help"
+    },
+    {
+      "name": "About this instance",
+      "short_name": "About",
+      "url": "/server/about"
+    }
+  ]
+}

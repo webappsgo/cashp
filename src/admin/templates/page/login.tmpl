@@ -1,0 +1,33 @@
+{{ define "content" }}
+<section class="card panel-auth-card">
+  {{ if .Data.NeedsSetup }}
+  <p class="note">This server has no administrator yet. Open the setup page with the one-time token printed in the server console.</p>
+  <p><a class="btn btn-primary" href="{{ .Data.SetupURL }}">Start setup</a></p>
+  {{ else }}
+  {{ template "form_error" .Data.Error }}
+  <form class="form" method="post" action="{{ .Base }}" autocomplete="on">
+    {{ template "csrf" . }}
+    <input type="hidden" name="action" value="login">
+
+    <div class="form-group">
+      <label class="form-label" for="field-username">Username</label>
+      <input class="form-input" id="field-username" name="username" type="text" value="{{ .Data.Username }}" required autocomplete="username" spellcheck="false" autocapitalize="none">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="field-password">Password</label>
+      <input class="form-input" id="field-password" name="password" type="password" required autocomplete="current-password">
+    </div>
+
+    <div class="checkbox-group">
+      <input class="checkbox" type="checkbox" id="field-remember" name="remember" value="true">
+      <label class="form-label" for="field-remember">Stay signed in on this device</label>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Sign in</button>
+    </div>
+  </form>
+  {{ end }}
+</section>
+{{ end }}

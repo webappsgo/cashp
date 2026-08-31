@@ -1,0 +1,15 @@
+{{ define "support_pagination" }}
+  {{ if gt .Page.Pages 1 }}
+    <nav class="support-pagination" aria-label="Pagination">
+      <p>Page {{ .Page.Page }} of {{ .Page.Pages }} · {{ .Page.Total }} in total</p>
+      <ul class="support-pagination-list">
+        {{ if gt .Page.Page 1 }}
+          <li><a class="btn btn-secondary" href="?page={{ sub .Page.Page 1 }}">Previous page</a></li>
+        {{ end }}
+        {{ if lt .Page.Page .Page.Pages }}
+          <li><a class="btn btn-secondary" href="?page={{ add .Page.Page 1 }}">Next page</a></li>
+        {{ end }}
+      </ul>
+    </nav>
+  {{ end }}
+{{ end }}

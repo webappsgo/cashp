@@ -1,0 +1,247 @@
+{{ define "content" }}
+  {{ $d := .Data }}
+
+  <div class="support-card">
+    <h2>Settings</h2>
+    <p>Every support setting lives here. None of them is read from the environment.</p>
+    <form class="form support-form" method="post" action="{{ .BasePath }}/admin/settings">
+      <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+      {{ range $d.Settings }}
+        <div class="form-group">
+          <label class="form-label" for="setting-{{ .Key }}">{{ .Key }}</label>
+          <input class="form-input" id="setting-{{ .Key }}" name="{{ .Key }}" type="text"
+            value="{{ .Value }}" maxlength="200">
+        </div>
+      {{ end }}
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save settings</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="support-card">
+    <h2>Service level agreements</h2>
+    {{ range $d.Policies }}
+      <form class="form support-inline-form" method="post" action="{{ $.BasePath }}/admin/sla-policies">
+        <input type="hidden" name="csrf_token" value="{{ $.CSRF }}">
+        <input type="hidden" name="priority" value="{{ .Priority }}">
+        <div class="form-group">
+          <label class="form-label" for="sla-first-{{ .Priority }}">{{ .Priority }} first response (minutes)</label>
+          <input class="form-input" id="sla-first-{{ .Priority }}" name="first_response_mins"
+            type="number" min="1" max="100000" value="{{ .FirstResponseMins }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="sla-res-{{ .Priority }}">Resolution (minutes)</label>
+          <input class="form-input" id="sla-res-{{ .Priority }}" name="resolution_mins"
+            type="number" min="1" max="1000000" value="{{ .ResolutionMins }}">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="sla-esc-{{ .Priority }}">Escalate at (%)</label>
+          <input class="form-input" id="sla-esc-{{ .Priority }}" name="escalate_percent"
+            type="number" min="1" max="100" value="{{ .EscalatePercent }}">
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-secondary">Save</button>
+        </div>
+      </form>
+    {{ end }}
+  </div>
+
+  <div class="support-card">
+    <h2>Departments</h2>
+    <ul class="support-list">
+      {{ range $d.Departments }}
+        <li>{{ .Name }} <span class="badge badge-muted">{{ .ID }}</span></li>
+      {{ else }}
+        <li class="support-empty">None yet.</li>
+      {{ end }}
+    </ul>
+    <form class="form support-inline-form" method="post" action="{{ .BasePath }}/admin/departments">
+      <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+      <div class="form-group">
+        <label class="form-label" for="dept-name">New department</label>
+        <input class="form-input" id="dept-name" name="name" type="text" required maxlength="120">
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Add</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="support-card">
+    <h2>Ticket categories</h2>
+    <ul class="support-list">
+      {{ range $d.Categories }}
+        <li>{{ .Name }} <span class="badge badge-muted">{{ .Slug }}</span></li>
+      {{ else }}
+        <li class="support-empty">None yet.</li>
+      {{ end }}
+    </ul>
+    <form class="form support-inline-form" method="post" action="{{ .BasePath }}/admin/categories">
+      <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+      <div class="form-group">
+        <label class="form-label" for="cat-name">New category</label>
+        <input class="form-input" id="cat-name" name="name" type="text" required maxlength="120">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="cat-parent">Inside</label>
+        <select class="form-input" id="cat-parent" name="parent_id">
+          <option value="">Top level</option>
+          {{ range $d.Categories }}
+            <option value="{{ .ID }}">{{ .Name }}</option>
+          {{ end }}
+        </select>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Add</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="support-card">
+    <h2>Support agents</h2>
+    <ul class="support-list">
+      {{ range $d.Agents }}
+        <li>
+          {{ .DisplayName }}
+          <span class="badge badge-muted">user {{ .UserID }}</span>
+          <span class="badge badge-info">{{ .MaxConcurrentChats }} chats</span>
+          {{ if not .Enabled }}<span class="badge badge-error">disabled</span>{{ end }}
+        </li>
+      {{ else }}
+        <li class="support-empty">None yet.</li>
+      {{ end }}
+    </ul>
+    <form class="form support-inline-form" method="post" action="{{ .BasePath }}/admin/agents">
+      <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+      <div class="form-group">
+        <label class="form-label" for="agent-user">Account id</label>
+        <input class="form-input" id="agent-user" name="user_id" type="number" min="1" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="agent-name">Display name shown to customers</label>
+        <input class="form-input" id="agent-name" name="display_name" type="text" required maxlength="80">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="agent-dept">Department</label>
+        <select class="form-input" id="agent-dept" name="department_id">
+          <option value="">None</option>
+          {{ range $d.Departments }}
+            <option value="{{ .ID }}">{{ .Name }}</option>
+          {{ end }}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="agent-chats">Concurrent chats</label>
+        <input class="form-input" id="agent-chats" name="max_concurrent_chats" type="number"
+          min="0" max="50" value="3">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="agent-enabled">
+          <input id="agent-enabled" name="enabled" type="checkbox" value="1" checked>
+          Enabled
+        </label>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save agent</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="support-card">
+    <h2>Shared canned responses</h2>
+    <ul class="support-list">
+      {{ range $d.Canned }}
+        <li>
+          <strong>{{ .Title }}</strong>
+          <span class="badge badge-muted">{{ .Scope }}</span>
+        </li>
+      {{ else }}
+        <li class="support-empty">None yet.</li>
+      {{ end }}
+    </ul>
+    <form class="form support-form" method="post" action="{{ .BasePath }}/admin/canned-responses">
+      <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+      <div class="form-group">
+        <label class="form-label" for="shared-title">Title</label>
+        <input class="form-input" id="shared-title" name="title" type="text" required maxlength="120">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="shared-scope">Scope</label>
+        <select class="form-input" id="shared-scope" name="scope">
+          <option value="SYSTEM">SYSTEM — every agent</option>
+          <option value="DEPARTMENT">DEPARTMENT</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="shared-dept">Department (for department scope)</label>
+        <select class="form-input" id="shared-dept" name="department_id">
+          <option value="">None</option>
+          {{ range $d.Departments }}
+            <option value="{{ .ID }}">{{ .Name }}</option>
+          {{ end }}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="shared-tags">Tags</label>
+        <input class="form-input" id="shared-tags" name="tags" type="text" maxlength="300">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="shared-body">Body</label>
+        <textarea class="form-textarea" id="shared-body" name="body" rows="6" required maxlength="8000"></textarea>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="support-card">
+    <h2>Reports</h2>
+    <form class="form support-inline-form" method="get" action="{{ .BasePath }}/admin">
+      <div class="form-group">
+        <label class="form-label" for="report">Report</label>
+        <select class="form-input" id="report" name="report">
+          {{ range $d.ReportNames }}
+            <option value="{{ . }}" {{ if eq . $d.ReportName }}selected{{ end }}>{{ . }}</option>
+          {{ end }}
+        </select>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-secondary">Show</button>
+      </div>
+    </form>
+
+    <h3>{{ $d.Report.Name }}</h3>
+    <div class="table-scroll">
+      <table class="table">
+        <caption class="visually-hidden">Report results</caption>
+        <thead>
+          <tr>
+            <th scope="col">Key</th>
+            <th scope="col">Count</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ range $key, $value := $d.Report.Counts }}
+            <tr>
+              <td>{{ $key }}</td>
+              <td>{{ $value }}</td>
+            </tr>
+          {{ else }}
+            <tr>
+              <td colspan="2">Nothing to report yet.</td>
+            </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+    <ul class="support-meta">
+      <li>Within SLA: {{ $d.Report.SLACompliant }}</li>
+      <li>Breached: {{ $d.Report.SLABreached }}</li>
+      <li>Ratings: {{ $d.Report.SatisfactionN }}</li>
+      <li>Average rating (x100): {{ $d.Report.SatisfactionAvg }}</li>
+      <li>First contact resolution: {{ $d.Report.FirstContactRate }}%</li>
+    </ul>
+  </div>
+{{ end }}

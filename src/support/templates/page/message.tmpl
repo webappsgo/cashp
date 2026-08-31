@@ -1,0 +1,9 @@
+{{ define "content" }}
+  <div class="support-card">
+    <p>{{ .Data }}</p>
+    <p class="support-actions">
+      <a class="btn btn-primary" href="{{ .BasePath }}">Back to help</a>
+      <a class="btn btn-secondary" href="{{ .BasePath }}/tickets">My tickets</a>
+    </p>
+  </div>
+{{ end }}

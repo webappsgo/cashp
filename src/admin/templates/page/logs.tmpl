@@ -1,0 +1,84 @@
+{{ define "content" }}
+<section class="card">
+  <!-- Filtering is a GET form so a filtered view can be bookmarked and shared
+       between administrators, and so it works with scripting disabled. -->
+  <form class="form panel-filter" method="get" action="{{ .Data.Action }}">
+    <div class="form-group">
+      <label class="form-label" for="field-category">Category</label>
+      <select class="form-input" id="field-category" name="category">
+        <option value="">All categories</option>
+        {{ $selected := .Data.Filter.Category }}
+        {{ range .Data.Categories }}
+        <option value="{{ . }}"{{ if eq . $selected }} selected{{ end }}>{{ humanize . }}</option>
+        {{ end }}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="field-q">Search</label>
+      <input class="form-input" id="field-q" name="q" type="search" value="{{ .Data.Filter.Search }}" spellcheck="false">
+      <p class="form-hint">Matches the event name, the account and the detail text.</p>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Apply</button>
+      <a class="btn btn-secondary" href="{{ .Data.Action }}">Clear</a>
+      <a class="btn btn-secondary" href="{{ .Data.ExportURL }}">Export CSV</a>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  {{ if .Data.Rows }}
+  <div class="table-scroll">
+    <table class="table">
+      <caption class="table-caption">Page {{ .Data.Page }} of the audit trail.</caption>
+      <thead>
+        <tr>
+          <th scope="col">When</th>
+          <th scope="col">Category</th>
+          <th scope="col">Event</th>
+          <th scope="col">Who</th>
+          <th scope="col">Target</th>
+          <th scope="col">Detail</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ range .Data.Rows }}
+        <tr>
+          <td>{{ formatTime .OccurredAt }}</td>
+          <td><span class="badge badge-muted">{{ humanize .Category }}</span></td>
+          <td>{{ humanize .Event }}</td>
+          <td>{{ fallback "system" .Actor }}</td>
+          <td>{{ fallback "—" .Target }}</td>
+          <td class="table-detail">{{ .Detail }}</td>
+        </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+
+  <nav class="pagination" aria-label="Log pages">
+    <ul class="pagination-list">
+      <li>
+        {{ if .Data.HasPrev }}
+        <a class="pagination-link" href="{{ .Data.PrevURL }}" rel="prev">Previous</a>
+        {{ else }}
+        <span class="pagination-link pagination-link-disabled">Previous</span>
+        {{ end }}
+      </li>
+      <li><span class="pagination-status">Page {{ .Data.Page }}</span></li>
+      <li>
+        {{ if .Data.HasNext }}
+        <a class="pagination-link" href="{{ .Data.NextURL }}" rel="next">Next</a>
+        {{ else }}
+        <span class="pagination-link pagination-link-disabled">Next</span>
+        {{ end }}
+      </li>
+    </ul>
+  </nav>
+  {{ else }}
+  <p class="note">No entries match this filter.</p>
+  {{ end }}
+</section>
+{{ end }}

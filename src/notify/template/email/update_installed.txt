@@ -1,0 +1,16 @@
+Subject: Update Installed - {app_name} {version}
+---
+UPDATE INSTALLED
+
+Server: {fqdn}
+
+The update completed and the service is running the new release.
+
+Previous version: {previous_version}
+Current version: {version}
+Time: {timestamp}
+
+--
+{app_name}
+{app_url}
+(c) {year}

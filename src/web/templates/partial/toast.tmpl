@@ -1,0 +1,6 @@
+{{ define "toast_region" }}
+<!-- Toast container. It is empty on the server; external JS appends messages
+     here for actions that complete without a page reload. Anything important
+     is also rendered as a flash message so it survives with JS disabled. -->
+<div id="toast-region" class="toast-region" role="status" aria-live="polite" aria-atomic="false"></div>
+{{ end }}

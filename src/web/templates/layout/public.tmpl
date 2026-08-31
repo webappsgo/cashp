@@ -1,0 +1,21 @@
+{{ define "layout" }}<!doctype html>
+<!-- The no-js class is removed by app.js on load; CSS uses it to render
+     JavaScript-enhanced widgets, such as dialogs, in their inline form. -->
+<html lang="en" class="theme-{{ .Theme }} no-js" data-theme="{{ .Theme }}">
+  <head>
+    {{ template "head" . }}
+  </head>
+  <body class="page {{ template "page_class" . }}">
+    <a class="skip-link" href="#main">Skip to main content</a>
+    {{ template "header" . }}
+    <main id="main" class="container" tabindex="-1">
+      {{ template "flash" . }}
+      {{ template "content" . }}
+    </main>
+    {{ template "footer" . }}
+    {{ template "cookie_consent" . }}
+    {{ template "toast_region" . }}
+    {{ template "scripts" . }}
+  </body>
+</html>
+{{ end }}

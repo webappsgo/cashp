@@ -1,0 +1,23 @@
+Subject: Secure Your {app_name} Account With Two-Factor Authentication
+---
+TURN ON TWO-FACTOR AUTHENTICATION
+
+This email was sent to: {recipient_email}
+From: {app_name} ({fqdn})
+
+Hello {recipient_username},
+
+Your account does not have two-factor authentication enabled. Adding a
+second factor keeps your account safe even if your password leaks.
+
+Set it up here:
+
+{action_url}
+
+You can also turn off these reminders from the same page. This reminder
+is sent at most once every six months.
+
+--
+{app_name}
+{app_url}
+(c) {year}

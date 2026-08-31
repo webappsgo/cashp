@@ -1,0 +1,62 @@
+# nginx proxy address - http://172.17.0.1:64580
+# cashp - production stack (app + valkey cache)
+
+name: cashp
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "5m"
+    max-file: "1"
+
+services:
+  cashp:
+    image: ghcr.io/webappsgo/cashp:latest
+    container_name: cashp-app
+    hostname: cashp
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    environment:
+      PORT: 80
+      TZ: ${TZ:-America/New_York}
+      CONTAINER_NAME: cashp-app
+      CACHE_URL: valkey://cashp-cache:6379
+    volumes:
+      - ./volumes/config:/config:z
+      - ./volumes/data:/data:z
+    ports:
+      - "172.17.0.1:64580:80"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/cashp", "--status"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    depends_on:
+      cashp-cache:
+        condition: service_healthy
+    networks:
+      - cashp
+
+  cashp-cache:
+    image: valkey/valkey:alpine
+    container_name: cashp-cache
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    volumes:
+      - ./volumes/data/db/valkey:/data:z
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - cashp
+
+networks:
+  cashp:
+    name: cashp
+    external: false

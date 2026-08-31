@@ -1,0 +1,28 @@
+{{ define "content" }}
+<section class="card panel-auth-card">
+  {{ template "form_error" .Data.Error }}
+  <p class="form-hint">
+    A one-time setup token was printed to the server console the first time this
+    server started. It is valid for 24 hours and can be used once.
+  </p>
+  <form class="form" method="post" action="{{ .Path }}" autocomplete="off">
+    {{ template "csrf" . }}
+    <input type="hidden" name="action" value="token">
+
+    <div class="form-group">
+      <label class="form-label" for="field-token">Setup token</label>
+      <input class="form-input" id="field-token" name="token" type="text" spellcheck="false" autocapitalize="none" required autofocus>
+      <p class="form-hint">32 hexadecimal characters, copied exactly as printed.</p>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Continue</button>
+    </div>
+  </form>
+  <p class="note">
+    Lost the token? Restart the server with no administrator account configured
+    and a new one is printed. An existing administrator account disables setup
+    entirely.
+  </p>
+</section>
+{{ end }}

@@ -1,0 +1,11 @@
+{{define "content" -}}
+<section class="card narrow">
+  <ul class="linkrow">
+    {{if .User}}
+    <li><a href="{{.BasePath}}/account">Go to your account</a></li>
+    {{else}}
+    <li><a href="{{.BasePath}}/login">Go to sign in</a></li>
+    {{end}}
+  </ul>
+</section>
+{{- end}}

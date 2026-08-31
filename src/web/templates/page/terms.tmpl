@@ -1,0 +1,66 @@
+{{ define "title" }}Terms of service{{ end }}
+{{ define "page_class" }}page-terms{{ end }}
+
+{{ define "content" }}
+<article class="terms-page prose">
+  <h1>Terms of service</h1>
+  <p>These terms govern the use of this {{ .Site.AppName }} instance. The operator of the instance may replace them with their own; where they have, the version shown here is the one that applies.</p>
+
+  <section id="acceptance" aria-labelledby="acceptance-title">
+    <h2 id="acceptance-title">Acceptance</h2>
+    <p>By creating an account or using any service hosted here, you agree to these terms. If you do not agree, do not use the service.</p>
+  </section>
+
+  <section id="accounts" aria-labelledby="accounts-title">
+    <h2 id="accounts-title">Account terms</h2>
+    <ul>
+      <li>You are responsible for everything done through your account, including by anyone you grant access to it.</li>
+      <li>You must keep your credentials confidential and report a suspected compromise promptly.</li>
+      <li>You must provide a working email address so account and security notices reach you.</li>
+      <li>One person or organisation may not use another account holder's resources without permission.</li>
+    </ul>
+  </section>
+
+  <section id="acceptable-use" aria-labelledby="acceptable-use-title">
+    <h2 id="acceptable-use-title">Acceptable use</h2>
+    <p>You may not use the service to:</p>
+    <ul>
+      <li>Break the law of any jurisdiction that applies to you or to the operator.</li>
+      <li>Send unsolicited bulk email, or run open relays or open proxies.</li>
+      <li>Distribute malware, run phishing sites, or attack other systems from this infrastructure.</li>
+      <li>Attempt to bypass account isolation, quotas, or the security controls of the platform.</li>
+      <li>Consume shared resources in a way that degrades service for other account holders.</li>
+    </ul>
+  </section>
+
+  <section id="content" aria-labelledby="content-title">
+    <h2 id="content-title">Your content</h2>
+    <p>You keep ownership of everything you upload, deploy or store. You grant the operator only the access needed to run, back up and restore your services. You are responsible for having the rights to the content you host.</p>
+  </section>
+
+  <section id="termination" aria-labelledby="termination-title">
+    <h2 id="termination-title">Suspension and termination</h2>
+    <p>An account may be suspended or closed for a serious or repeated breach of these terms, for non-payment where the instance is operated commercially, or where continued operation would put the platform or other account holders at risk. Except where immediate action is required, you will be told the reason and given a chance to correct it. You may close your account at any time; deletion follows the retention rules in the <a href="/server/privacy">privacy policy</a>.</p>
+  </section>
+
+  <section id="liability" aria-labelledby="liability-title">
+    <h2 id="liability-title">Warranty and liability</h2>
+    <p>The service is provided as-is, without warranty of any kind. The operator is not liable for indirect or consequential loss, or for loss of data you have not independently backed up. Keeping your own copy of anything you cannot afford to lose remains your responsibility, even though the platform takes backups.</p>
+  </section>
+
+  <section id="changes" aria-labelledby="changes-title">
+    <h2 id="changes-title">Changes to these terms</h2>
+    <p>These terms may be updated. Material changes are announced in the panel before they take effect, and continuing to use the service after that date means you accept the new version.</p>
+  </section>
+
+  <section id="governing-law" aria-labelledby="governing-law-title">
+    <h2 id="governing-law-title">Governing law</h2>
+    <p>These terms are governed by the law of the jurisdiction in which the operator of this instance is established. Disputes are subject to the courts of that jurisdiction.</p>
+  </section>
+
+  <section id="terms-contact" aria-labelledby="terms-contact-title">
+    <h2 id="terms-contact-title">Questions</h2>
+    <p>If anything here is unclear, <a href="/server/contact">contact the operator</a>.</p>
+  </section>
+</article>
+{{ end }}

@@ -1,0 +1,33 @@
+Subject: Important Security Notice - {app_name}
+---
+IMPORTANT SECURITY NOTICE
+
+This email was sent to: {recipient_email}
+From: {app_name} ({fqdn})
+
+Hello {recipient_username},
+
+We are writing to tell you about a security incident affecting this
+installation.
+
+What happened: {detail}
+When: {timestamp}
+Severity: {severity}
+
+What you should do now:
+
+1. Change your password.
+2. Turn on two-factor authentication if it is not already enabled.
+3. Review your active sessions and API tokens and revoke anything you do
+   not recognise.
+
+Start here:
+
+{action_url}
+
+We will not ask you for your password or any code by email.
+
+--
+{app_name}
+{app_url}
+(c) {year}

@@ -1,0 +1,172 @@
+{{define "content" -}}
+
+{{if .Summary.HasSubscription}}
+<section class="card">
+  <h2>Current plan</h2>
+  <dl class="facts">
+    <dt>Plan</dt><dd>{{.Summary.Plan.Name}}</dd>
+    <dt>Status</dt><dd><span class="badge {{if eqs .Summary.Subscription.State "active"}}badge-ok{{else if eqs .Summary.Subscription.State "trialing"}}badge-info{{else if eqs .Summary.Subscription.State "past_due"}}badge-warn{{else if eqs .Summary.Subscription.State "paused"}}badge-warn{{else}}badge-danger{{end}}">{{label .Summary.Subscription.State}}</span></dd>
+    <dt>Price</dt><dd>{{money .Summary.Plan.PriceMinor .Summary.Currency}} / {{label .Summary.Plan.Cycle}}</dd>
+    {{if .Summary.Subscription.TrialEndsAt}}<dt>Trial ends</dt><dd>{{date .Summary.Subscription.TrialEndsAt}}</dd>{{end}}
+    <dt>Current period</dt><dd>{{date .Summary.Subscription.PeriodStart}} &ndash; {{date .Summary.Subscription.PeriodEnd}}</dd>
+    {{if .Summary.Subscription.CancelAtPeriodEnd}}<dt>Cancellation</dt><dd>Ends at period end, on {{date .Summary.Subscription.PeriodEnd}}</dd>{{end}}
+    {{if .Summary.NextInvoiceAt}}<dt>Next invoice</dt><dd>{{date .Summary.NextInvoiceAt}} for {{money .Summary.NextAmountMinor .Summary.Currency}}</dd>{{end}}
+  </dl>
+  <div class="actions">
+    <a class="btn" href="{{.BasePath}}/plans">Change plan</a>
+    {{if .Summary.Subscription.CancelAtPeriodEnd}}
+    <form class="inline" method="post" action="{{.BasePath}}/resume">
+      {{template "csrf" .}}
+      <button class="btn btn-primary" type="submit">Resume subscription</button>
+    </form>
+    {{else}}
+    <form class="inline" method="post" action="{{.BasePath}}/cancel">
+      {{template "csrf" .}}
+      <p class="hint">Your subscription stays active until the end of the current period, on {{date .Summary.Subscription.PeriodEnd}}. You can resume at any time before then.</p>
+      <button class="btn btn-danger" type="submit">Cancel subscription</button>
+    </form>
+    {{end}}
+  </div>
+</section>
+{{else}}
+<section class="card">
+  <h2>No active subscription</h2>
+  <p>This organization is not subscribed to a plan yet. Invoices are still available in invoice-only mode.</p>
+  <a class="btn btn-primary" href="{{.BasePath}}/plans">Choose a plan</a>
+</section>
+{{end}}
+
+{{if .Summary.OutstandingMinor}}
+<p class="alert alert-error" role="status">You have an outstanding balance of {{money .Summary.OutstandingMinor .Summary.Currency}}. See your <a href="{{.BasePath}}/invoices">invoices</a> to settle it.</p>
+{{end}}
+
+{{if .Quotas}}
+<section class="card">
+  <h2>Usage this period</h2>
+  {{range .Quotas}}
+  <div class="quota-row">
+    <div class="quota-head">
+      <span>{{label .Resource}}</span>
+      <span class="muted">
+        {{if .Unlimited}}{{.Used}} used &middot; unlimited{{else}}{{.Used}} / {{.LimitValue}} {{.Unit}}{{end}}
+      </span>
+    </div>
+    {{if not .Unlimited}}
+    <div class="progress" role="progressbar" aria-valuenow="{{.Used}}" aria-valuemin="0" aria-valuemax="{{.LimitValue}}">
+      <div class="progress-bar {{barWidthClass .Used .LimitValue}}"></div>
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+  <p><a href="{{.BasePath}}/usage">View full usage detail</a></p>
+</section>
+{{end}}
+
+<div class="grid grid-2">
+  <section class="card">
+    <h2>Payment methods</h2>
+    {{if .Methods}}
+    <ul class="plan-quotas">
+      {{range .Methods}}
+      <li>{{label .Brand}} &middot; &bull;&bull;&bull;&bull; {{.Last4}}{{if .IsDefault}} <span class="badge badge-ok">default</span>{{end}}</li>
+      {{end}}
+    </ul>
+    {{else}}
+    <p class="muted">No payment methods on file.</p>
+    {{end}}
+    <a class="btn" href="{{.BasePath}}/payment-methods">Manage payment methods</a>
+  </section>
+
+  <section class="card">
+    <h2>Recent invoices</h2>
+    {{if .Invoices}}
+    <div class="tablewrap">
+      <table>
+        <caption class="sr-only">Recent invoices</caption>
+        <thead><tr><th scope="col">Number</th><th scope="col">State</th><th scope="col">Total</th></tr></thead>
+        <tbody>
+          {{range .Invoices}}
+          <tr>
+            <td><a href="{{$.BasePath}}/invoices/{{.ID}}" class="mono">{{.Number}}</a></td>
+            <td><span class="badge {{if eqs .State "paid"}}badge-ok{{else if eqs .State "overdue"}}badge-danger{{else if eqs .State "due"}}badge-warn{{else}}badge-muted{{end}}">{{label .State}}</span></td>
+            <td>{{money .TotalMinor .Currency}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="muted">No invoices yet.</p>
+    {{end}}
+    <a class="btn" href="{{.BasePath}}/invoices">View all invoices</a>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Billing profile</h2>
+  <form class="stack" method="post" action="{{.BasePath}}/account">
+    {{template "csrf" .}}
+    <div class="grid grid-2">
+      <div class="field">
+        <label for="billing_email">Billing email</label>
+        <input id="billing_email" name="billing_email" type="email" value="{{.Account.BillingEmail}}" autocomplete="email">
+      </div>
+      <div class="field">
+        <label for="currency">Currency</label>
+        <input id="currency" name="currency" value="{{.Account.Currency}}" maxlength="3" pattern="[A-Za-z]{3}">
+        <p class="hint">ISO 4217 currency code, e.g. USD.</p>
+      </div>
+      <div class="field">
+        <label for="legal_name">Legal name</label>
+        <input id="legal_name" name="legal_name" value="{{.Account.LegalName}}" autocomplete="organization">
+      </div>
+      <div class="field">
+        <label for="tax_id">Tax ID</label>
+        <input id="tax_id" name="tax_id" value="{{.Account.TaxID}}">
+      </div>
+      <div class="field">
+        <label for="address_line1">Address line 1</label>
+        <input id="address_line1" name="address_line1" value="{{.Account.AddressLine1}}" autocomplete="address-line1">
+      </div>
+      <div class="field">
+        <label for="address_line2">Address line 2</label>
+        <input id="address_line2" name="address_line2" value="{{.Account.AddressLine2}}" autocomplete="address-line2">
+      </div>
+      <div class="field">
+        <label for="city">City</label>
+        <input id="city" name="city" value="{{.Account.City}}" autocomplete="address-level2">
+      </div>
+      <div class="field">
+        <label for="region">Region</label>
+        <input id="region" name="region" value="{{.Account.Region}}" autocomplete="address-level1">
+      </div>
+      <div class="field">
+        <label for="postal_code">Postal code</label>
+        <input id="postal_code" name="postal_code" value="{{.Account.PostalCode}}" autocomplete="postal-code">
+      </div>
+      <div class="field">
+        <label for="country">Country</label>
+        <input id="country" name="country" value="{{.Account.Country}}" maxlength="2" pattern="[A-Za-z]{2}" autocomplete="country">
+        <p class="hint">ISO 3166-1 alpha-2 country code.</p>
+      </div>
+    </div>
+    <label class="check">
+      <input type="checkbox" name="is_business" value="1" {{if .Account.IsBusiness}}checked{{end}}>
+      This account is a business (B2B billing, tax handled accordingly)
+    </label>
+    <div class="actions">
+      <button class="btn btn-primary" type="submit">Save billing profile</button>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Export your billing data</h2>
+  <p>Download a full, portable copy of your invoices, payment history and subscription history at any time.</p>
+  <div class="actions">
+    <a class="btn" href="{{.BasePath}}/export?format=json">Export as JSON</a>
+    <a class="btn" href="{{.BasePath}}/export?format=csv">Export as CSV</a>
+  </div>
+</section>
+
+{{- end}}

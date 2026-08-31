@@ -1,0 +1,14 @@
+{{ define "content" }}
+<form class="form" method="post" action="{{ .Path }}">
+  {{ template "csrf" . }}
+  <section class="card">
+    <h2 class="card-title">Appearance</h2>
+    <p class="form-hint">These settings apply to your account on every device you sign in from.</p>
+    {{ range .Data.Fields }}{{ template "settings_field" . }}{{ end }}
+  </section>
+
+  <div class="form-actions panel-actions">
+    <button class="btn btn-primary" type="submit">Save preferences</button>
+  </div>
+</form>
+{{ end }}

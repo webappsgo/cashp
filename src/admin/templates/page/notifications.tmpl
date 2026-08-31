@@ -1,0 +1,71 @@
+{{ define "content" }}
+<form class="form" method="post" action="{{ .Path }}">
+  {{ template "csrf" . }}
+
+  <section class="card">
+    <h2 class="card-title">Delivery</h2>
+    <dl class="panel-facts">
+      <dt>Account email</dt><dd>{{ fallback "not set" .Data.AccountEmail }}</dd>
+    </dl>
+    <div class="form-group">
+      <label class="form-label" for="field-notification-email">Notification email</label>
+      <input class="form-input" id="field-notification-email" name="notification_email" type="email" value="{{ .Data.NotificationEmail }}" autocomplete="email" spellcheck="false">
+      <p class="form-hint">Leave blank to receive everything at the account address.</p>
+    </div>
+  </section>
+
+  {{ if not .Data.NotifierAvailable }}
+  <section class="card">
+    <p class="form-hint">Notification delivery is not available on this server yet.</p>
+  </section>
+  {{ end }}
+
+  {{ range .Data.Categories }}
+  <section class="card">
+    <h2 class="card-title">{{ .Label }}</h2>
+    <div class="table-scroll">
+      <table class="table">
+        <caption class="table-caption">{{ .Label }} notification events</caption>
+        <thead>
+          <tr>
+            <th scope="col">Event</th>
+            <th scope="col">Notification center</th>
+            <th scope="col">Email</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ range .Prefs }}
+          <tr>
+            <th scope="row">
+              {{ .Title }}
+              {{ if .Required }}<span class="badge badge-muted">Required</span>{{ end }}
+            </th>
+            <td>
+              {{ if .Required }}
+              <input type="hidden" name="webui_{{ .Event }}" value="1">
+              {{ end }}
+              <input type="checkbox" name="webui_{{ .Event }}" value="1" {{ if .WebUI }}checked{{ end }} {{ if .Required }}disabled{{ end }} aria-label="{{ .Title }} in notification center">
+            </td>
+            <td>
+              {{ if .Emailable }}
+              {{ if .Required }}
+              <input type="hidden" name="email_{{ .Event }}" value="1">
+              {{ end }}
+              <input type="checkbox" name="email_{{ .Event }}" value="1" {{ if .Email }}checked{{ end }} {{ if .Required }}disabled{{ end }} aria-label="{{ .Title }} by email">
+              {{ else }}
+              <span class="form-hint">not emailed</span>
+              {{ end }}
+            </td>
+          </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {{ end }}
+
+  <div class="form-actions panel-actions">
+    <button class="btn btn-primary" type="submit">Save notifications</button>
+  </div>
+</form>
+{{ end }}

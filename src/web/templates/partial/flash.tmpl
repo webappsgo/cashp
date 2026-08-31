@@ -1,0 +1,14 @@
+{{ define "flash" }}
+{{ if .Flashes }}
+<!-- Server-rendered flash messages: the no-JavaScript equivalent of a toast.
+     External JS may promote these to toasts, but they are already readable. -->
+<div class="flash-region" role="status" aria-live="polite">
+  {{ range .Flashes }}
+  <div class="flash flash-{{ .Level }}" data-level="{{ .Level }}">
+    <span class="flash-icon" aria-hidden="true">{{ levelIcon .Level }}</span>
+    <p class="flash-message">{{ .Message }}</p>
+  </div>
+  {{ end }}
+</div>
+{{ end }}
+{{ end }}

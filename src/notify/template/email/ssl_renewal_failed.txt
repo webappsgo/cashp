@@ -1,0 +1,23 @@
+Subject: SSL Renewal FAILED - {app_name}
+---
+SSL RENEWAL FAILED
+
+Server: {fqdn}
+
+A certificate renewal did not complete. The certificate will expire
+unless this is resolved.
+
+Domain: {domain}
+Expires: {expires_at}
+Days remaining: {days_left}
+Error: {error}
+Time: {timestamp}
+
+Review the certificate settings here:
+
+{action_url}
+
+--
+{app_name}
+{app_url}
+(c) {year}

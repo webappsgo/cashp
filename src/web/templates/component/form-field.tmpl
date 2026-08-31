@@ -1,0 +1,20 @@
+{{ define "form_field" }}
+<!-- Args: dict "Name" "Label" "Type" "Value" "Error" "Hint" "Required" "Autocomplete" "Rows".
+     Rows > 0 renders a textarea. Validation messages are tied to the control
+     with aria-describedby and marked with aria-invalid. -->
+<div class="form-group{{ if .Error }} form-group-invalid{{ end }}">
+  <label class="form-label" for="field-{{ .Name }}">
+    {{ .Label }}
+    {{ if .Required }}<span class="form-required" aria-hidden="true">*</span><span class="visually-hidden">(required)</span>{{ end }}
+  </label>
+  {{ if .Rows }}
+  <textarea class="form-input form-textarea" id="field-{{ .Name }}" name="{{ .Name }}" rows="{{ .Rows }}"{{ if .Required }} required{{ end }}{{ if .Error }} aria-invalid="true"{{ end }} aria-describedby="field-{{ .Name }}-help">{{ .Value }}</textarea>
+  {{ else }}
+  <input class="form-input" id="field-{{ .Name }}" name="{{ .Name }}" type="{{ fallback "text" .Type }}" value="{{ .Value }}"{{ if .Required }} required{{ end }}{{ if .Autocomplete }} autocomplete="{{ .Autocomplete }}"{{ end }}{{ if .Error }} aria-invalid="true"{{ end }} aria-describedby="field-{{ .Name }}-help">
+  {{ end }}
+  <div class="form-help" id="field-{{ .Name }}-help">
+    {{ if .Error }}<p class="form-error" role="alert">{{ .Error }}</p>{{ end }}
+    {{ if .Hint }}<p class="form-hint">{{ .Hint }}</p>{{ end }}
+  </div>
+</div>
+{{ end }}

@@ -1,0 +1,13 @@
+{{define "content" -}}
+<section class="card narrow">
+  <form method="post" action="{{.BasePath}}/invites/accept" class="stack">
+    {{template "csrf" .}}
+    <div class="field">
+      <label for="code">Invitation code</label>
+      <input id="code" name="code" type="text" autocapitalize="none" spellcheck="false"
+             value="{{.Next}}" required autofocus>
+    </div>
+    <button type="submit" class="btn btn-primary">Accept invitation</button>
+  </form>
+</section>
+{{- end}}

@@ -1,0 +1,20 @@
+Subject: Scheduled Task Failed - {app_name}
+---
+SCHEDULED TASK FAILED
+
+Server: {fqdn}
+
+A scheduled task ended with an error.
+
+Task: {task}
+Error: {error}
+Time: {timestamp}
+
+Review the task history here:
+
+{action_url}
+
+--
+{app_name}
+{app_url}
+(c) {year}

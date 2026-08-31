@@ -1,0 +1,31 @@
+{{define "content" -}}
+<section class="card narrow">
+  <form method="post" action="{{.BasePath}}/login" class="stack">
+    {{template "csrf" .}}
+    <input type="hidden" name="next" value="{{.Next}}">
+    <div class="field">
+      <label for="login">Username or email</label>
+      <input id="login" name="login" type="text" autocomplete="username" autocapitalize="none"
+             spellcheck="false" required autofocus>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+    </div>
+    <div class="field">
+      <label for="totp">Two-factor code <span class="hint">(only if enabled on your account)</span></label>
+      <input id="totp" name="totp_code" type="text" inputmode="numeric" pattern="[0-9]*"
+             autocomplete="one-time-code" maxlength="8">
+    </div>
+    <label class="check">
+      <input type="checkbox" name="remember" value="1">
+      <span>Keep me signed in on this device</span>
+    </label>
+    <button type="submit" class="btn btn-primary">Sign in</button>
+  </form>
+  <ul class="linkrow">
+    <li><a href="{{.BasePath}}/password/forgot">Forgot your password?</a></li>
+    {{if .CanRegister}}<li><a href="{{.BasePath}}/register">Create an account</a></li>{{end}}
+  </ul>
+</section>
+{{- end}}

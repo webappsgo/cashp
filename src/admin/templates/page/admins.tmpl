@@ -1,0 +1,116 @@
+{{ define "content" }}
+{{ if .Data.InviteToken }}
+<section class="card">
+  <h2 class="card-title">Invitation created</h2>
+  {{ template "secret_once" dict "Label" "Invitation link" "Value" .Data.InviteURL }}
+  <p class="form-hint">Send this link to the new administrator over a channel you trust. The token is not stored and cannot be shown again.</p>
+</section>
+{{ end }}
+
+<section class="card">
+  <h2 class="card-title">Your account</h2>
+  <dl class="panel-facts">
+    <dt>Username</dt><dd>{{ .Admin.Username }}</dd>
+    <dt>Role</dt><dd>{{ if .Admin.IsPrimary }}Primary administrator{{ else }}Administrator{{ end }}</dd>
+    <dt>Administrators configured</dt><dd>{{ .AdminCount }}</dd>
+    <dt>Signed in now</dt>
+    <dd>{{ if .Online }}{{ range $index, $name := .Online }}{{ if $index }}, {{ end }}{{ $name }}{{ end }}{{ else }}nobody else{{ end }}</dd>
+  </dl>
+  <p class="note">{{ .Data.RecoveryNote }}</p>
+</section>
+
+<section class="card">
+  <h2 class="card-title">Invite an administrator</h2>
+  <form class="form" method="post" action="{{ .Path }}">
+    {{ template "csrf" . }}
+    <input type="hidden" name="action" value="invite">
+
+    <div class="form-group">
+      <label class="form-label" for="field-username">Username</label>
+      <input class="form-input" id="field-username" name="username" type="text" required spellcheck="false" autocapitalize="none">
+      <p class="form-hint">The invitation only works for this username.</p>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="field-expires">Expires after</label>
+      <select class="form-input" id="field-expires" name="expires">
+        {{ range .Data.InviteTTLs }}
+        <option value="{{ .Value }}"{{ if eq .Value "24h" }} selected{{ end }}>{{ .Label }}</option>
+        {{ end }}
+      </select>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Create invitation</button>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h2 class="card-title">Pending invitations</h2>
+  {{ if .Data.Invites }}
+  <div class="table-scroll">
+    <table class="table">
+      <caption class="table-caption">Invitations that have not yet been used or revoked.</caption>
+      <thead>
+        <tr>
+          <th scope="col">Username</th>
+          <th scope="col">Created</th>
+          <th scope="col">Expires</th>
+          <th scope="col">Uses</th>
+          <th scope="col">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ $ctx := . }}
+        {{ range .Data.Invites }}
+        <tr>
+          <td>{{ .Username }}</td>
+          <td>{{ formatTime .CreatedAt }}</td>
+          <td>{{ relTime .ExpiresAt }}</td>
+          <td>{{ .Uses }} of {{ .MaxUses }}</td>
+          <td class="table-actions">
+            <form class="inline-form" method="post" action="{{ $ctx.Path }}">
+              {{ template "csrf" $ctx }}
+              <input type="hidden" name="id" value="{{ .ID }}">
+              <button class="btn btn-secondary" type="submit" name="action" value="revoke_invite">Revoke</button>
+            </form>
+          </td>
+        </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+  {{ else }}
+  <p class="note">There are no pending invitations.</p>
+  {{ end }}
+</section>
+
+<section class="card">
+  <h2 class="card-title">Remove an administrator</h2>
+  <p class="form-hint">
+    Administrator accounts are not listed. Enter the exact username to remove it.
+    The primary administrator cannot be removed here.
+  </p>
+  <form class="form" method="post" action="{{ .Path }}">
+    {{ template "csrf" . }}
+    <input type="hidden" name="action" value="remove_admin">
+
+    <div class="form-group">
+      <label class="form-label" for="field-remove-username">Username</label>
+      <input class="form-input" id="field-remove-username" name="username" type="text" required spellcheck="false" autocapitalize="none" autocomplete="off">
+      <p class="form-hint">This ends that account's sessions and deletes its tokens and recovery codes.</p>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="field-remove-confirm">Type the username again to confirm</label>
+      <input class="form-input" id="field-remove-confirm" name="confirm" type="text" required spellcheck="false" autocapitalize="none" autocomplete="off">
+      <p class="form-hint">The removal only runs when both fields match exactly.</p>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-danger" type="submit">Remove account</button>
+    </div>
+  </form>
+</section>
+{{ end }}

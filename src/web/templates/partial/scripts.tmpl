@@ -1,0 +1,5 @@
+{{ define "scripts" }}
+<!-- External scripts only: the Content-Security-Policy forbids inline script,
+     and every page already works before these files load. -->
+<script src="/static/js/app.js" defer></script>
+{{ end }}

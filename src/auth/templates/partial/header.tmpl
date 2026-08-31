@@ -1,0 +1,33 @@
+{{define "header" -}}
+<header class="topbar">
+  <div class="shell topbar-inner">
+    <a class="brand" href="/">{{.AppName}}</a>
+    <nav aria-label="Account">
+      <ul class="navlist">
+        {{if .User}}
+        <li><a href="{{.BasePath}}/account">{{.User.Username}}</a></li>
+        <li><a href="{{.BasePath}}/orgs">Organizations</a></li>
+        <li><a href="{{.BasePath}}/domains">Domains</a></li>
+        <li>
+          <form method="post" action="{{.BasePath}}/logout" class="inline">
+            {{template "csrf" .}}
+            <button type="submit" class="linkish">Sign out</button>
+          </form>
+        </li>
+        {{else if .Admin}}
+        <li><a href="/{{.AdminPath}}/account">{{.Admin.Username}}</a></li>
+        <li>
+          <form method="post" action="/{{.AdminPath}}/logout" class="inline">
+            {{template "csrf" .}}
+            <button type="submit" class="linkish">Sign out</button>
+          </form>
+        </li>
+        {{else}}
+        <li><a href="{{.BasePath}}/login">Sign in</a></li>
+        {{if .CanRegister}}<li><a href="{{.BasePath}}/register">Create account</a></li>{{end}}
+        {{end}}
+      </ul>
+    </nav>
+  </div>
+</header>
+{{- end}}

@@ -1,0 +1,97 @@
+{{ define "content" }}
+{{ if .Data.JoinToken }}
+<section class="card">
+  <h2 class="card-title">Node enrolled</h2>
+  {{ template "secret_once" dict "Label" "Join token" "Value" .Data.JoinToken }}
+  <p class="form-hint">Give this token to the agent on the new node. It is stored only as a hash and cannot be shown again.</p>
+</section>
+{{ end }}
+
+<section class="card">
+  <h2 class="card-title">Enrol a node</h2>
+  <form class="form" method="post" action="{{ .Path }}">
+    {{ template "csrf" . }}
+    <input type="hidden" name="action" value="enroll">
+
+    <div class="form-group">
+      <label class="form-label" for="field-node-name">Name</label>
+      <input class="form-input" id="field-node-name" name="name" type="text" required spellcheck="false" autocapitalize="none" aria-describedby="field-node-name-help">
+      <p class="form-hint" id="field-node-name-help">Lower-case letters, digits, dashes and underscores.</p>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="field-node-address">Address</label>
+      <input class="form-input" id="field-node-address" name="address" type="text" required maxlength="253" spellcheck="false" aria-describedby="field-node-address-help">
+      <p class="form-hint" id="field-node-address-help">Host name or IP address this server reaches the node on.</p>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="field-node-port">Port</label>
+      <input class="form-input" id="field-node-port" name="port" type="number" inputmode="numeric" min="1" max="65535" value="{{ .Data.DefaultPort }}" required>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="field-node-labels">Labels</label>
+      <textarea class="form-input form-textarea" id="field-node-labels" name="labels" rows="3" spellcheck="false" aria-describedby="field-node-labels-help"></textarea>
+      <p class="form-hint" id="field-node-labels-help">Optional. One entry per line, or separated by commas.</p>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Enrol node</button>
+    </div>
+  </form>
+  <p class="note">Cluster defaults live on the <a href="{{ .Data.SettingsURL }}">cluster settings</a> page.</p>
+</section>
+
+<section class="card">
+  <h2 class="card-title">Enrolled nodes</h2>
+  {{ if .Data.Nodes }}
+  <div class="table-scroll">
+    <table class="table">
+      <caption class="table-caption">Nodes this server manages.</caption>
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Address</th>
+          <th scope="col">Status</th>
+          <th scope="col">Labels</th>
+          <th scope="col">Last seen</th>
+          <th scope="col">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ $ctx := . }}
+        {{ range .Data.Nodes }}
+        <tr>
+          <td>{{ .Name }}</td>
+          <td>{{ .Address }}:{{ .Port }}</td>
+          <td>
+            <span class="badge {{ statusClass .Status }}">
+              <span aria-hidden="true">{{ statusIcon .Status }}</span> {{ humanize .Status }}
+            </span>
+          </td>
+          <td>{{ fallback "none" .Labels }}</td>
+          <td>{{ if .LastSeenAt.IsZero }}never{{ else }}{{ relTime .LastSeenAt }}{{ end }}</td>
+          <td class="table-actions">
+            {{ template "confirm_dialog" dict
+              "ID" (printf "remove-node-%s" .ID)
+              "Title" "Remove this node?"
+              "Message" (printf "%s stops being managed by this server and its agent credentials are revoked." .Name)
+              "Action" $ctx.Path
+              "CSRFToken" $ctx.CSRFToken
+              "Name" "action"
+              "Value" "remove"
+              "Hidden" (list (dict "Name" "id" "Value" .ID))
+              "ConfirmLabel" "Remove node"
+              "TriggerLabel" "Remove" }}
+          </td>
+        </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+  {{ else }}
+  <p class="note">No nodes are enrolled. This server manages itself only.</p>
+  {{ end }}
+</section>
+{{ end }}

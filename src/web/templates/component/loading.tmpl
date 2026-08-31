@@ -1,0 +1,8 @@
+{{ define "loading_state" }}
+<!-- Args: dict "Message" string. Rendered server-side while a slow backend is
+     still answering, and reused by JS for in-place refreshes. -->
+<div class="state state-loading" role="status" aria-live="polite">
+  <span class="spinner" aria-hidden="true"></span>
+  <p class="state-message">{{ fallback "Loading…" .Message }}</p>
+</div>
+{{ end }}

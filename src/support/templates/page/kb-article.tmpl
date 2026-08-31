@@ -1,0 +1,29 @@
+{{ define "content" }}
+  {{ $d := .Data }}
+  <article class="support-card">
+    <ul class="support-meta">
+      <li><span class="badge badge-muted">{{ $d.Article.Status }}</span></li>
+      <li>{{ $d.Article.ViewCount }} views</li>
+    </ul>
+    <p class="support-msg-body">{{ $d.Article.Body }}</p>
+  </article>
+
+  <div class="support-card">
+    <h2>Was this helpful?</h2>
+    <div class="support-actions">
+      <form method="post" action="{{ .BasePath }}/kb/{{ $d.Article.Slug }}/feedback">
+        <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+        <input type="hidden" name="helpful" value="1">
+        <button type="submit" class="btn btn-primary">Yes ({{ $d.Article.HelpfulCount }})</button>
+      </form>
+      <form method="post" action="{{ .BasePath }}/kb/{{ $d.Article.Slug }}/feedback">
+        <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+        <input type="hidden" name="helpful" value="0">
+        <button type="submit" class="btn btn-secondary">No ({{ $d.Article.NotHelpfulCnt }})</button>
+      </form>
+    </div>
+    <p class="support-actions">
+      <a class="btn btn-secondary" href="{{ .BasePath }}/kb">Back to the knowledge base</a>
+    </p>
+  </div>
+{{ end }}

@@ -1,0 +1,28 @@
+Subject: [{severity}] Security Breach Detected - {app_name}
+---
+SECURITY BREACH DETECTED
+
+This email was sent to: {recipient_email}
+Server: {fqdn}
+
+Severity: {severity}
+Detected: {timestamp}
+Affected accounts: {count}
+Source IP: {ip_address}
+
+Detail: {detail}
+
+Immediate steps:
+
+1. Review the security log and the listed source address.
+2. Revoke sessions and API tokens for affected accounts.
+3. Notify affected users once the scope is confirmed.
+
+Open the security dashboard:
+
+{action_url}
+
+--
+{app_name}
+{app_url}
+(c) {year}

@@ -1,0 +1,46 @@
+{{ define "content" }}
+<form class="form panel-settings-form" method="post" action="{{ .Path }}">
+  {{ template "csrf" . }}
+  <input type="hidden" name="action" value="save">
+
+  {{ range .Data.Sections }}
+  <section class="card">
+    <h2 class="card-title">{{ .Title }}</h2>
+    {{ if .Help }}<p class="form-hint">{{ .Help }}</p>{{ end }}
+    {{ range .Fields }}{{ template "settings_field" . }}{{ end }}
+  </section>
+  {{ end }}
+
+  <div class="form-actions panel-actions">
+    <button class="btn btn-primary" type="submit">Save all</button>
+  </div>
+</form>
+
+{{ if .Data.Actions }}
+<section class="card">
+  <h2 class="card-title">Actions</h2>
+  <div class="table-actions">
+    {{ $ctx := . }}
+    {{ range .Data.Actions }}
+    {{ if .Confirm }}
+    {{ template "confirm_dialog" dict
+      "ID" (printf "action-%s" .Name)
+      "Title" .Label
+      "Message" .Confirm
+      "Action" $ctx.Path
+      "CSRFToken" $ctx.CSRFToken
+      "Name" "action"
+      "Value" .Name
+      "ConfirmLabel" .Label
+      "TriggerLabel" .Label }}
+    {{ else }}
+    <form class="inline-form" method="post" action="{{ $ctx.Path }}">
+      {{ template "csrf" $ctx }}
+      <button class="btn {{ if .Danger }}btn-danger{{ else }}btn-secondary{{ end }}" type="submit" name="action" value="{{ .Name }}">{{ .Label }}</button>
+    </form>
+    {{ end }}
+    {{ end }}
+  </div>
+</section>
+{{ end }}
+{{ end }}

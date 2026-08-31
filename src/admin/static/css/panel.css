@@ -1,0 +1,247 @@
+/* Admin panel layout only. Colours, spacing, cards, buttons, badges, tables
+   and forms all come from the shared stylesheets; nothing here redefines
+   them. Mobile-first: the sidebar is a disclosure below 48rem and a column
+   above it. */
+
+.panel-header-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  max-width: var(--container-width);
+  margin: 0 auto;
+}
+
+.panel-badge {
+  margin-left: var(--spacing-sm);
+}
+
+.panel-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-left: auto;
+}
+
+.panel-identity-name {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+}
+
+.panel-shell {
+  display: block;
+  width: 100%;
+  max-width: var(--container-width);
+  margin: 0 auto;
+  padding: var(--spacing-md);
+}
+
+/* The checkbox in the header drives the sidebar, so the menu opens with no
+   JavaScript. :has() keeps the rule working across the shell boundary. */
+.panel-sidebar {
+  display: none;
+  margin-bottom: var(--spacing-md);
+}
+
+html:has(#panel-nav-toggle:checked) .panel-sidebar {
+  display: block;
+}
+
+.panel-nav-section + .panel-nav-section {
+  margin-top: var(--spacing-md);
+}
+
+.panel-nav-title {
+  margin: 0 0 var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-muted);
+}
+
+.panel-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.panel-nav-list .nav-link {
+  display: flex;
+  align-items: center;
+  min-height: var(--touch-target);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius);
+}
+
+.panel-main {
+  min-width: 0;
+}
+
+.panel-main:focus {
+  outline: none;
+}
+
+.panel-page-head {
+  margin-bottom: var(--spacing-md);
+}
+
+.panel-title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  line-height: var(--line-height);
+}
+
+.panel-description {
+  margin: var(--spacing-xs) 0 0;
+  color: var(--color-muted);
+}
+
+.panel-facts {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--spacing-xs);
+  margin: 0;
+}
+
+.panel-facts dt {
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+}
+
+.panel-facts dd {
+  margin: 0 0 var(--spacing-sm);
+  overflow-wrap: anywhere;
+}
+
+.panel-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.panel-inline-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.panel-codes {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--spacing-xs);
+  margin: var(--spacing-sm) 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+}
+
+.panel-secret {
+  margin: var(--spacing-sm) 0;
+}
+
+.panel-field + .panel-field {
+  margin-top: var(--spacing-md);
+}
+
+.panel-readonly {
+  margin: 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius);
+  background: var(--color-bg-secondary);
+  color: var(--color-muted);
+}
+
+.panel-restart {
+  color: var(--color-warning);
+}
+
+.panel-steps {
+  margin-bottom: var(--spacing-md);
+}
+
+.panel-setup-card,
+.panel-auth-card {
+  max-width: 32rem;
+  margin: 0 auto;
+}
+
+.panel-settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.panel-actions {
+  position: sticky;
+  bottom: 0;
+  padding: var(--spacing-sm) 0;
+  background: var(--color-bg);
+}
+
+.panel-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.panel-filter .form-group {
+  flex: 1 1 12rem;
+  margin: 0;
+}
+
+.panel-footer {
+  text-align: center;
+}
+
+.panel-footer-line {
+  margin: var(--spacing-xs) 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+}
+
+@media (min-width: 48rem) {
+  .panel-shell {
+    display: grid;
+    grid-template-columns: 14rem minmax(0, 1fr);
+    gap: var(--spacing-lg);
+    padding: var(--spacing-lg) var(--spacing-md);
+  }
+
+  .panel-sidebar {
+    display: block;
+    margin-bottom: 0;
+  }
+
+  .panel-nav-toggle,
+  .panel-header .nav-toggle-label {
+    display: none;
+  }
+
+  .panel-facts {
+    grid-template-columns: minmax(10rem, auto) minmax(0, 1fr);
+    align-items: baseline;
+  }
+
+  .panel-facts dd {
+    margin-bottom: 0;
+  }
+
+  .panel-codes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

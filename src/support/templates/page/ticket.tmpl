@@ -1,0 +1,90 @@
+{{ define "content" }}
+  {{ $d := .Data }}
+  <div class="support-card">
+    <h2>{{ $d.Ticket.Number }} · {{ $d.Ticket.Title }}</h2>
+    <ul class="support-meta">
+      <li><span class="{{ supportBadgeClass $d.Ticket.Status }}">{{ supportStateLabel $d.Ticket.Status }}</span></li>
+      <li><span class="{{ supportBadgeClass $d.Ticket.Priority }}">{{ $d.Ticket.Priority }}</span></li>
+      <li>Opened {{ supportAge $d.Now $d.Ticket.CreatedAt }}</li>
+    </ul>
+    <p class="support-msg-body">{{ $d.Ticket.Description }}</p>
+  </div>
+
+  <div class="support-card">
+    <h2>Conversation</h2>
+    {{ if $d.Messages }}
+      <ul class="support-thread">
+        {{ range $d.Messages }}
+          <li class="support-msg {{ if eq .AuthorRole "agent" }}support-msg-agent{{ end }}">
+            <p class="support-msg-head">
+              <span class="support-msg-author">{{ .AuthorName }}</span>
+              <span>{{ supportAge $d.Now .CreatedAt }}</span>
+            </p>
+            <p class="support-msg-body">{{ .Body }}</p>
+          </li>
+        {{ end }}
+      </ul>
+    {{ else }}
+      <p class="support-empty">No replies yet.</p>
+    {{ end }}
+  </div>
+
+  {{ if $d.Attachments }}
+    <div class="support-card">
+      <h2>Attachments</h2>
+      <ul class="support-list">
+        {{ range $d.Attachments }}
+          <li>
+            <a href="{{ $.BasePath }}/attachments/{{ .ID }}">{{ .OriginalName }}</a>
+            <span class="badge badge-muted">{{ .SizeBytes }} bytes</span>
+          </li>
+        {{ end }}
+      </ul>
+    </div>
+  {{ end }}
+
+  {{ if ne $d.Ticket.Status "CLOSED" }}
+    <div class="support-card">
+      <h2>Reply</h2>
+      <form class="form support-form" method="post" action="{{ .BasePath }}/tickets/{{ $d.Ticket.ID }}/messages">
+        <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+        <div class="form-group">
+          <label class="form-label" for="reply-body">Your reply</label>
+          <textarea class="form-textarea" id="reply-body" name="body" rows="6" required maxlength="20000"></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Send reply</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="support-card">
+      <h2>Attach a file</h2>
+      <form class="form support-form" method="post" enctype="multipart/form-data"
+        action="{{ .BasePath }}/tickets/{{ $d.Ticket.ID }}/attachments">
+        <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+        <div class="form-group">
+          <label class="form-label" for="attachment">File (up to {{ $d.MaxKB }} KB)</label>
+          <input class="form-input" id="attachment" name="file" type="file" required>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-secondary">Upload</button>
+        </div>
+      </form>
+    </div>
+  {{ end }}
+
+  <div class="support-actions">
+    {{ if eq $d.Ticket.Status "CLOSED" }}
+      <form method="post" action="{{ .BasePath }}/tickets/{{ $d.Ticket.ID }}/reopen">
+        <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+        <button type="submit" class="btn btn-secondary">Reopen this ticket</button>
+      </form>
+    {{ else }}
+      <form method="post" action="{{ .BasePath }}/tickets/{{ $d.Ticket.ID }}/close">
+        <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+        <button type="submit" class="btn btn-secondary">Close this ticket</button>
+      </form>
+    {{ end }}
+  </div>
+{{ end }}

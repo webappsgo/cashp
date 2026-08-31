@@ -1,0 +1,23 @@
+{{ define "pagination" }}
+{{ if gt .TotalPages 1 }}
+<nav class="pagination" aria-label="Pagination">
+  <ul class="pagination-list">
+    <li>
+      {{ if gt .Page 1 }}
+      <a class="pagination-link" href="{{ .Path }}?page={{ sub .Page 1 }}" rel="prev">Previous</a>
+      {{ else }}
+      <span class="pagination-link pagination-link-disabled" aria-disabled="true">Previous</span>
+      {{ end }}
+    </li>
+    <li class="pagination-status">Page {{ .Page }} of {{ .TotalPages }}</li>
+    <li>
+      {{ if lt .Page .TotalPages }}
+      <a class="pagination-link" href="{{ .Path }}?page={{ add .Page 1 }}" rel="next">Next</a>
+      {{ else }}
+      <span class="pagination-link pagination-link-disabled" aria-disabled="true">Next</span>
+      {{ end }}
+    </li>
+  </ul>
+</nav>
+{{ end }}
+{{ end }}

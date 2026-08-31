@@ -1,0 +1,15 @@
+Subject: {app_name} Stopped on {fqdn}
+---
+SERVER STOPPED
+
+Server: {fqdn}
+Version: {version}
+Time: {timestamp}
+
+The control panel shut down. If this was not planned, check the service
+status and logs on the host.
+
+--
+{app_name}
+{app_url}
+(c) {year}

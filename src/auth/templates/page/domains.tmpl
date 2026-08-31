@@ -1,0 +1,59 @@
+{{define "content" -}}
+<section class="card">
+  <h2>Custom domains</h2>
+  {{if .Domains}}
+  <ul class="cardlist">
+    {{range .Domains}}
+    <li>
+      <p class="cardlist-title">{{.Domain}}</p>
+      <p class="muted">
+        Ownership: {{.VerificationStatus}} &middot; Status: {{.Status}} &middot;
+        Certificate: {{if .SSLEnabled}}{{.SSLStatus}}{{else}}not issued{{end}}
+        {{if .SSLExpiresAt}}&middot; renews after {{date .SSLExpiresAt}}{{end}}
+      </p>
+      {{if .RecordValue}}
+      <div class="notice">
+        <p>Prove you own this domain by publishing a TXT record, then press Check ownership.
+          DNS changes can take up to an hour to appear.</p>
+        <dl class="facts">
+          <dt>Record type</dt><dd>TXT</dd>
+          <dt>Name</dt><dd><code class="mono wrap">{{.RecordName}}</code></dd>
+          <dt>Value</dt><dd><code class="mono wrap">{{.RecordValue}}</code></dd>
+        </dl>
+      </div>
+      {{end}}
+      <div class="actions">
+        {{if .RecordValue}}
+        <form method="post" action="{{$.ActionBase}}/domains/{{.Domain}}/verify" class="inline">
+          {{template "csrf" $}}
+          <button type="submit" class="btn">Check ownership</button>
+        </form>
+        {{end}}
+        <form method="post" action="{{$.ActionBase}}/domains/{{.Domain}}/delete" class="inline">
+          {{template "csrf" $}}
+          <button type="submit" class="btn btn-danger">Remove</button>
+        </form>
+      </div>
+    </li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="muted">No custom domains yet.</p>
+  {{end}}
+</section>
+
+<section class="card">
+  <h2>Add a domain</h2>
+  <form method="post" action="{{.ActionBase}}/domains" class="stack">
+    {{template "csrf" .}}
+    <div class="field">
+      <label for="domain">Domain name</label>
+      <input id="domain" name="domain" type="text" autocapitalize="none" spellcheck="false"
+             inputmode="url" required aria-describedby="domain-hint">
+      <p class="hint" id="domain-hint">Enter the hostname only, with no scheme and no path, such as
+        example.com or app.example.com.</p>
+    </div>
+    <button type="submit" class="btn btn-primary">Add domain</button>
+  </form>
+</section>
+{{- end}}

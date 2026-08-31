@@ -1,0 +1,71 @@
+{{define "content" -}}
+
+<section class="card">
+  <h2>Payment methods on file</h2>
+  {{if .Methods}}
+  <div class="grid grid-2">
+    {{range .Methods}}
+    <article class="method-card">
+      <p><strong>{{label .Brand}}</strong> &middot; &bull;&bull;&bull;&bull; {{.Last4}}{{if .IsDefault}} <span class="badge badge-ok">default</span>{{end}}</p>
+      <p class="muted">
+        {{label .Kind}} via {{.Provider}}
+        {{if .ExpMonth}} &middot; expires {{.ExpMonth}}/{{.ExpYear}}{{end}}
+      </p>
+      {{if .HolderName}}<p class="muted">{{.HolderName}}</p>{{end}}
+      <div class="actions">
+        {{if not .IsDefault}}
+        <form class="inline" method="post" action="{{$.BasePath}}/payment-methods/{{.ID}}/default">
+          {{template "csrf" $}}
+          <button class="btn btn-sm" type="submit">Set as default</button>
+        </form>
+        {{end}}
+        <form class="inline" method="post" action="{{$.BasePath}}/payment-methods/{{.ID}}/remove">
+          {{template "csrf" $}}
+          <button class="btn btn-sm btn-danger" type="submit">Remove</button>
+        </form>
+      </div>
+    </article>
+    {{end}}
+  </div>
+  {{else}}
+  <p class="muted">No payment methods on file yet.</p>
+  {{end}}
+</section>
+
+<section class="card">
+  <h2>Add a payment method</h2>
+  {{if .Categories}}
+  <form class="stack" method="post" action="{{.BasePath}}/payment-methods">
+    {{template "csrf" .}}
+    <div class="field">
+      <label for="provider">Provider</label>
+      <select id="provider" name="provider" required>
+        {{range .Categories}}
+        <optgroup label="{{.Name}}">
+          {{range .Providers}}
+          <option value="{{.Name}}">{{.DisplayName}}{{if .TestMode}} (sandbox){{end}}</option>
+          {{end}}
+        </optgroup>
+        {{end}}
+      </select>
+      <p class="hint">Only providers enabled by an administrator are listed here.</p>
+    </div>
+    <div class="field">
+      <label for="holder_name">Cardholder / account name</label>
+      <input id="holder_name" name="holder_name" autocomplete="cc-name" required>
+    </div>
+    <div class="field">
+      <label for="token">Payment token</label>
+      <input id="token" name="token" class="mono" required>
+      <p class="hint">A one-time tokenized reference returned by the selected provider's secure client-side capture form. Raw card or bank details are never sent to or stored by this server.</p>
+    </div>
+    <div class="actions">
+      <button class="btn btn-primary" type="submit">Add payment method</button>
+    </div>
+  </form>
+  {{else}}
+  <p class="muted">No payment providers are currently enabled by the administrator. This account operates in invoice-only mode; invoices can still be paid manually and are always generated.</p>
+  {{end}}
+</section>
+
+{{- end}}

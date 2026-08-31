@@ -1,0 +1,12 @@
+{{ define "code_block" }}
+<!-- Args: dict "Label" string "Value" string. The value is selectable text, so
+     it can still be copied by hand when the clipboard API is unavailable. -->
+<div class="code-block">
+  {{ if .Label }}<span class="code-label">{{ .Label }}</span>{{ end }}
+  <code class="code-content long-string">{{ .Value }}</code>
+  <button type="button" class="copy-btn" data-copy="{{ .Value }}" data-copied-label="Copied!" aria-label="Copy {{ if .Label }}{{ .Label }}{{ else }}value{{ end }} to clipboard">
+    <span class="copy-icon" aria-hidden="true">📋</span>
+    <span class="copy-text" aria-live="polite">Copy</span>
+  </button>
+</div>
+{{ end }}

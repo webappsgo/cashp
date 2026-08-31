@@ -1,0 +1,42 @@
+# cashp - development stack (HUMAN USE ONLY)
+# Development: accessible from all interfaces, no 172.17.0.1 bind, no cache service
+
+name: cashp-dev
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "5m"
+    max-file: "1"
+
+services:
+  cashp:
+    image: ghcr.io/webappsgo/cashp:devel
+    container_name: cashp-dev
+    hostname: cashp
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    environment:
+      DEBUG: true
+      MODE: development
+      PORT: 80
+      TZ: ${TZ:-America/New_York}
+    volumes:
+      - ./volumes/config:/config:z
+      - ./volumes/data:/data:z
+    ports:
+      - "64580:80"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/cashp", "--status"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    networks:
+      - cashp-dev
+
+networks:
+  cashp-dev:
+    name: cashp-dev
+    external: false

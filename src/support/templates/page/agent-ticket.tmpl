@@ -1,0 +1,145 @@
+{{ define "content" }}
+  {{ $d := .Data }}
+  <div class="support-card">
+    <h2>{{ $d.Ticket.Number }} · {{ $d.Ticket.Title }}</h2>
+    <ul class="support-meta">
+      <li><span class="{{ supportBadgeClass $d.Ticket.Status }}">{{ supportStateLabel $d.Ticket.Status }}</span></li>
+      <li><span class="{{ supportBadgeClass $d.Ticket.Priority }}">{{ $d.Ticket.Priority }}</span></li>
+      <li><span class="{{ supportRiskClass $d.Risk.Level }}">Response {{ $d.Risk.ResponseElapsed }}% · Resolution {{ $d.Risk.ResolutionElapsed }}%</span></li>
+      <li>Opened {{ supportAge $d.Now $d.Ticket.CreatedAt }}</li>
+    </ul>
+    <p class="support-msg-body">{{ $d.Ticket.Description }}</p>
+  </div>
+
+  <div class="support-card">
+    <h2>Thread</h2>
+    <ul class="support-thread">
+      {{ range $d.Messages }}
+        <li class="support-msg {{ if .Internal }}support-msg-internal{{ else if eq .AuthorRole "agent" }}support-msg-agent{{ end }}">
+          <p class="support-msg-head">
+            <span class="support-msg-author">{{ .AuthorName }}</span>
+            <span>{{ supportAge $d.Now .CreatedAt }}</span>
+            {{ if .Internal }}<span class="badge badge-warning">Internal note</span>{{ end }}
+          </p>
+          <p class="support-msg-body">{{ .Body }}</p>
+        </li>
+      {{ else }}
+        <li class="support-empty">No replies yet.</li>
+      {{ end }}
+    </ul>
+  </div>
+
+  {{ if $d.Attachments }}
+    <div class="support-card">
+      <h2>Attachments</h2>
+      <ul class="support-list">
+        {{ range $d.Attachments }}
+          <li><a href="{{ $.BasePath }}/attachments/{{ .ID }}">{{ .OriginalName }}</a></li>
+        {{ end }}
+      </ul>
+    </div>
+  {{ end }}
+
+  <div class="support-card">
+    <h2>Reply</h2>
+    {{ if $d.Suggested }}
+      <details>
+        <summary>Suggested canned responses</summary>
+        <ul class="support-list">
+          {{ range $d.Suggested }}
+            <li>
+              <strong>{{ .Response.Title }}</strong>
+              <span class="badge badge-muted">{{ .Response.Scope }}</span>
+              <p class="support-msg-body">{{ .Response.Body }}</p>
+            </li>
+          {{ end }}
+        </ul>
+      </details>
+    {{ end }}
+
+    <form class="form support-form" method="post" action="{{ .BasePath }}/agents/tickets/{{ $d.Ticket.ID }}/messages">
+      <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+      <div class="form-group">
+        <label class="form-label" for="canned">Insert a canned response</label>
+        <select class="form-input" id="canned" name="canned_id">
+          <option value="">None</option>
+          {{ range $d.Canned }}
+            <option value="{{ .ID }}">{{ .Title }} ({{ .Scope }})</option>
+          {{ end }}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="agent-body">Message</label>
+        <textarea class="form-textarea" id="agent-body" name="body" rows="6" maxlength="20000"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="internal">
+          <input id="internal" name="internal" type="checkbox" value="1">
+          Internal note — the customer never sees this
+        </label>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Send</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="support-card">
+    <h2>Move this ticket on</h2>
+    <form class="form support-inline-form" method="post" action="{{ .BasePath }}/agents/tickets/{{ $d.Ticket.ID }}/status">
+      <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+      <div class="form-group">
+        <label class="form-label" for="next-status">New status</label>
+        <select class="form-input" id="next-status" name="status" required>
+          {{ range $d.NextStates }}
+            <option value="{{ . }}">{{ supportStateLabel . }}</option>
+          {{ else }}
+            <option value="">No move is possible</option>
+          {{ end }}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="status-reason">Reason</label>
+        <input class="form-input" id="status-reason" name="reason" type="text" maxlength="200">
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Apply</button>
+      </div>
+    </form>
+
+    <form class="form support-inline-form" method="post" action="{{ .BasePath }}/agents/tickets/{{ $d.Ticket.ID }}/assignments">
+      <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+      <div class="form-group">
+        <label class="form-label" for="assign-to">Transfer to</label>
+        <select class="form-input" id="assign-to" name="agent_user_id" required>
+          {{ range $d.Roster }}
+            <option value="{{ .Agent.UserID }}">{{ .Agent.DisplayName }} ({{ .Status }})</option>
+          {{ end }}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="assign-reason">Reason</label>
+        <input class="form-input" id="assign-reason" name="reason" type="text" maxlength="200">
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-secondary">Transfer</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="support-card">
+    <h2>History</h2>
+    <ul class="support-list">
+      {{ range $d.Audit }}
+        <li>
+          {{ .Action }}
+          {{ if .ToState }}<span class="badge badge-info">{{ supportStateLabel .FromState }} → {{ supportStateLabel .ToState }}</span>{{ end }}
+          {{ if .SupportMode }}<span class="badge badge-warning">support mode</span>{{ end }}
+          <span>{{ supportAge $d.Now .CreatedAt }}</span>
+        </li>
+      {{ else }}
+        <li class="support-empty">Nothing recorded yet.</li>
+      {{ end }}
+    </ul>
+  </div>
+{{ end }}

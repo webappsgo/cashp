@@ -1,0 +1,90 @@
+{{ define "content" }}
+  {{ $d := .Data }}
+  {{ if $d.Active }}
+    <div class="support-card">
+      <h2>{{ if $d.Session.Subject }}{{ $d.Session.Subject }}{{ else }}Live chat{{ end }}</h2>
+      <ul class="support-meta">
+        <li><span class="badge badge-info">{{ $d.Session.Status }}</span></li>
+        {{ if eq $d.Session.Status "QUEUED" }}
+          <li>Position in queue: {{ $d.Position }}</li>
+        {{ end }}
+      </ul>
+
+      <div class="support-chat-log" id="support-chat-log" role="log" aria-live="polite"
+        aria-label="Chat messages">
+        <ul class="support-thread">
+          {{ range $d.Messages }}
+            <li class="support-msg {{ if eq .AuthorRole "agent" }}support-msg-agent{{ end }}">
+              <p class="support-msg-head">
+                <span class="support-msg-author">{{ .AuthorName }}</span>
+                <span>{{ supportAge $d.Now .CreatedAt }}</span>
+              </p>
+              <p class="support-msg-body">{{ .Body }}</p>
+            </li>
+          {{ else }}
+            <li class="support-empty">No messages yet.</li>
+          {{ end }}
+        </ul>
+      </div>
+
+      {{ if ne $d.Session.Status "CLOSED" }}
+        <form class="form support-form" method="post"
+          action="{{ .BasePath }}/chats/{{ $d.Session.ID }}/messages">
+          <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+          <div class="form-group">
+            <label class="form-label" for="chat-body">Message</label>
+            <textarea class="form-textarea" id="chat-body" name="body" rows="3" required maxlength="4000"></textarea>
+          </div>
+          <div class="form-actions support-actions">
+            <button type="submit" class="btn btn-primary">Send</button>
+            <a class="btn btn-secondary" href="{{ .BasePath }}/chats/{{ $d.Session.ID }}">Refresh</a>
+          </div>
+        </form>
+
+        <form class="form support-form" method="post" action="{{ .BasePath }}/chats/{{ $d.Session.ID }}/close">
+          <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+          <div class="form-group">
+            <label class="form-label" for="chat-rating">How did this go? (optional)</label>
+            <select class="form-input" id="chat-rating" name="rating">
+              <option value="0">No answer</option>
+              <option value="5">5 — very good</option>
+              <option value="4">4</option>
+              <option value="3">3</option>
+              <option value="2">2</option>
+              <option value="1">1 — poor</option>
+            </select>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-secondary">End chat</button>
+          </div>
+        </form>
+      {{ end }}
+    </div>
+  {{ else }}
+    <div class="support-card">
+      <h2>Live chat</h2>
+      {{ if $d.Availability.Available }}
+        <p>An agent is free now. Waiting: {{ $d.Availability.QueueLength }}.</p>
+        <form class="form support-form" method="post" action="{{ .BasePath }}/chats">
+          <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+          <div class="form-group">
+            <label class="form-label" for="chat-subject">What is this about?</label>
+            <input class="form-input" id="chat-subject" name="subject" type="text" required maxlength="200">
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Start chat</button>
+          </div>
+        </form>
+      {{ else }}
+        <p>{{ $d.Availability.Reason }}</p>
+        <p class="support-actions">
+          <a class="btn btn-primary" href="{{ .BasePath }}">Open a ticket instead</a>
+        </p>
+      {{ end }}
+    </div>
+  {{ end }}
+{{ end }}
+
+{{ define "support_scripts" }}
+  <script src="{{ .BasePath }}/assets/support.js" defer></script>
+{{ end }}

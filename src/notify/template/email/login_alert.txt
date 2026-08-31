@@ -1,0 +1,26 @@
+Subject: New Login Detected - {app_name}
+---
+NEW LOGIN DETECTED
+
+This email was sent to: {recipient_email}
+From: {app_name} ({fqdn})
+
+Hello {recipient_username},
+
+Your account was signed in to from a device we have not seen before.
+
+Time: {timestamp}
+IP address: {ip_address}
+Location: {location}
+Device: {device}
+
+If this was you, no action is needed.
+
+If this was NOT you, change your password and review your sessions:
+
+{action_url}
+
+--
+{app_name}
+{app_url}
+(c) {year}

@@ -1,0 +1,59 @@
+{{ define "resource_table" }}
+<!-- Args: a web.ResourceList. Renders the loading, error, empty and populated
+     states of a resource list; the caller never writes its own table. -->
+<div class="resource-list">
+  {{ if .Loading }}
+  {{ template "loading_state" dict "Message" "Loading resources…" }}
+  {{ else if .Error }}
+  <div class="state state-error" role="alert">
+    <span class="state-icon" aria-hidden="true">✕</span>
+    <h3 class="state-title">This list could not be loaded</h3>
+    <p class="state-message">{{ .Error }}</p>
+    <p><button type="button" class="btn btn-secondary" data-action="reload">Try again</button></p>
+  </div>
+  {{ else if not .Rows }}
+  {{ template "empty_state" .Empty }}
+  {{ else }}
+  <div class="table-scroll">
+    <table class="table">
+      {{ if .Caption }}<caption class="table-caption">{{ .Caption }}</caption>{{ end }}
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Status</th>
+          {{ range .Columns }}<th scope="col">{{ . }}</th>{{ end }}
+          <th scope="col"><span class="visually-hidden">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ $csrf := .CSRFToken }}
+        {{ range .Rows }}
+        <tr>
+          <th scope="row" class="table-name">
+            {{ if .Href }}<a href="{{ .Href }}">{{ .Name }}</a>{{ else }}{{ .Name }}{{ end }}
+            {{ if .Detail }}<span class="table-detail">{{ .Detail }}</span>{{ end }}
+          </th>
+          <td>{{ template "status_badge" .Status }}</td>
+          {{ range .Cells }}
+          <td{{ if .Mono }} class="long-string"{{ end }}>{{ .Value }}</td>
+          {{ end }}
+          <td class="table-actions">
+            {{ range .Actions }}
+            {{ if eq .Method "POST" }}
+            <form class="inline-form" method="post" action="{{ .Href }}">
+              <input type="hidden" name="csrf_token" value="{{ $csrf }}">
+              <button type="submit" class="btn btn-{{ fallback "secondary" .Variant }}"{{ if .ConfirmID }} data-confirm="{{ .ConfirmID }}"{{ end }}>{{ .Label }}</button>
+            </form>
+            {{ else }}
+            <a class="btn btn-{{ fallback "secondary" .Variant }}" href="{{ .Href }}">{{ .Label }}</a>
+            {{ end }}
+            {{ end }}
+          </td>
+        </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+  {{ end }}
+</div>
+{{ end }}

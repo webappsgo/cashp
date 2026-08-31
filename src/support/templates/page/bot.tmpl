@@ -1,0 +1,88 @@
+{{ define "content" }}
+  {{ $d := .Data }}
+  <div class="support-card">
+    <h2>Ask for help</h2>
+    <p>
+      Describe the problem in your own words. If the answer is already known you
+      get it straight away; if it is not, this conversation is carried into a
+      ticket for a person to read.
+    </p>
+
+    <ul class="support-thread">
+      <li class="support-msg support-msg-bot">
+        <p class="support-msg-head"><span class="support-msg-author">Support bot</span></p>
+        <p class="support-msg-body">{{ $d.Greeting }}</p>
+      </li>
+      {{ range $d.Turns }}
+        <li class="support-msg {{ if eq .Speaker "bot" }}support-msg-bot{{ end }}">
+          <p class="support-msg-head">
+            <span class="support-msg-author">{{ if eq .Speaker "bot" }}Support bot{{ else }}You{{ end }}</span>
+          </p>
+          <p class="support-msg-body">{{ .Text }}</p>
+        </li>
+      {{ end }}
+    </ul>
+  </div>
+
+  {{ if $d.Answered }}
+    <div class="support-card">
+      <h2>Did this help?</h2>
+      <div class="support-actions">
+        <form method="post" action="{{ .BasePath }}/bot-sessions/{{ $d.Session.ID }}/feedback">
+          <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+          <input type="hidden" name="helpful" value="1">
+          <button type="submit" class="btn btn-primary">Yes, that answers it</button>
+        </form>
+        <form method="post" action="{{ .BasePath }}/bot-sessions/{{ $d.Session.ID }}/escalations">
+          <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+          <button type="submit" class="btn btn-secondary">No — I still need help</button>
+        </form>
+      </div>
+    </div>
+  {{ end }}
+
+  {{ if $d.Session.Escalated }}
+    <div class="support-card">
+      <h2>Handed to a person</h2>
+      <p>Your draft ticket is ready. Change anything that is not right, then submit it.</p>
+      <p class="support-actions">
+        <a class="btn btn-primary" href="{{ .BasePath }}/tickets/{{ $d.DraftID }}/edit">Open the ticket form</a>
+      </p>
+    </div>
+  {{ else }}
+    <div class="support-card">
+      <form class="form support-form" method="post" action="{{ .BasePath }}/bot-sessions">
+        <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+        <input type="hidden" name="session" value="{{ $d.Session.ID }}">
+        <div class="form-group">
+          <label class="form-label" for="bot-message">What is going wrong?</label>
+          <textarea class="form-textarea" id="bot-message" name="message" rows="4" required
+            maxlength="2000" aria-describedby="bot-message-help"></textarea>
+          <p id="bot-message-help">Include any exact error text you saw.</p>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Send</button>
+        </div>
+      </form>
+      {{ if $d.Reply.Exhausted }}
+        <div class="support-actions">
+          <form method="post" action="{{ .BasePath }}/bot-sessions/{{ $d.Session.ID }}/escalations">
+            <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+            <button type="submit" class="btn btn-secondary">Open a ticket instead</button>
+          </form>
+        </div>
+      {{ end }}
+    </div>
+  {{ end }}
+
+  {{ if $d.Articles }}
+    <div class="support-card">
+      <h2>Articles that mention the same words</h2>
+      <ul class="support-list">
+        {{ range $d.Articles }}
+          <li><a href="{{ $.BasePath }}/kb/{{ .Slug }}">{{ .Title }}</a></li>
+        {{ end }}
+      </ul>
+    </div>
+  {{ end }}
+{{ end }}

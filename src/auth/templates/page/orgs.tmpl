@@ -1,0 +1,55 @@
+{{define "content" -}}
+<section class="card">
+  <h2>Your organizations</h2>
+  {{if .Orgs}}
+  <ul class="cardlist">
+    {{range .Orgs}}
+    <li>
+      <a class="cardlist-title" href="{{$.BasePath}}/orgs/{{.Slug}}">{{.Name}}</a>
+      <p class="muted">{{.Slug}} &middot; {{.Visibility}} &middot; {{.MemberCount}} members &middot; your role: {{.YourRole}}</p>
+      {{if .Description}}<p>{{.Description}}</p>{{end}}
+    </li>
+    {{end}}
+  </ul>
+  {{else}}
+  <p class="muted">You are not a member of any organization yet.</p>
+  {{end}}
+</section>
+
+{{if .CanCreateOrg}}
+<section class="card">
+  <h2>Create an organization</h2>
+  <form method="post" action="{{.BasePath}}/orgs" class="stack">
+    {{template "csrf" .}}
+    <div class="field">
+      <label for="slug">Organization handle</label>
+      <input id="slug" name="slug" type="text" autocapitalize="none" spellcheck="false"
+             minlength="2" maxlength="39" required aria-describedby="slug-hint">
+      <p class="hint" id="slug-hint">Lowercase letters, digits and hyphens. Shares the namespace with usernames.</p>
+    </div>
+    <div class="field">
+      <label for="name">Display name</label>
+      <input id="name" name="name" type="text" maxlength="64" required>
+    </div>
+    <div class="field">
+      <label for="description">Description <span class="hint">(optional)</span></label>
+      <textarea id="description" name="description" rows="2" maxlength="500"></textarea>
+    </div>
+    <div class="field">
+      <label for="visibility">Visibility</label>
+      <select id="visibility" name="visibility">
+        <option value="public">Public</option>
+        <option value="private">Private</option>
+      </select>
+    </div>
+    {{if eqs .Config.OrgCreationMode "invite"}}
+    <div class="field">
+      <label for="invite">Invite code</label>
+      <input id="invite" name="invite" type="text" autocapitalize="none" spellcheck="false" required>
+    </div>
+    {{end}}
+    <button type="submit" class="btn btn-primary">Create organization</button>
+  </form>
+</section>
+{{end}}
+{{- end}}

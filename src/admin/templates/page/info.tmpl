@@ -1,0 +1,61 @@
+{{ define "content" }}
+{{ $stats := .Data.Stats }}
+<div class="card-grid">
+  <section class="card">
+    <h2 class="card-title">Build</h2>
+    <dl class="panel-facts">
+      <dt>Version</dt><dd>{{ fallback "development" .Site.Version }}</dd>
+      <dt>Built</dt><dd>{{ fallback "unknown" .Site.BuildDate }}</dd>
+      <dt>Go</dt><dd>{{ $stats.GoVersion }}</dd>
+      <dt>Platform</dt><dd>{{ $stats.OS }}/{{ $stats.Arch }}</dd>
+      <dt>Mode</dt><dd>{{ fallback "production" .Data.Mode }}</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Runtime</h2>
+    <dl class="panel-facts">
+      <dt>Host</dt><dd>{{ fallback "unknown" $stats.Hostname }}</dd>
+      <dt>Uptime</dt><dd>{{ $stats.Uptime }}</dd>
+      <dt>Goroutines</dt><dd>{{ $stats.Goroutines }}</dd>
+      <dt>Heap in use</dt><dd>{{ bytes $stats.HeapAlloc }}</dd>
+      <dt>Heap reserved</dt><dd>{{ bytes $stats.HeapSys }}</dd>
+      <dt>Stack reserved</dt><dd>{{ bytes $stats.StackSys }}</dd>
+      <dt>GC cycles</dt><dd>{{ $stats.GCRuns }}</dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Database</h2>
+    <dl class="panel-facts">
+      <dt>Driver</dt><dd>{{ $stats.DBDriver }}</dd>
+      <dt>Status</dt>
+      <dd><span class="badge {{ if $stats.DBHealthy }}badge-success{{ else }}badge-error{{ end }}">{{ if $stats.DBHealthy }}Healthy{{ else }}Unreachable{{ end }}</span></dd>
+      <dt>Open</dt><dd>{{ $stats.DBOpen }}</dd>
+      <dt>In use</dt><dd>{{ $stats.DBInUse }}</dd>
+      <dt>Idle</dt><dd>{{ $stats.DBIdle }}</dd>
+      <dt>Waits</dt><dd>{{ $stats.DBWaitCount }}</dd>
+    </dl>
+    <p class="form-hint">The connection string is never displayed here.</p>
+  </section>
+
+  <section class="card">
+    <h2 class="card-title">Panel</h2>
+    <dl class="panel-facts">
+      <dt>Mounted at</dt><dd><code class="long-string">{{ .Base }}</code></dd>
+      <dt>Setup</dt><dd>{{ if .Data.SetupDone }}Complete{{ else }}Not finished{{ end }}</dd>
+      <dt>Backup passphrase</dt><dd>{{ if .Data.BackupHeld }}Stored{{ else }}Not set{{ end }}</dd>
+      <dt>Public domain</dt><dd>{{ fallback "not set" .Data.FQDN }}</dd>
+      <dt>Timezone</dt><dd>{{ fallback "system default" .Data.Timezone }}</dd>
+      <dt>Pages</dt><dd>{{ .Data.PageCount }}</dd>
+    </dl>
+  </section>
+</div>
+
+<section class="card">
+  <h2 class="card-title">Rendered pages</h2>
+  <ul class="panel-inline-list">
+    {{ range .Data.PageNames }}<li><code>{{ . }}</code></li>{{ end }}
+  </ul>
+</section>
+{{ end }}

@@ -1,0 +1,85 @@
+{{ define "content" }}
+  {{ $d := .Data }}
+  <div class="support-card">
+    <h2>Waiting and active chats</h2>
+    <ul class="support-list">
+      {{ range $d.Sessions }}
+        <li>
+          <a href="{{ $.BasePath }}/agents/chats/{{ .ID }}">{{ if .Subject }}{{ .Subject }}{{ else }}Chat{{ end }}</a>
+          <span class="badge badge-info">{{ .Status }}</span>
+          <span>{{ supportAge $d.Now .QueuedAt }}</span>
+          {{ if eq .Status "QUEUED" }}
+            <form class="support-inline-form" method="post" action="{{ $.BasePath }}/agents/chats/{{ .ID }}/accept">
+              <input type="hidden" name="csrf_token" value="{{ $.CSRF }}">
+              <button type="submit" class="btn btn-primary">Accept</button>
+            </form>
+          {{ end }}
+        </li>
+      {{ else }}
+        <li class="support-empty">Nobody is waiting.</li>
+      {{ end }}
+    </ul>
+  </div>
+
+  {{ if $d.Open }}
+    <div class="support-card">
+      <h2>{{ if $d.Session.Subject }}{{ $d.Session.Subject }}{{ else }}Chat{{ end }}</h2>
+      <div class="support-chat-log" id="support-chat-log" role="log" aria-live="polite" aria-label="Chat messages">
+        <ul class="support-thread">
+          {{ range $d.Messages }}
+            <li class="support-msg {{ if eq .AuthorRole "agent" }}support-msg-agent{{ end }}">
+              <p class="support-msg-head">
+                <span class="support-msg-author">{{ .AuthorName }}</span>
+                <span>{{ supportAge $d.Now .CreatedAt }}</span>
+              </p>
+              <p class="support-msg-body">{{ .Body }}</p>
+            </li>
+          {{ else }}
+            <li class="support-empty">No messages yet.</li>
+          {{ end }}
+        </ul>
+      </div>
+
+      <form class="form support-form" method="post" action="{{ .BasePath }}/agents/chats/{{ $d.Session.ID }}/messages">
+        <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+        <div class="form-group">
+          <label class="form-label" for="agent-chat-body">Message</label>
+          <textarea class="form-textarea" id="agent-chat-body" name="body" rows="3" required maxlength="4000"></textarea>
+        </div>
+        <div class="form-actions support-actions">
+          <button type="submit" class="btn btn-primary">Send</button>
+          <a class="btn btn-secondary" href="{{ .BasePath }}/agents/chats/{{ $d.Session.ID }}">Refresh</a>
+        </div>
+      </form>
+
+      <form class="form support-inline-form" method="post" action="{{ .BasePath }}/agents/chats/{{ $d.Session.ID }}/escalate">
+        <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+        <div class="form-group">
+          <label class="form-label" for="escalate-title">Escalate to a ticket</label>
+          <input class="form-input" id="escalate-title" name="title" type="text" maxlength="200" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="escalate-priority">Priority</label>
+          <select class="form-input" id="escalate-priority" name="priority">
+            <option value="URGENT">URGENT</option>
+            <option value="HIGH">HIGH</option>
+            <option value="NORMAL" selected>NORMAL</option>
+            <option value="LOW">LOW</option>
+          </select>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-secondary">Escalate</button>
+        </div>
+      </form>
+
+      <form class="support-inline-form" method="post" action="{{ .BasePath }}/agents/chats/{{ $d.Session.ID }}/close">
+        <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+        <button type="submit" class="btn btn-secondary">Close chat</button>
+      </form>
+    </div>
+  {{ end }}
+{{ end }}
+
+{{ define "support_scripts" }}
+  <script src="{{ .BasePath }}/assets/support.js" defer></script>
+{{ end }}

@@ -1,0 +1,45 @@
+{{ define "footer" }}
+<footer class="footer">
+  {{ if .OnionAddress }}
+  <p class="footer-onion">
+    <a href="/server/help#tor-access" aria-label="Tor access instructions">🧅</a>
+    <code class="onion-address long-string">{{ .OnionAddress }}</code>
+    <button type="button" class="copy-btn" data-copy="{{ .OnionAddress }}" data-copied-label="Copied!" aria-label="Copy onion address">
+      <span class="copy-icon" aria-hidden="true">📋</span>
+      <span class="copy-text" aria-live="polite">Copy</span>
+    </button>
+  </p>
+  {{ end }}
+  {{ if .I2PAddress }}
+  <p class="footer-i2p">
+    <a href="/server/help#i2p-access" aria-label="I2P access instructions">🔗</a>
+    <code class="i2p-address long-string">{{ .I2PAddress }}</code>
+    <button type="button" class="copy-btn" data-copy="{{ .I2PAddress }}" data-copied-label="Copied!" aria-label="Copy I2P address">
+      <span class="copy-icon" aria-hidden="true">📋</span>
+      <span class="copy-text" aria-live="polite">Copy</span>
+    </button>
+  </p>
+  {{ end }}
+  <p class="footer-links">
+    <a href="/server/about">About</a>
+    <span aria-hidden="true">•</span>
+    <a href="/server/privacy">Privacy</a>
+    <span aria-hidden="true">•</span>
+    <a href="/server/terms">Terms</a>
+    <span aria-hidden="true">•</span>
+    <a href="/server/contact">Contact</a>
+    <span aria-hidden="true">•</span>
+    <a href="/server/help">Help</a>
+  </p>
+  <p class="footer-brand">
+    <a href="{{ .Site.RepoURL }}" target="_blank" rel="noopener noreferrer">Made with</a> ❤️
+    <span aria-hidden="true">•</span>
+    <span class="footer-version">{{ .Site.Version }}</span>
+  </p>
+  {{ if .Site.BuildDate }}
+  <p class="footer-build">
+    <a href="/server/healthz">Last update: {{ .Site.BuildDate }}</a>
+  </p>
+  {{ end }}
+</footer>
+{{ end }}

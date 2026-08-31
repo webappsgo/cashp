@@ -1,0 +1,16 @@
+{{ define "support_banner" }}
+  {{ if .InMode }}
+    <div class="support-mode-banner" role="region" aria-label="Support agent mode">
+      <p class="support-mode-line">
+        SUPPORT AGENT MODE ACTIVE — Viewing as: {{ .Mode.DisplayName }}
+      </p>
+      <p class="support-mode-line">
+        Active tickets in queue: {{ .QueueCount }} | Your assigned: {{ .MineCount }}
+      </p>
+      <form method="post" action="{{ .BasePath }}/agents/support-mode/exit">
+        <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+        <button type="submit" class="btn btn-secondary">Exit Support Mode</button>
+      </form>
+    </div>
+  {{ end }}
+{{ end }}

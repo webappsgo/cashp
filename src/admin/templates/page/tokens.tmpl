@@ -1,0 +1,73 @@
+{{ define "content" }}
+{{ if .Data.IssuedToken }}
+<section class="card">
+  <h2 class="card-title">Token issued</h2>
+  {{ template "secret_once" dict "Label" "API token" "Value" .Data.IssuedToken }}
+  <p class="form-hint">Send it in the <code>Authorization: Bearer</code> header. Only a hash of it is stored here.</p>
+</section>
+{{ end }}
+
+<section class="card">
+  <h2 class="card-title">Create a token</h2>
+  <form class="form" method="post" action="{{ .Path }}">
+    {{ template "csrf" . }}
+    <input type="hidden" name="action" value="create">
+
+    <div class="form-group">
+      <label class="form-label" for="field-token-name">Name</label>
+      <input class="form-input" id="field-token-name" name="name" type="text" required maxlength="64" spellcheck="false" aria-describedby="field-token-name-help">
+      <p class="form-hint" id="field-token-name-help">A short label so you can tell your tokens apart, up to 64 characters.</p>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Create token</button>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h2 class="card-title">Your tokens</h2>
+  {{ if .Data.Tokens }}
+  <div class="table-scroll">
+    <table class="table">
+      <caption class="table-caption">Tokens issued to your account. Other administrators never see them.</caption>
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Token</th>
+          <th scope="col">Created</th>
+          <th scope="col">Last used</th>
+          <th scope="col">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{ $ctx := . }}
+        {{ range .Data.Tokens }}
+        <tr>
+          <td>{{ .Name }}</td>
+          <td><code class="code-content">{{ .DisplayPrefix }}…</code></td>
+          <td>{{ formatTime .CreatedAt }}</td>
+          <td>{{ if .LastUsedAt.IsZero }}never{{ else }}{{ relTime .LastUsedAt }}{{ end }}</td>
+          <td class="table-actions">
+            {{ template "confirm_dialog" dict
+              "ID" (printf "revoke-token-%s" .ID)
+              "Title" "Revoke this token?"
+              "Message" (printf "Anything using the token %q stops working immediately. This cannot be undone." .Name)
+              "Action" $ctx.Path
+              "CSRFToken" $ctx.CSRFToken
+              "Name" "action"
+              "Value" "revoke"
+              "Hidden" (list (dict "Name" "id" "Value" .ID))
+              "ConfirmLabel" "Revoke token"
+              "TriggerLabel" "Revoke" }}
+          </td>
+        </tr>
+        {{ end }}
+      </tbody>
+    </table>
+  </div>
+  {{ else }}
+  <p class="note">You have no API tokens yet.</p>
+  {{ end }}
+</section>
+{{ end }}

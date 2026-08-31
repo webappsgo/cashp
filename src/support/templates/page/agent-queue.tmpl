@@ -1,0 +1,75 @@
+{{ define "content" }}
+  {{ $d := .Data }}
+  <div class="support-card">
+    <h2>Your workload</h2>
+    <ul class="support-meta">
+      <li>Assigned to you: {{ $d.Metrics.Assigned }}</li>
+      <li>Resolved by you: {{ $d.Metrics.Resolved }}</li>
+      <li>Queue depth: {{ $d.Metrics.QueueDepth }}</li>
+      <li>Average first response: {{ supportSince $d.Metrics.AvgFirstResponseSec }}</li>
+      <li>Average resolution: {{ supportSince $d.Metrics.AvgResolutionSec }}</li>
+    </ul>
+  </div>
+
+  <div class="support-card">
+    <h2>Queue</h2>
+    {{ if $d.Items }}
+      <div class="table-scroll">
+        <table class="table">
+          <caption class="visually-hidden">Tickets waiting for support</caption>
+          <thead>
+            <tr>
+              <th scope="col">Number</th>
+              <th scope="col">Title</th>
+              <th scope="col">Status</th>
+              <th scope="col">Priority</th>
+              <th scope="col">SLA</th>
+              <th scope="col">Age</th>
+              <th scope="col">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{ range $d.Items }}
+              <tr>
+                <td><a href="{{ $.BasePath }}/agents/tickets/{{ .Ticket.ID }}">{{ .Ticket.Number }}</a></td>
+                <td>{{ .Ticket.Title }}</td>
+                <td><span class="{{ supportBadgeClass .Ticket.Status }}">{{ supportStateLabel .Ticket.Status }}</span></td>
+                <td><span class="{{ supportBadgeClass .Ticket.Priority }}">{{ .Ticket.Priority }}</span></td>
+                <td><span class="{{ supportRiskClass .Risk.Level }}">{{ .Risk.ResolutionElapsed }}%</span></td>
+                <td>{{ supportAge $d.Now .Ticket.CreatedAt }}</td>
+                <td>
+                  {{ if eq .Ticket.AssignedTo 0 }}
+                    <form method="post" action="{{ $.BasePath }}/agents/tickets/{{ .Ticket.ID }}/claim">
+                      <input type="hidden" name="csrf_token" value="{{ $.CSRF }}">
+                      <button type="submit" class="btn btn-primary">Claim</button>
+                    </form>
+                  {{ else }}
+                    <span class="badge badge-muted">Assigned</span>
+                  {{ end }}
+                </td>
+              </tr>
+            {{ end }}
+          </tbody>
+        </table>
+      </div>
+      {{ template "support_pagination" $d }}
+    {{ else }}
+      <p class="support-empty">The queue is empty.</p>
+    {{ end }}
+  </div>
+
+  <div class="support-card">
+    <h2>Who is on</h2>
+    <ul class="support-list">
+      {{ range $d.Roster }}
+        <li>
+          {{ .Agent.DisplayName }}
+          <span class="badge badge-info">{{ .Status }}</span>
+          <span class="badge badge-muted">{{ .ActiveChats }} chats</span>
+        </li>
+      {{ else }}
+        <li class="support-empty">No agents are configured.</li>
+      {{ end }}
+    </ul>
+  </div>
+{{ end }}

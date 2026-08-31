@@ -1,0 +1,141 @@
+{{ define "title" }}Privacy policy{{ end }}
+{{ define "page_class" }}page-privacy{{ end }}
+
+{{ define "content" }}
+<article class="privacy-policy prose">
+  <h1>Privacy policy</h1>
+  {{ if .Site.BuildDate }}<p class="last-updated">Last updated: {{ .Site.BuildDate }}</p>{{ end }}
+
+  <section id="summary" class="privacy-summary" aria-labelledby="summary-title">
+    <h2 id="summary-title">Summary</h2>
+    <div class="key-points">
+      <div class="key-point">
+        <span class="key-point-icon" aria-hidden="true">🔒</span>
+        <strong>Your data stays on this server</strong>
+        <p>Everything this instance stores about you lives on the infrastructure its operator runs. No third-party cloud service holds a copy of your account data.</p>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon" aria-hidden="true">🚫</span>
+        <strong>Your data is never sold</strong>
+        <p>Personal information is not sold, rented or traded to third parties.</p>
+      </div>
+      <div class="key-point">
+        <span class="key-point-icon" aria-hidden="true">🎛️</span>
+        <strong>You control your data</strong>
+        <p>Export or permanently delete everything associated with your account from your account settings at any time.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="cookies" aria-labelledby="cookies-title">
+    <h2 id="cookies-title">Cookie policy</h2>
+    <p>Cookies are used to keep you signed in, to protect forms against cross-site request forgery, and to remember your interface preferences.</p>
+
+    <h3>Essential cookies</h3>
+    <p>Required for the site to work: your sign-in session, the CSRF token that protects every form, and the record of the cookie choice you make below. These cannot be switched off.</p>
+
+    <h3>Preference cookies</h3>
+    <p>Remember your interface settings, such as the light or dark theme, between visits.</p>
+
+    <h3>Analytics cookies</h3>
+    <p>This instance ships with no analytics provider configured. If its operator enables one, analytics cookies are only set after you agree to them here.</p>
+
+    <div class="manage-cookies" id="cookie-preferences">
+      <h3>Manage your cookies</h3>
+      <!-- Plain POST form: cookie choices are saved server-side and work with
+           JavaScript disabled. -->
+      <form method="post" action="/server/consent">
+        {{ template "csrf" . }}
+        <input type="hidden" name="choice" value="save">
+        <input type="hidden" name="return_to" value="/server/privacy#cookie-preferences">
+        <div class="checkbox-group">
+          <label class="checkbox"><input type="checkbox" checked disabled> Essential cookies (always on)</label>
+          <label class="checkbox"><input type="checkbox" name="preferences"{{ if .Data.Consent.Preferences }} checked{{ end }}> Preference cookies</label>
+          <label class="checkbox"><input type="checkbox" name="analytics"{{ if .Data.Consent.Analytics }} checked{{ end }}> Analytics cookies</label>
+        </div>
+        <button type="submit" class="btn btn-primary">Save cookie preferences</button>
+      </form>
+    </div>
+  </section>
+
+  <section id="data-collection" aria-labelledby="data-collection-title">
+    <h2 id="data-collection-title">Data we collect</h2>
+    <ul>
+      <li><strong>Account details:</strong> your username, email address and the password hash used to sign you in.</li>
+      <li><strong>Resources you create:</strong> the sites, applications, containers, virtual machines, mailboxes, DNS zones and databases you manage here, along with their configuration.</li>
+      <li><strong>Operational records:</strong> access and audit logs, including the IP address and user agent of requests, kept so security incidents can be investigated.</li>
+      <li><strong>Support conversations:</strong> the tickets you open and the messages exchanged in them.</li>
+    </ul>
+  </section>
+
+  <section id="data-usage" aria-labelledby="data-usage-title">
+    <h2 id="data-usage-title">How we use your data</h2>
+    <p>Your data is used to run the services you asked this instance to run, to authenticate you, to enforce the quotas of your plan, to notify you about your resources, and to investigate abuse or security incidents. It is not used for advertising or profiling.</p>
+  </section>
+
+  <section id="data-security" aria-labelledby="data-security-title">
+    <h2 id="data-security-title">Data security</h2>
+    <p>Passwords are stored as salted hashes, never in a recoverable form. Sessions and API tokens are stored hashed. Traffic is served over TLS, and the intrusion prevention system and web application firewall run at all times and cannot be weakened by an account holder.</p>
+  </section>
+
+  <section id="data-storage" aria-labelledby="data-storage-title">
+    <h2 id="data-storage-title">Data storage and third-party sharing</h2>
+    <p><strong>All your data is stored on this operator's servers.</strong> Data leaves them only in these situations:</p>
+    <ul>
+      <li><strong>Email delivery:</strong> when a message is sent to you or by you, the address and message content pass through the configured mail transport.</li>
+      <li><strong>Certificate issuance:</strong> domain names you add are sent to the certificate authority in order to obtain certificates for them.</li>
+      <li><strong>Actions you initiate:</strong> anything you explicitly publish, deploy or share leaves the server because you asked for it.</li>
+      <li><strong>Legal obligation:</strong> where the operator is legally required to disclose information.</li>
+    </ul>
+  </section>
+
+  <section id="data-retention" aria-labelledby="data-retention-title">
+    <h2 id="data-retention-title">Data retention</h2>
+    <p>Account data is retained for as long as your account is active. When an account is deleted, its personal data is permanently removed within 30 days, apart from records the operator must keep for legal or billing reasons. Usernames are retired rather than reissued, so a deleted name cannot be claimed by someone else.</p>
+  </section>
+
+  <section id="third-parties" aria-labelledby="third-parties-title">
+    <h2 id="third-parties-title">Third-party services</h2>
+    <p><strong>This instance uses no third-party service that receives your personal data by default.</strong> The certificate authority and the mail transport described above are the only external systems involved, and only for the purposes listed.</p>
+  </section>
+
+  <section id="your-rights" aria-labelledby="your-rights-title">
+    <h2 id="your-rights-title">Your rights</h2>
+    <ul>
+      <li><strong>Access:</strong> view everything stored about you in your account settings.</li>
+      <li><strong>Export:</strong> download a portable copy of your data.</li>
+      <li><strong>Deletion:</strong> permanently delete your account and its data.</li>
+      <li><strong>Correction:</strong> update your personal information at any time.</li>
+      <li><strong>Cookie control:</strong> <a href="#cookie-preferences">manage your cookie preferences</a>.</li>
+    </ul>
+  </section>
+
+  <section id="ccpa-opt-out" aria-labelledby="ccpa-title">
+    <h2 id="ccpa-title">Do not sell my personal information</h2>
+    <p>California residents may direct that their personal information is never sold or shared. This instance does not sell personal information to anyone, so the opt-out changes nothing about how your data is handled — it is recorded because you are entitled to make it.</p>
+    <p class="ccpa-status">
+      Your opt-out:
+      {{ if .Data.CCPAOptedOut }}
+      {{ template "status_badge" "active" }} <span>Recorded for this browser.</span>
+      {{ else }}
+      {{ template "status_badge" "disabled" }} <span>Not recorded for this browser.</span>
+      {{ end }}
+    </p>
+    <form method="post" action="/server/ccpa">
+      {{ template "csrf" . }}
+      {{ if .Data.CCPAOptedOut }}
+      <input type="hidden" name="choice" value="opt-in">
+      <button type="submit" class="btn btn-secondary">Withdraw my opt-out</button>
+      {{ else }}
+      <input type="hidden" name="choice" value="opt-out">
+      <button type="submit" class="btn btn-primary">Opt out of the sale of my personal information</button>
+      {{ end }}
+    </form>
+  </section>
+
+  <section id="contact" aria-labelledby="privacy-contact-title">
+    <h2 id="privacy-contact-title">Contact</h2>
+    <p>For privacy questions, <a href="/server/contact">contact the operator of this instance</a>.</p>
+  </section>
+</article>
+{{ end }}

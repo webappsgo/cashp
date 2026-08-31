@@ -1,0 +1,21 @@
+Subject: SSL Certificate Expiring in {days_left} Days - {app_name}
+---
+SSL CERTIFICATE EXPIRING
+
+Server: {fqdn}
+
+A certificate is approaching expiry.
+
+Domain: {domain}
+Expires: {expires_at}
+Days remaining: {days_left}
+
+Automatic renewal normally runs well before this point. If it has not,
+renew manually here:
+
+{action_url}
+
+--
+{app_name}
+{app_url}
+(c) {year}

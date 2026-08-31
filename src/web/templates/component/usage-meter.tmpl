@@ -1,0 +1,13 @@
+{{ define "usage_meter" }}
+<!-- Args: a web.UsageMeter. Uses the native <progress> element so the bar needs
+     no inline width style and is announced by screen readers. -->
+<div class="meter meter-{{ .Level }}">
+  <div class="meter-head">
+    <span class="meter-label" id="meter-{{ lower .Label }}">{{ .Label }}</span>
+    <span class="meter-value">{{ .Used }}{{ if .Unit }} {{ .Unit }}{{ end }} of {{ .Total }}{{ if .Unit }} {{ .Unit }}{{ end }} ({{ .UsedPercent }}%)</span>
+  </div>
+  <progress class="meter-bar" max="100" value="{{ .UsedPercent }}" aria-labelledby="meter-{{ lower .Label }}">{{ .UsedPercent }}%</progress>
+  {{ if .Note }}<p class="meter-note">{{ .Note }}</p>{{ end }}
+  {{ if eq .Level "critical" }}<p class="meter-warning">Quota almost exhausted — free space or upgrade the plan to avoid write failures.</p>{{ end }}
+</div>
+{{ end }}

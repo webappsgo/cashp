@@ -1,0 +1,4 @@
+{{define "flash" -}}
+{{if .Error}}<p class="alert alert-error" role="alert">{{.Error}}</p>{{end}}
+{{if .Notice}}<p class="alert alert-ok" role="status">{{.Notice}}</p>{{end}}
+{{- end}}

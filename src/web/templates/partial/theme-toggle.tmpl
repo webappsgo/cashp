@@ -1,0 +1,23 @@
+{{ define "theme_toggle" }}
+<!-- Plain POST form: the server stores the choice in the theme cookie and
+     redirects back, so the theme switches with JavaScript disabled. -->
+<form class="theme-toggle" method="post" action="/server/theme">
+  {{ template "csrf" . }}
+  <input type="hidden" name="return_to" value="{{ .Path }}">
+  <fieldset class="theme-toggle-set">
+    <legend class="visually-hidden">Colour theme</legend>
+    <button type="submit" name="theme" value="light" class="theme-btn{{ if eq .Theme "light" }} theme-btn-active{{ end }}"{{ if eq .Theme "light" }} aria-pressed="true"{{ else }} aria-pressed="false"{{ end }}>
+      <span class="theme-btn-icon" aria-hidden="true">☀️</span>
+      <span class="theme-btn-text">Light</span>
+    </button>
+    <button type="submit" name="theme" value="dark" class="theme-btn{{ if eq .Theme "dark" }} theme-btn-active{{ end }}"{{ if eq .Theme "dark" }} aria-pressed="true"{{ else }} aria-pressed="false"{{ end }}>
+      <span class="theme-btn-icon" aria-hidden="true">🌙</span>
+      <span class="theme-btn-text">Dark</span>
+    </button>
+    <button type="submit" name="theme" value="auto" class="theme-btn{{ if eq .Theme "auto" }} theme-btn-active{{ end }}"{{ if eq .Theme "auto" }} aria-pressed="true"{{ else }} aria-pressed="false"{{ end }}>
+      <span class="theme-btn-icon" aria-hidden="true">🔄</span>
+      <span class="theme-btn-text">Auto</span>
+    </button>
+  </fieldset>
+</form>
+{{ end }}

@@ -1,0 +1,57 @@
+{{ define "title" }}About{{ end }}
+{{ define "page_class" }}page-about{{ end }}
+
+{{ define "content" }}
+<article class="about-page prose">
+  <h1>{{ .Site.AppName }}</h1>
+  <p class="tagline">A self-hostable, all-in-one hosting control panel.</p>
+
+  <section class="description" aria-labelledby="about-description">
+    <h2 id="about-description">About</h2>
+    <p>{{ .Site.AppName }} replaces the stack of tools a hosting provider normally runs side by side — a web hosting panel, a container manager, a virtualisation console, a DNS and mail suite, and a billing front end — with one program you install on your own servers.</p>
+    <p>It is built for people who want to own their infrastructure: a home lab on a single Raspberry Pi, a developer running side projects on one box, and a provider running a cluster for paying customers all use the same binary and the same interface.</p>
+    <p>Security is designed in rather than configured in. Malware scanning, intrusion prevention and the web application firewall are always on, and no account holder is given a switch that weakens them.</p>
+  </section>
+
+  <section class="features" aria-labelledby="about-features">
+    <h2 id="about-features">What it does</h2>
+    <ul>
+      <li><strong>Web hosting:</strong> multiple domains per account, PHP 5.6 to current, automatic Let's Encrypt certificates, git deploys, FTP and SFTP.</li>
+      <li><strong>Application platform:</strong> Node.js, Python, Ruby, PHP, Go, Java, .NET and Rust applications with blue-green deploys and rollback.</li>
+      <li><strong>Containers:</strong> Docker, Podman and Incus running at the same time, per-account isolated networks, and a private OCI registry.</li>
+      <li><strong>Virtual machines:</strong> KVM guests, multi-architecture images, VNC and SPICE consoles, live migration, and GPU, USB and PCI passthrough.</li>
+      <li><strong>Email:</strong> a complete mail stack with mailboxes, aliases, spam filtering and webmail.</li>
+      <li><strong>DNS:</strong> authoritative zones with DNSSEC signing and dynamic DNS updates.</li>
+      <li><strong>Databases:</strong> relational, document and key-value engines with replication and failover.</li>
+      <li><strong>Clustering:</strong> high availability with floating addresses and distributed storage, down to low-power hardware.</li>
+      <li><strong>Accounts and billing:</strong> global administrators, account administrators and end users, with plans that gate quotas rather than features.</li>
+      <li><strong>Backups:</strong> deduplicated and compressed backups, grandfather-father-son retention, and bare-metal restore.</li>
+      <li><strong>Support:</strong> a built-in ticket system and knowledge base for the people using your instance.</li>
+    </ul>
+  </section>
+
+  <section class="not-included" aria-labelledby="about-scope">
+    <h2 id="about-scope">What it deliberately is not</h2>
+    <ul>
+      <li>It is not a domain registrar. Domains are managed here, but bought elsewhere.</li>
+      <li>It never phones home. There is no licence server, and no feature is withheld from a self-hosted install.</li>
+      <li>It does not depend on one hypervisor, one container runtime or one database engine.</li>
+    </ul>
+  </section>
+
+  <section class="version" aria-labelledby="about-version">
+    <h2 id="about-version">Version</h2>
+    <p>Running <strong>{{ .Site.Version }}</strong>{{ if .Site.BuildDate }}, built {{ .Site.BuildDate }}{{ end }}.</p>
+  </section>
+
+  <section class="links" aria-labelledby="about-links">
+    <h2 id="about-links">Links</h2>
+    <ul>
+      <li><a href="{{ .Site.RepoURL }}" target="_blank" rel="noopener noreferrer">Source code</a></li>
+      <li><a href="{{ .Site.DocsURL }}" target="_blank" rel="noopener noreferrer">Documentation</a></li>
+      <li><a href="/server/help">Help and API reference</a></li>
+      <li><a href="/server/contact">Contact the operator of this instance</a></li>
+    </ul>
+  </section>
+</article>
+{{ end }}

@@ -1,0 +1,33 @@
+{{define "content" -}}
+<section class="card narrow">
+  <p class="notice">This server has no administrator yet. Creating one requires the bootstrap token
+    printed in the server log at first start. The token can be used exactly once, and this page stops
+    working the moment the first administrator exists.</p>
+  <form method="post" action="/{{.AdminPath}}/setup" class="stack">
+    {{template "csrf" .}}
+    <div class="field">
+      <label for="bootstrap_token">Bootstrap token</label>
+      <input id="bootstrap_token" name="bootstrap_token" type="text" autocapitalize="none"
+             spellcheck="false" required autofocus>
+    </div>
+    <div class="field">
+      <label for="username">Administrator username</label>
+      <input id="username" name="username" type="text" autocomplete="username" autocapitalize="none"
+             spellcheck="false" minlength="2" maxlength="39" required>
+    </div>
+    <div class="field">
+      <label for="email">Email address</label>
+      <input id="email" name="email" type="email" autocomplete="email" autocapitalize="none"
+             spellcheck="false" required>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="new-password"
+             minlength="12" required aria-describedby="admin-pw-hint">
+      <p class="hint" id="admin-pw-hint">At least 12 characters. Store it in a password manager
+        before submitting; there is no recovery path for the first administrator.</p>
+    </div>
+    <button type="submit" class="btn btn-primary">Create administrator</button>
+  </form>
+</section>
+{{- end}}

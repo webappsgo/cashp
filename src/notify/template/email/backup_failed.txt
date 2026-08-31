@@ -1,0 +1,20 @@
+Subject: Backup FAILED - {app_name}
+---
+BACKUP FAILED
+
+Server: {fqdn}
+
+The scheduled backup did not complete. No new restore point was created.
+
+Error: {error}
+Task: {task}
+Time: {timestamp}
+
+Check the backup settings and disk space, then run the backup manually:
+
+{action_url}
+
+--
+{app_name}
+{app_url}
+(c) {year}

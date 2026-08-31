@@ -1,0 +1,15 @@
+{{define "header" -}}
+<div class="topbar">
+  <div class="shell topbar-inner">
+    <a class="brand" href="{{.BasePath}}">Billing</a>
+    <ul class="navlist">
+      {{if .Identity.TenantSlug}}
+      <li><a href="/orgs/{{.Identity.TenantSlug}}">Organization</a></li>
+      {{end}}
+      {{if .Identity.ServerAdmin}}
+      <li><a href="/server/{{.AdminPath}}">Administration</a></li>
+      {{end}}
+    </ul>
+  </div>
+</div>
+{{- end}}

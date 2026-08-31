@@ -1,0 +1,37 @@
+{{ define "content" }}
+  {{ $d := .Data }}
+  <p class="support-actions">
+    <a class="btn btn-primary" href="{{ .BasePath }}">Get help with something new</a>
+  </p>
+
+  {{ if $d.Tickets }}
+    <div class="table-scroll">
+      <table class="table">
+        <caption class="visually-hidden">Your support tickets</caption>
+        <thead>
+          <tr>
+            <th scope="col">Number</th>
+            <th scope="col">Title</th>
+            <th scope="col">Status</th>
+            <th scope="col">Priority</th>
+            <th scope="col">Opened</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{ range $d.Tickets }}
+            <tr>
+              <td><a href="{{ $.BasePath }}/tickets/{{ .ID }}">{{ .Number }}</a></td>
+              <td>{{ .Title }}</td>
+              <td><span class="{{ supportBadgeClass .Status }}">{{ supportStateLabel .Status }}</span></td>
+              <td><span class="{{ supportBadgeClass .Priority }}">{{ .Priority }}</span></td>
+              <td>{{ supportAge $d.Now .CreatedAt }}</td>
+            </tr>
+          {{ end }}
+        </tbody>
+      </table>
+    </div>
+    {{ template "support_pagination" $d }}
+  {{ else }}
+    <p class="support-empty">You have no tickets yet.</p>
+  {{ end }}
+{{ end }}

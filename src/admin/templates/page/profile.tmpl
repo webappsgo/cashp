@@ -1,0 +1,157 @@
+{{ define "content" }}
+{{ if .Data.RecoveryCodes }}
+<section class="card">
+  <h2 class="card-title">Recovery codes</h2>
+  <p class="form-hint">Each code signs you in once. Store them away from the device that holds your authenticator. They are shown only now.</p>
+  <ul class="panel-codes">
+    {{ range .Data.RecoveryCodes }}<li><code class="long-string">{{ . }}</code></li>{{ end }}
+  </ul>
+</section>
+{{ end }}
+
+<section class="card">
+  <h2 class="card-title">Account</h2>
+  <dl class="panel-facts">
+    <dt>Username</dt><dd>{{ .Admin.Username }}</dd>
+    <dt>Role</dt><dd>{{ if .Admin.IsPrimary }}Primary administrator{{ else }}Administrator{{ end }}</dd>
+    <dt>Source</dt><dd>{{ fallback "local" .Data.Source }}</dd>
+    <dt>Created</dt><dd>{{ formatTime .Admin.CreatedAt }}</dd>
+    <dt>Last sign-in</dt><dd>{{ formatTime .Admin.LastLoginAt }}</dd>
+  </dl>
+
+  <form class="form" method="post" action="{{ .Path }}">
+    {{ template "csrf" . }}
+    <input type="hidden" name="action" value="emails">
+
+    <div class="form-group">
+      <label class="form-label" for="field-account-email">Account email</label>
+      <input class="form-input" id="field-account-email" name="account_email" type="email" value="{{ .Admin.AccountEmail }}" required autocomplete="email" spellcheck="false">
+      <p class="form-hint">Security alerts about this account are always sent here.</p>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="field-notification-email">Notification email</label>
+      <input class="form-input" id="field-notification-email" name="notification_email" type="email" value="{{ .Admin.NotificationEmail }}" autocomplete="email" spellcheck="false">
+      <p class="form-hint">Optional. Other notifications go here instead when it is set.</p>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Save addresses</button>
+    </div>
+  </form>
+</section>
+
+{{ if .Data.External }}
+<section class="card">
+  <h2 class="card-title">Password</h2>
+  <p class="note">This account signs in through an external identity provider, so its password is managed there.</p>
+</section>
+{{ else }}
+<section class="card">
+  <h2 class="card-title">Password</h2>
+  <form class="form" method="post" action="{{ .Path }}" autocomplete="off">
+    {{ template "csrf" . }}
+    <input type="hidden" name="action" value="password">
+
+    <div class="form-group">
+      <label class="form-label" for="field-current-password">Current password</label>
+      <input class="form-input" id="field-current-password" name="current_password" type="password" required autocomplete="current-password">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="field-new-password">New password</label>
+      <input class="form-input" id="field-new-password" name="new_password" type="password" required autocomplete="new-password">
+      <p class="form-hint">At least 12 characters using three of: lower case, upper case, digits, symbols.</p>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="field-confirm-password">Confirm new password</label>
+      <input class="form-input" id="field-confirm-password" name="confirm_password" type="password" required autocomplete="new-password">
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Change password</button>
+    </div>
+  </form>
+</section>
+{{ end }}
+
+<section class="card">
+  <h2 class="card-title">Two-factor authentication</h2>
+
+  {{ if .Admin.TOTPEnabled }}
+  <p><span class="badge badge-success">Enabled</span> {{ .Data.Remaining }} unused {{ pluralize .Data.Remaining "recovery code" "recovery codes" }} remaining.</p>
+
+  <form class="form" method="post" action="{{ .Path }}" autocomplete="off">
+    {{ template "csrf" . }}
+    <input type="hidden" name="action" value="recovery_codes">
+    <div class="form-group">
+      <label class="form-label" for="field-recovery-current">Current password</label>
+      <input class="form-input" id="field-recovery-current" name="current_password" type="password" required autocomplete="current-password">
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" type="submit">Issue new recovery codes</button>
+    </div>
+  </form>
+
+  <form class="form" method="post" action="{{ .Path }}" autocomplete="off">
+    {{ template "csrf" . }}
+    <input type="hidden" name="action" value="totp_disable">
+    <input type="hidden" name="confirm" value="yes">
+    <div class="form-group">
+      <label class="form-label" for="field-disable-current">Current password</label>
+      <input class="form-input" id="field-disable-current" name="current_password" type="password" required autocomplete="current-password">
+      <p class="form-hint">Turning off two-factor authentication also destroys the remaining recovery codes.</p>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-danger" type="submit">Turn off two-factor authentication</button>
+    </div>
+  </form>
+
+  {{ else if .Data.PendingSecret }}
+  <p class="form-hint">Add this key to your authenticator app, then enter the code it shows to finish.</p>
+  <div class="code-block">
+    <p class="code-label">Manual entry key</p>
+    <code class="code-content long-string">{{ .Data.PendingSecret }}</code>
+  </div>
+  <div class="code-block">
+    <p class="code-label">Setup URI</p>
+    <code class="code-content long-string">{{ .Data.PendingURI }}</code>
+  </div>
+
+  <form class="form" method="post" action="{{ .Path }}" autocomplete="off">
+    {{ template "csrf" . }}
+    <input type="hidden" name="action" value="totp_confirm">
+    <div class="form-group">
+      <label class="form-label" for="field-totp-code">Verification code</label>
+      <input class="form-input" id="field-totp-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" spellcheck="false" required>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">Finish enrolment</button>
+    </div>
+  </form>
+
+  {{ else }}
+  <p><span class="badge badge-warning">Not enabled</span> An authenticator app protects this account if the password is ever exposed.</p>
+  <form class="inline-form" method="post" action="{{ .Path }}">
+    {{ template "csrf" . }}
+    <button class="btn btn-primary" type="submit" name="action" value="totp_start">Set up an authenticator</button>
+  </form>
+  {{ end }}
+</section>
+
+<section class="card">
+  <h2 class="card-title">Sessions</h2>
+  <p class="form-hint">Signing every session out ends this one too, on every device.</p>
+  {{ template "confirm_dialog" dict
+    "ID" "revoke-own-sessions"
+    "Title" "Sign out everywhere"
+    "Message" "Every session belonging to this account is ended, including the one you are using now."
+    "Action" .Path
+    "CSRFToken" .CSRFToken
+    "Name" "action"
+    "Value" "revoke_sessions"
+    "ConfirmLabel" "Sign out everywhere"
+    "TriggerLabel" "Sign out everywhere" }}
+</section>
+{{ end }}

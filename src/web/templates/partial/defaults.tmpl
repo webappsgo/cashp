@@ -1,0 +1,10 @@
+{{ define "title" }}{{ .Site.AppName }}{{ end }}
+
+{{ define "description" }}{{ .Site.Description }}{{ end }}
+
+{{ define "page_class" }}page-default{{ end }}
+
+{{ define "content" }}
+<h1>{{ .Site.AppName }}</h1>
+<p>{{ .Site.Description }}</p>
+{{ end }}

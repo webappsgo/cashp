@@ -1,0 +1,46 @@
+{{define "content" -}}
+
+{{if .Preview.ToPlanID}}
+<section class="card">
+  <h2>Plan change preview</h2>
+  <dl class="facts">
+    <dt>Due now</dt><dd>{{money .Preview.DueNowMinor .Preview.Currency}}</dd>
+    {{if .Preview.CreditMinor}}<dt>Credit applied</dt><dd>{{money .Preview.CreditMinor .Preview.Currency}}</dd>{{end}}
+    {{if .Preview.ChargeMinor}}<dt>New charge</dt><dd>{{money .Preview.ChargeMinor .Preview.Currency}}</dd>{{end}}
+    {{if .Preview.RefundMinor}}<dt>Refund</dt><dd>{{money .Preview.RefundMinor .Preview.Currency}}</dd>{{end}}
+    <dt>Takes effect</dt><dd>{{if .Preview.Immediate}}Immediately{{else}}{{date .Preview.EffectiveAt}}{{end}}</dd>
+  </dl>
+</section>
+{{end}}
+
+<div class="grid grid-3">
+  {{range .Plans}}
+  <article class="plan-card{{if and $.Summary.HasSubscription (eqs $.Summary.Plan.ID .ID)}} current{{end}}">
+    <h2>{{.Name}}</h2>
+    {{if .Description}}<p class="muted">{{.Description}}</p>{{end}}
+    <p class="plan-price">{{money .PriceMinor .Currency}} <small>/ {{label .Cycle}}</small></p>
+    {{if .TrialDays}}<p class="hint">{{.TrialDays}}-day free trial</p>{{end}}
+    {{if .Quotas}}
+    <ul class="plan-quotas">
+      {{range .Quotas}}
+      <li>{{if eq .LimitValue -1}}Unlimited{{else}}{{.LimitValue}}{{end}} {{label .Resource}}</li>
+      {{end}}
+    </ul>
+    {{end}}
+    <div class="actions">
+      {{if and $.Summary.HasSubscription (eqs $.Summary.Plan.ID .ID)}}
+      <span class="badge badge-ok">Current plan</span>
+      {{else}}
+      <a class="btn" href="{{$.BasePath}}/plans?preview={{.ID}}">Preview cost</a>
+      <form method="post" action="{{$.BasePath}}/subscribe">
+        {{template "csrf" $}}
+        <input type="hidden" name="plan_id" value="{{.ID}}">
+        <button class="btn btn-primary" type="submit">{{if $.Summary.HasSubscription}}Switch to this plan{{else}}Subscribe{{end}}</button>
+      </form>
+      {{end}}
+    </div>
+  </article>
+  {{end}}
+</div>
+
+{{- end}}

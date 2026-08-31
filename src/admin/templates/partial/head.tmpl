@@ -1,0 +1,18 @@
+{{ define "head" }}
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{ .Title }} · {{ .Site.AppName }}</title>
+<!-- The panel is never indexed, never linked from a public page and sends no
+     referrer, so its address cannot leak through a crawler or an outbound link. -->
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark light">
+<link rel="stylesheet" href="/static/css/common.css">
+<link rel="stylesheet" href="/static/css/components.css">
+<!-- The shared header, footer, card and navigation styles live in public.css;
+     panel.css only adds the panel shell so no style is ever duplicated. -->
+<link rel="stylesheet" href="/static/css/public.css">
+<link rel="stylesheet" href="/static/css/panel.css">
+<link rel="stylesheet" href="/static/css/print.css" media="print">
+<link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+{{ end }}

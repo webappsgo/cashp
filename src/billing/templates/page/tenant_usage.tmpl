@@ -1,0 +1,31 @@
+{{define "content" -}}
+
+<section class="card">
+  <h2>Usage this period</h2>
+  {{if .Quotas}}
+  {{range .Quotas}}
+  <div class="quota-row">
+    <div class="quota-head">
+      <span>{{label .Resource}}</span>
+      <span class="muted">
+        {{if .Unlimited}}{{.Used}} used &middot; unlimited{{else}}{{.Used}} / {{.LimitValue}} {{.Unit}}{{end}}
+      </span>
+    </div>
+    {{if not .Unlimited}}
+    <div class="progress" role="progressbar" aria-valuenow="{{.Used}}" aria-valuemin="0" aria-valuemax="{{.LimitValue}}">
+      <div class="progress-bar {{barWidthClass .Used .LimitValue}}"></div>
+    </div>
+    {{end}}
+    <p class="hint">
+      Enforcement: {{label .Enforcement}}
+      {{if .Source}} &middot; source: {{label .Source}}{{end}}
+      {{if not .Unlimited}} &middot; remaining: {{.Remaining}} {{.Unit}}{{end}}
+    </p>
+  </div>
+  {{end}}
+  {{else}}
+  <p class="muted">No metered resources are configured for this account.</p>
+  {{end}}
+</section>
+
+{{- end}}

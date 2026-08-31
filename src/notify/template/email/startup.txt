@@ -1,0 +1,16 @@
+Subject: {app_name} Started on {fqdn}
+---
+SERVER STARTED
+
+Server: {fqdn}
+Version: {version}
+Time: {timestamp}
+
+The control panel is reachable at:
+
+{app_url}
+
+--
+{app_name}
+{app_url}
+(c) {year}

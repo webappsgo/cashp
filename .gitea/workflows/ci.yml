@@ -1,0 +1,271 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ gitea.workflow }}-${{ gitea.ref }}
+  cancel-in-progress: true
+
+env:
+  PROJECT_NAME: cashp
+
+jobs:
+  # Secret scanning runs on the host runner, not inside casjaysdev/go:latest -
+  # the truffleHog composite action shells out to docker, which the Go
+  # toolchain image does not ship.
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          # full history is required for a complete secret scan
+          fetch-depth: 0
+
+      - name: Scan for verified secrets
+        uses: trufflesecurity/trufflehog@37b77001d0174ebec2fcca2bd83ff83a6d45a3ab  # v3.95.3
+        with:
+          base: ${{ gitea.event.before }}
+          head: ${{ gitea.event.after }}
+          extra_args: --only-verified
+
+  workflow-policy:
+    runs-on: ubuntu-latest
+    container:
+      image: casjaysdev/go:latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Verify every action reference is pinned to a full commit SHA
+        shell: bash
+        run: |
+          status=0
+          matches="$(grep -REn '^[[:space:]]*(-[[:space:]]+)?uses:' .github/workflows .gitea/workflows || true)"
+          while IFS= read -r match; do
+            [ -n "$match" ] || continue
+            ref="$(printf '%s' "$match" | sed -E 's/.*uses:[[:space:]]*//; s/[[:space:]]*(#.*)?$//')"
+            case "$ref" in
+              ./*|docker://*) continue ;;
+            esac
+            sha="${ref##*@}"
+            if ! printf '%s' "$sha" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "::error::action reference is not pinned to a full 40-character commit SHA: $match"
+              status=1
+            fi
+          done <<< "$matches"
+          exit "$status"
+
+      - name: Block pull_request_target triggers
+        shell: bash
+        run: |
+          if grep -REn '^[[:space:]]*pull_request_target:' .github/workflows .gitea/workflows; then
+            echo "::error::pull_request_target is not permitted - it exposes repository secrets to untrusted code"
+            exit 1
+          fi
+
+  vuln-scan:
+    runs-on: ubuntu-latest
+    container:
+      image: casjaysdev/go:latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - run: govulncheck ./...
+
+  lint:
+    if: gitea.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    container:
+      image: casjaysdev/go:latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - run: go vet ./...
+      - run: staticcheck ./...
+
+  test:
+    if: gitea.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    container:
+      image: casjaysdev/go:latest
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Run tests with coverage
+        run: |
+          mkdir -p "/tmp/${{ gitea.repository_owner }}"
+          COVDIR=$(mktemp -d "/tmp/${{ gitea.repository_owner }}/$(basename "${{ gitea.repository }}")-XXXXXX")
+          echo "COVDIR=$COVDIR" >> "$GITEA_ENV"
+          go test -cover -coverprofile="$COVDIR/coverage.out" ./...
+
+      - name: Enforce coverage threshold
+        run: |
+          THRESHOLD=60
+          PCT=$(go tool cover -func="$COVDIR/coverage.out" | awk '/^total:/ {gsub("%","",$3); print int($3)}')
+          if [ "$PCT" -lt "$THRESHOLD" ]; then
+            echo "::error::coverage $PCT% < threshold $THRESHOLD%"
+            exit 1
+          fi
+
+      - name: Stage coverage profile
+        run: cp "$COVDIR/coverage.out" coverage.out
+
+      - name: Upload coverage profile
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}-coverage-profile
+          path: coverage.out
+
+  coverage:
+    if: gitea.event_name != 'schedule'
+    needs: [test]
+    runs-on: ubuntu-latest
+    container:
+      image: casjaysdev/go:latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Download coverage profile
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}-coverage-profile
+
+      - name: Report coverage per function
+        run: |
+          go tool cover -func=coverage.out > coverage.txt
+          cat coverage.txt
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}-coverage-report
+          path: coverage.txt
+
+  build:
+    if: gitea.event_name != 'schedule'
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    container:
+      image: casjaysdev/go:latest
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Set build info
+        run: |
+          if [ -f release.txt ]; then
+            echo "VERSION=$(cat release.txt)" >> $GITEA_ENV
+          else
+            echo "VERSION=${GITEA_REF_NAME#v}" >> $GITEA_ENV
+          fi
+          echo "COMMIT_ID=$(git rev-parse --short=7 HEAD)" >> $GITEA_ENV
+          BUILD_EPOCH=$(date -u +%s)
+          echo "BUILD_EPOCH=$BUILD_EPOCH" >> $GITEA_ENV
+          echo "BUILD_DATE=$(date -u -d @$BUILD_EPOCH +"%Y-%m-%dT%H:%M:%SZ")" >> $GITEA_ENV
+          # OFFICIAL_SITE (optional): site.txt wins; otherwise use repository secrets or leave empty
+          # Never guess or assume - must be explicitly defined by user
+          if [ -f site.txt ]; then
+            echo "OFFICIAL_SITE=$(cat site.txt)" >> $GITEA_ENV
+          else
+            echo "OFFICIAL_SITE=${{ secrets.OFFICIAL_SITE }}" >> $GITEA_ENV
+          fi
+
+      - run: go build -buildvcs=false ./...
+
+      - name: Build server binary
+        run: |
+          LDFLAGS="-s -w -X 'main.Version=${{ env.VERSION }}' -X 'main.CommitID=${{ env.COMMIT_ID }}' -X 'main.BuildEpoch=${{ env.BUILD_EPOCH }}' -X 'main.OfficialSite=${{ env.OFFICIAL_SITE }}'"
+          go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${{ env.PROJECT_NAME }}-linux-amd64 ./src
+
+      - name: Upload server binary
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}-linux-amd64
+          path: ${{ env.PROJECT_NAME }}-linux-amd64
+
+  upload-artifacts:
+    if: gitea.event_name != 'schedule'
+    needs: [build]
+    runs-on: ubuntu-latest
+    container:
+      image: casjaysdev/go:latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Download server binary
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}-linux-amd64
+          path: binaries
+
+      - name: Generate SBOM
+        run: cyclonedx-gomod mod -json -output binaries/${{ env.PROJECT_NAME }}-sbom.cdx.json
+
+      - name: Generate checksums
+        run: |
+          cd binaries
+          FILES="$(ls)"
+          sha256sum $FILES > sha256.txt
+          sha512sum $FILES > sha512.txt
+
+      - name: Upload CI artifact bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}-ci-artifacts
+          path: binaries
+
+  # Image scanning runs on the host runner, not inside casjaysdev/go:latest -
+  # Trivy is distributed as a container image and needs the host docker socket,
+  # neither of which the Go toolchain image provides. Runs on schedule too, in
+  # which case the skipped build job is tolerated by the condition below.
+  image-scan:
+    needs: [build]
+    if: ${{ !cancelled() && (gitea.event_name == 'schedule' || needs.build.result == 'success') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Set build info
+        run: |
+          if [ -f release.txt ]; then
+            echo "VERSION=$(cat release.txt)" >> $GITEA_ENV
+          else
+            echo "VERSION=${GITEA_REF_NAME#v}" >> $GITEA_ENV
+          fi
+          echo "COMMIT_ID=$(git rev-parse --short=7 HEAD)" >> $GITEA_ENV
+          BUILD_EPOCH=$(date -u +%s)
+          echo "BUILD_EPOCH=$BUILD_EPOCH" >> $GITEA_ENV
+          echo "BUILD_DATE=$(date -u -d @$BUILD_EPOCH +"%Y-%m-%dT%H:%M:%SZ")" >> $GITEA_ENV
+          echo "SCAN_IMAGE=${{ env.PROJECT_NAME }}-ci-scan:${{ gitea.sha }}" >> $GITEA_ENV
+
+      - name: Build image for scanning
+        run: |
+          docker build \
+            -f docker/Dockerfile \
+            --build-arg VERSION="${{ env.VERSION }}" \
+            --build-arg COMMIT_ID="${{ env.COMMIT_ID }}" \
+            --build-arg BUILD_DATE="${{ env.BUILD_DATE }}" \
+            --build-arg BUILD_EPOCH="${{ env.BUILD_EPOCH }}" \
+            -t "${{ env.SCAN_IMAGE }}" \
+            .
+
+      - name: Scan image with Trivy
+        run: |
+          docker run --rm \
+            --name "${{ env.PROJECT_NAME }}-trivy-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.70.0 image \
+            --exit-code 1 --severity CRITICAL,HIGH "${{ env.SCAN_IMAGE }}"
+
+      - name: Remove scan image
+        if: always()
+        run: docker image rm -f "${{ env.SCAN_IMAGE }}" || true

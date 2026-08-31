@@ -1,0 +1,26 @@
+Subject: Two-Factor Authentication Enabled - {app_name}
+---
+TWO-FACTOR AUTHENTICATION ENABLED
+
+This email was sent to: {recipient_email}
+From: {app_name} ({fqdn})
+
+Hello {recipient_username},
+
+Two-factor authentication is now active on your account. You will be
+asked for a code from your authenticator app at each sign-in.
+
+Time: {timestamp}
+IP address: {ip_address}
+
+Store your recovery codes somewhere safe. Without them, losing your
+authenticator means losing access.
+
+If this was NOT you, secure your account immediately:
+
+{action_url}
+
+--
+{app_name}
+{app_url}
+(c) {year}

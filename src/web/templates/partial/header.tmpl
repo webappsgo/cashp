@@ -1,0 +1,31 @@
+{{ define "header" }}
+<header class="site-header">
+  <div class="container header-inner">
+    <a class="brand" href="/">
+      <span class="brand-mark" aria-hidden="true">▤</span>
+      <span class="brand-name">{{ .Site.AppName }}</span>
+    </a>
+
+    <!-- CSS-only navigation: the checkbox drives the mobile panel, so the menu
+         opens and closes with no JavaScript at all. -->
+    <input type="checkbox" id="nav-toggle" class="nav-toggle visually-hidden" aria-label="Show navigation menu">
+    <label class="nav-toggle-label" for="nav-toggle">
+      <span class="nav-toggle-icon" aria-hidden="true">☰</span>
+      <span class="nav-toggle-text">Menu</span>
+    </label>
+    <label class="nav-overlay" for="nav-toggle" aria-hidden="true"></label>
+
+    <nav class="site-nav" aria-label="Main">
+      <ul class="nav-list">
+        {{ $path := .Path }}
+        {{ range .Nav }}
+        <li class="nav-item">
+          <a class="nav-link{{ if isActive $path .Href }} nav-link-active{{ end }}" href="{{ .Href }}"{{ if isActive $path .Href }} aria-current="page"{{ end }}>{{ .Label }}</a>
+        </li>
+        {{ end }}
+      </ul>
+      {{ template "theme_toggle" . }}
+    </nav>
+  </div>
+</header>
+{{ end }}

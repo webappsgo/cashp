@@ -1,0 +1,25 @@
+Subject: Security Alert - {app_name}
+---
+SECURITY ALERT
+
+This email was sent to: {recipient_email}
+From: {app_name} ({fqdn})
+
+Hello {recipient_username},
+
+A security-relevant change was made on your account.
+
+Event: {detail}
+Time: {timestamp}
+IP address: {ip_address}
+
+If this was you, no action is needed.
+
+If this was NOT you, secure your account now:
+
+{action_url}
+
+--
+{app_name}
+{app_url}
+(c) {year}

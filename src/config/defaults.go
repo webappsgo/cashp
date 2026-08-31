@@ -1,9 +1,9 @@
 package config
 
 import (
-	"os"
 	"path/filepath"
-	"runtime"
+
+	"github.com/webappsgo/cashp/src/common/paths"
 )
 
 // InternalOrg and InternalName are frozen at first-time setup per IDEA.md
@@ -26,107 +26,46 @@ const (
 	DefaultPortRangeMax = 64999
 )
 
-// isRoot reports whether the current process is running as the root/
-// Administrator identity, which selects the system-wide path set instead
-// of the per-user one.
+// isRoot reports whether the process started with root or Administrator
+// privileges, which selects the system-wide path set instead of the
+// per-user one. The decision is locked at process start by paths.
 func isRoot() bool {
-	return os.Geteuid() == 0
+	return paths.IsSystemMode()
 }
 
 // ConfigDir returns the OS- and privilege-appropriate directory containing
-// server.yml, per AI.md PART 4.
+// server.yml, per AI.md PART 4. Path resolution lives in one place —
+// src/common/paths — so the server, client and agent binaries agree.
 func ConfigDir() string {
-	switch runtime.GOOS {
-	case "darwin":
-		if isRoot() {
-			return filepath.Join("/Library/Application Support", InternalOrg, InternalName)
-		}
-		return filepath.Join(homeDir(), "Library/Application Support", InternalOrg, InternalName)
-	case "windows":
-		if isRoot() {
-			return filepath.Join(os.Getenv("ProgramData"), InternalOrg, InternalName)
-		}
-		return filepath.Join(os.Getenv("AppData"), InternalOrg, InternalName)
-	default:
-		if isRoot() {
-			return filepath.Join("/etc", InternalOrg, InternalName)
-		}
-		return filepath.Join(homeDir(), ".config", InternalOrg, InternalName)
-	}
+	return paths.ConfigDir("")
 }
 
 // DataDir returns the OS- and privilege-appropriate directory for
 // persistent application data, per AI.md PART 4.
 func DataDir() string {
-	switch runtime.GOOS {
-	case "darwin":
-		if isRoot() {
-			return filepath.Join("/Library/Application Support", InternalOrg, InternalName)
-		}
-		return filepath.Join(homeDir(), "Library/Application Support", InternalOrg, InternalName)
-	case "windows":
-		if isRoot() {
-			return filepath.Join(os.Getenv("ProgramData"), InternalOrg, InternalName)
-		}
-		return filepath.Join(os.Getenv("LocalAppData"), InternalOrg, InternalName)
-	default:
-		if isRoot() {
-			return filepath.Join("/var/lib", InternalOrg, InternalName)
-		}
-		return filepath.Join(homeDir(), ".local/share", InternalOrg, InternalName)
-	}
+	return paths.DataDir("")
 }
 
 // CacheDir returns the OS- and privilege-appropriate cache directory, per
 // AI.md PART 4.
 func CacheDir() string {
-	switch runtime.GOOS {
-	case "darwin":
-		if isRoot() {
-			return filepath.Join("/Library/Caches", InternalOrg, InternalName)
-		}
-		return filepath.Join(homeDir(), "Library/Caches", InternalOrg, InternalName)
-	case "windows":
-		if isRoot() {
-			return filepath.Join(os.Getenv("ProgramData"), InternalOrg, InternalName, "cache")
-		}
-		return filepath.Join(os.Getenv("LocalAppData"), InternalOrg, InternalName, "cache")
-	default:
-		if isRoot() {
-			return filepath.Join("/var/cache", InternalOrg, InternalName)
-		}
-		return filepath.Join(homeDir(), ".cache", InternalOrg, InternalName)
-	}
+	return paths.CacheDir("")
 }
 
 // LogDir returns the OS- and privilege-appropriate log directory, per
 // AI.md PART 4.
 func LogDir() string {
-	switch runtime.GOOS {
-	case "darwin":
-		if isRoot() {
-			return "/Library/Logs/" + InternalOrg + "/" + InternalName
-		}
-		return filepath.Join(homeDir(), "Library/Logs", InternalOrg, InternalName)
-	case "windows":
-		return filepath.Join(DataDir(), "logs")
-	default:
-		if isRoot() {
-			return filepath.Join("/var/log", InternalOrg, InternalName)
-		}
-		return filepath.Join(homeDir(), ".local/log", InternalOrg, InternalName)
-	}
+	return paths.LogDir("")
+}
+
+// BackupDir returns the backup destination, preferring the system backup
+// location when it is writable and falling back mode-aware, per AI.md
+// PART 8 "Directory Flags".
+func BackupDir() string {
+	return paths.BackupDir("", DataDir())
 }
 
 // ConfigFilePath returns the full path to server.yml.
 func ConfigFilePath() string {
 	return filepath.Join(ConfigDir(), DefaultConfigFileName)
-}
-
-func homeDir() string {
-	h, err := os.UserHomeDir()
-	if err != nil {
-		return "."
-	}
-	return h
 }

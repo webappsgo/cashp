@@ -1,0 +1,186 @@
+name: Beta Release
+
+on:
+  push:
+    branches:
+      - beta
+
+concurrency:
+  group: beta-${{ gitea.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PROJECT_NAME: cashp
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - name: Compute version
+        id: v
+        run: |
+          STAMP="$(date -u +%Y%m%d%H%M%S)"
+          if [ -f release.txt ]; then
+            VERSION="$(cat release.txt)"
+          else
+            VERSION="${STAMP}-beta"
+          fi
+          echo "version=$VERSION" >> "$GITEA_OUTPUT"
+          # Release tag is always the timestamped beta form - the update channel matches the -beta suffix
+          echo "tag=${STAMP}-beta" >> "$GITEA_OUTPUT"
+
+  build:
+    needs: [version]
+    runs-on: ubuntu-latest
+    container:
+      image: casjaysdev/go:latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+            ext: .exe
+          - goos: windows
+            goarch: arm64
+            ext: .exe
+          - goos: freebsd
+            goarch: amd64
+          - goos: freebsd
+            goarch: arm64
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Set build info
+        run: |
+          echo "VERSION=${{ needs.version.outputs.version }}" >> $GITEA_ENV
+          echo "COMMIT_ID=$(git rev-parse --short=7 HEAD)" >> $GITEA_ENV
+          BUILD_EPOCH=$(date -u +%s)
+          echo "BUILD_EPOCH=$BUILD_EPOCH" >> $GITEA_ENV
+          echo "BUILD_DATE=$(date -u -d @$BUILD_EPOCH +"%Y-%m-%dT%H:%M:%SZ")" >> $GITEA_ENV
+          # OFFICIAL_SITE (optional): site.txt wins; otherwise use repository secrets or leave empty
+          # Never guess or assume - must be explicitly defined by user
+          if [ -f site.txt ]; then
+            echo "OFFICIAL_SITE=$(cat site.txt)" >> $GITEA_ENV
+          else
+            echo "OFFICIAL_SITE=${{ secrets.OFFICIAL_SITE }}" >> $GITEA_ENV
+          fi
+
+      - name: Build server
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          LDFLAGS="-s -w -X 'main.Version=${{ env.VERSION }}' -X 'main.CommitID=${{ env.COMMIT_ID }}' -X 'main.BuildEpoch=${{ env.BUILD_EPOCH }}' -X 'main.OfficialSite=${{ env.OFFICIAL_SITE }}'"
+          go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${{ env.PROJECT_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src
+
+      # CLI build - only if src/client/ directory exists
+      - name: Build CLI
+        if: hashFiles('src/client/**') != ''
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          LDFLAGS="-s -w -X 'main.Version=${{ env.VERSION }}' -X 'main.CommitID=${{ env.COMMIT_ID }}' -X 'main.BuildEpoch=${{ env.BUILD_EPOCH }}' -X 'main.OfficialSite=${{ env.OFFICIAL_SITE }}'"
+          go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
+
+      - name: Upload server artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.PROJECT_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+
+      - name: Upload CLI artifact
+        if: hashFiles('src/client/**') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+
+      # Agent build - only if src/agent/ directory exists
+      - name: Build Agent
+        if: hashFiles('src/agent/**') != ''
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          LDFLAGS="-s -w -X 'main.Version=${{ env.VERSION }}' -X 'main.CommitID=${{ env.COMMIT_ID }}' -X 'main.BuildEpoch=${{ env.BUILD_EPOCH }}' -X 'main.OfficialSite=${{ env.OFFICIAL_SITE }}'"
+          go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${{ env.PROJECT_NAME }}-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/agent
+
+      - name: Upload Agent artifact
+        if: hashFiles('src/agent/**') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}-agent-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.PROJECT_NAME }}-agent-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+
+      # SBOM is release-level - generate once on the linux/amd64 leg (cyclonedx-gomod is pre-installed in the image)
+      - name: Generate SBOM
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: cyclonedx-gomod mod -json -output ${{ env.PROJECT_NAME }}-sbom.cdx.json
+
+      - name: Upload SBOM artifact
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}-sbom
+          path: ${{ env.PROJECT_NAME }}-sbom.cdx.json
+
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          path: binaries
+          merge-multiple: true
+
+      - name: Set version
+        run: echo "VERSION=${{ needs.version.outputs.version }}" >> $GITEA_ENV
+
+      - name: Create version.txt
+        run: echo "${{ env.VERSION }}" > binaries/version.txt
+
+      - name: Create source archive
+        run: |
+          tar --exclude='.git' --exclude='.github' --exclude='.gitea' \
+            --exclude='binaries' --exclude='releases' --exclude='*.tar.gz' \
+            -czf binaries/${{ env.PROJECT_NAME }}-${{ env.VERSION }}-source.tar.gz .
+
+      - name: Generate checksums
+        run: |
+          cd binaries
+          FILES="$(ls)"
+          sha256sum $FILES > sha256.txt
+          sha512sum $FILES > sha512.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3.0.2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          files: binaries/*
+          prerelease: true

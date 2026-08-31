@@ -1,0 +1,28 @@
+{{ define "cookie_consent" }}
+{{ if .ShowConsent }}
+<!-- The server decides whether this banner renders: no cookie_consent cookie
+     means it is shown. Both buttons are plain POST submits. -->
+<div id="cookie-consent" class="cookie-banner">
+  <div class="cookie-banner-content">
+    <p class="cookie-message">
+      In accordance with the EU GDPR law this message is being displayed. We use cookies for sign-in sessions, security tokens and your interface preferences. -
+      <a href="/server/privacy" class="policy-link">Privacy Policy</a>
+    </p>
+    <div class="cookie-buttons">
+      <form method="post" action="/server/consent">
+        {{ template "csrf" . }}
+        <input type="hidden" name="return_to" value="{{ .Path }}">
+        <input type="hidden" name="choice" value="decline">
+        <button class="btn-decline" type="submit">Decline</button>
+      </form>
+      <form method="post" action="/server/consent">
+        {{ template "csrf" . }}
+        <input type="hidden" name="return_to" value="{{ .Path }}">
+        <input type="hidden" name="choice" value="accept">
+        <button class="btn-accept" type="submit">I Agree</button>
+      </form>
+    </div>
+  </div>
+</div>
+{{ end }}
+{{ end }}

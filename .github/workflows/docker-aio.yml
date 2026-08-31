@@ -1,0 +1,117 @@
+name: Docker AIO Build
+
+on:
+  push:
+    # ALL branches
+    branches: ['**']
+    tags:
+      - 'v*'
+      - '*.*.*'
+  workflow_dispatch:
+
+concurrency:
+  group: docker-aio-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/devel' || github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/beta' }}
+
+env:
+  PROJECT_NAME: cashp
+  REGISTRY: ghcr.io
+
+jobs:
+  build-aio:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3  # v4.1.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set build info
+        run: |
+          # ghcr.io requires a lowercase image path
+          echo "IMAGE_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+          echo "COMMIT_ID=$(git rev-parse --short=7 HEAD)" >> $GITHUB_ENV
+          echo "YYMM=$(date +"%y%m")" >> $GITHUB_ENV
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+            echo "VERSION=${VERSION#v}" >> $GITHUB_ENV
+            echo "IS_TAG=true" >> $GITHUB_ENV
+          else
+            echo "VERSION=$(git rev-parse --short=7 HEAD)" >> $GITHUB_ENV
+            echo "IS_TAG=false" >> $GITHUB_ENV
+          fi
+          BUILD_EPOCH=$(date -u +%s)
+          echo "BUILD_EPOCH=$BUILD_EPOCH" >> $GITHUB_ENV
+          echo "BUILD_DATE=$(date -u -d @$BUILD_EPOCH +"%Y-%m-%dT%H:%M:%SZ")" >> $GITHUB_ENV
+
+      - name: Determine tags (all-in-one)
+        id: tags
+        run: |
+          # AIO uses same repo with -aio tag suffix: {repo}:{tag}-aio
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          TAGS="${IMAGE}:${{ env.COMMIT_ID }}-aio"
+
+          if [[ "${{ env.IS_TAG }}" == "true" ]]; then
+            TAGS="$TAGS,${IMAGE}:${{ env.VERSION }}-aio"
+            TAGS="$TAGS,${IMAGE}:latest-aio"
+            TAGS="$TAGS,${IMAGE}:${{ env.YYMM }}-aio"
+          else
+            if [[ "${{ github.ref }}" == refs/heads/beta ]]; then
+              TAGS="$TAGS,${IMAGE}:beta-aio"
+            fi
+          fi
+
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
+      - name: Build and push (all-in-one)
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+        with:
+          context: .
+          file: docker/Dockerfile.aio
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: false
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            BUILD_DATE=${{ env.BUILD_DATE }}
+            BUILD_EPOCH=${{ env.BUILD_EPOCH }}
+            COMMIT_ID=${{ env.COMMIT_ID }}
+          labels: |
+            org.opencontainers.image.vendor=webappsgo
+            org.opencontainers.image.authors=webappsgo
+            org.opencontainers.image.title=${{ env.PROJECT_NAME }}-aio
+            org.opencontainers.image.description=${{ env.PROJECT_NAME }} - all-in-one (debian + postgresql + valkey + tor)
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.created=${{ env.BUILD_DATE }}
+            org.opencontainers.image.revision=${{ env.COMMIT_ID }}
+            org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.licenses=MIT
+          annotations: |
+            manifest:org.opencontainers.image.vendor=webappsgo
+            manifest:org.opencontainers.image.authors=webappsgo
+            manifest:org.opencontainers.image.title=${{ env.PROJECT_NAME }}-aio
+            manifest:org.opencontainers.image.description=${{ env.PROJECT_NAME }} - all-in-one (debian + postgresql + valkey + tor)
+            manifest:org.opencontainers.image.version=${{ env.VERSION }}
+            manifest:org.opencontainers.image.created=${{ env.BUILD_DATE }}
+            manifest:org.opencontainers.image.revision=${{ env.COMMIT_ID }}
+            manifest:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
+            manifest:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            manifest:org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}
+            manifest:org.opencontainers.image.licenses=MIT

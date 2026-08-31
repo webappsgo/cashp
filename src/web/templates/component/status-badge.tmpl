@@ -1,0 +1,8 @@
+{{ define "status_badge" }}
+<!-- Args: a status string such as running, stopped, pending. The glyph carries
+     the same meaning as the colour, so the badge is readable without colour. -->
+<span class="badge {{ statusClass . }}">
+  <span class="badge-icon" aria-hidden="true">{{ statusIcon . }}</span>
+  <span class="badge-text">{{ humanize . }}</span>
+</span>
+{{ end }}

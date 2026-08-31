@@ -1,0 +1,24 @@
+{{ define "confirm_dialog" }}
+<!-- Args: a web.ConfirmDialog. Native <dialog> gives the focus trap, Escape
+     handling and backdrop for free. With JavaScript disabled the dialog renders
+     inline as a normal form, so the destructive action is still reachable and
+     still requires an explicit confirmation. -->
+<dialog id="{{ .ID }}" class="dialog dialog-danger" aria-labelledby="{{ .ID }}-title">
+  <form class="dialog-form" method="post" action="{{ .Action }}">
+    <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+    <h2 class="dialog-title" id="{{ .ID }}-title">{{ .Title }}</h2>
+    <p class="dialog-message">{{ .Message }}</p>
+    {{ if .ConfirmWord }}
+    <div class="form-group">
+      <label class="form-label" for="{{ .ID }}-confirm">Type <code class="long-string">{{ .ConfirmWord }}</code> to confirm</label>
+      <input class="form-input" id="{{ .ID }}-confirm" name="confirm" type="text" required pattern="{{ .ConfirmWord }}" autocomplete="off" spellcheck="false">
+      <p class="form-hint">This cannot be undone. Data removed by this action is only recoverable from a backup.</p>
+    </div>
+    {{ end }}
+    <div class="dialog-actions">
+      <button type="submit" class="btn btn-danger" name="confirmed" value="yes">{{ fallback "Delete permanently" .ConfirmLabel }}</button>
+      <button type="submit" class="btn btn-secondary" name="confirmed" value="no" formmethod="dialog" formnovalidate>{{ fallback "Cancel" .CancelLabel }}</button>
+    </div>
+  </form>
+</dialog>
+{{ end }}

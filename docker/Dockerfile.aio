@@ -1,0 +1,101 @@
+# All-in-One Dockerfile - includes app + postgresql + valkey + tor
+# Build: casjaysdev/go:latest (static binary, CGO_ENABLED=0)
+# Runtime: debian:latest — Alpine (musl) is insufficient here; PostgreSQL, Valkey, and Tor
+#           require glibc and system libraries not available on Alpine. Use debian, not alpine.
+# Image name: ghcr.io/webappsgo/cashp:latest-aio
+# PORTS: Only 80 exposed (db/cache are internal-only)
+
+# =============================================================================
+# Stage 1: Build Go binary
+# =============================================================================
+FROM casjaysdev/go:latest AS builder
+
+# Install git (required for go mod download with private repos)
+RUN apk add --no-cache git
+
+WORKDIR /app
+
+# Copy go.mod/go.sum first for better layer caching
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY src/ ./src/
+
+# Build static binary (CGO_ENABLED=0)
+ARG VERSION=dev
+ARG COMMIT_ID=unknown
+ARG BUILD_DATE=unknown
+ARG BUILD_EPOCH=0
+ARG OFFICIAL_SITE=
+
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w -X 'main.Version=${VERSION}' -X 'main.CommitID=${COMMIT_ID}' -X 'main.BuildEpoch=${BUILD_EPOCH}' -X 'main.BuildDate=${BUILD_DATE}' -X 'main.OfficialSite=${OFFICIAL_SITE}'" \
+    -o cashp ./src
+
+# =============================================================================
+# Stage 2: Runtime image with PostgreSQL + Valkey + Tor
+# =============================================================================
+FROM debian:latest
+
+# No LABEL blocks — image metadata applied as OCI annotations at build time.
+
+# Install dependencies (PostgreSQL + Valkey + Tor + Supervisor)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    postgresql \
+    postgresql-contrib \
+    valkey-server \
+    valkey-tools \
+    supervisor \
+    tini \
+    tor \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+# Debian keeps the PostgreSQL server binaries in a versioned directory that is not on PATH;
+# link them into /usr/bin so postgres/initdb/pg_ctl resolve for supervisor and the entrypoint
+RUN set -eu; \
+    PGBIN="$(ls -d /usr/lib/postgresql/*/bin | head -n1)"; \
+    for f in "$PGBIN"/*; do ln -sf "$f" "/usr/bin/$(basename "$f")"; done
+
+# Create directories for EXTERNAL services only (PostgreSQL, Valkey)
+# NOTE: App directories (config, data, sqlite, logs, backups) created by server binary
+# External services need dirs pre-created with special ownership (postgres user)
+RUN mkdir -p /data/db/postgres /data/db/valkey \
+             /data/log/postgres \
+             /run/postgresql /run/valkey \
+    && chown -R postgres:postgres /data/db/postgres /data/log/postgres /run/postgresql
+
+# Copy configs and entrypoint (base overlay, then the all-in-one overlay on top)
+COPY docker/rootfs/ /
+COPY docker/rootfs-aio/ /
+
+# Copy application binary from builder
+COPY --from=builder /app/cashp /usr/local/bin/
+RUN chmod +x /usr/local/bin/cashp /usr/local/bin/entrypoint.sh
+
+# Default environment
+# DATABASE_DIR: SQLite location (binary auto-detects container, but explicit is clearer)
+# MODE is never baked into the image — binary defaults to production; compose sets MODE explicitly
+ENV PORT=80 \
+    DEBUG=false \
+    TZ=America/New_York \
+    DATABASE_DIR=/data/db/sqlite \
+    PGDATA=/data/db/postgres \
+    DB_HOST=/run/postgresql \
+    DB_NAME=cashp \
+    DB_USER=cashp \
+    VALKEY_SOCKET=/run/valkey/valkey.sock
+
+# Only expose app port - db/cache are internal
+EXPOSE 80
+
+# Stop signal for graceful shutdown
+STOPSIGNAL SIGRTMIN+3
+
+HEALTHCHECK --start-period=10m --interval=5m --timeout=15s --retries=3 \
+    CMD /usr/local/bin/cashp --status || exit 1
+
+ENTRYPOINT [ "tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh" ]

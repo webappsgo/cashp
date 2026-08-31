@@ -1,0 +1,60 @@
+{{ define "content" }}
+  {{ $d := .Data }}
+  <div class="support-card">
+    <h2>Ticket {{ $d.Ticket.Number }}</h2>
+    <p>
+      Everything below was suggested from your conversation. Change whatever is
+      wrong. Nothing is sent to support until you press Submit.
+    </p>
+
+    <form class="form support-form" id="support-ticket-form" method="post"
+      action="{{ .BasePath }}/tickets/{{ $d.Ticket.ID }}"
+      data-draft-url="{{ .BasePath }}/tickets/{{ $d.Ticket.ID }}/draft"
+      data-autosave-seconds="{{ $d.Autosave }}">
+      <input type="hidden" name="csrf_token" value="{{ .CSRF }}">
+
+      <div class="form-group">
+        <label class="form-label" for="ticket-title">Title</label>
+        <input class="form-input" id="ticket-title" name="title" type="text" required
+          maxlength="200" value="{{ $d.Ticket.Title }}">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="ticket-category">Category</label>
+        <select class="form-input" id="ticket-category" name="category_id">
+          <option value="">Not sure</option>
+          {{ range $d.Categories }}
+            <option value="{{ .ID }}" {{ if eq .ID $d.Ticket.CategoryID }}selected{{ end }}>{{ .Name }}</option>
+          {{ end }}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="ticket-priority">Priority</label>
+        <select class="form-input" id="ticket-priority" name="priority">
+          {{ range $d.Priorities }}
+            <option value="{{ . }}" {{ if eq . $d.Ticket.Priority }}selected{{ end }}>{{ . }}</option>
+          {{ end }}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="ticket-description">Description</label>
+        <textarea class="form-textarea" id="ticket-description" name="description" rows="10"
+          required maxlength="20000">{{ $d.Ticket.Description }}</textarea>
+      </div>
+
+      <div class="form-actions support-actions">
+        <button type="submit" class="btn btn-primary">Submit ticket</button>
+        <button type="submit" class="btn btn-secondary" formaction="{{ .BasePath }}/tickets/{{ $d.Ticket.ID }}/draft">Save draft</button>
+      </div>
+      <p id="support-autosave-status" role="status">
+        Your draft is kept for you. Save it at any time and come back later.
+      </p>
+    </form>
+  </div>
+{{ end }}
+
+{{ define "support_scripts" }}
+  <script src="{{ .BasePath }}/assets/support.js" defer></script>
+{{ end }}

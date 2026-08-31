@@ -1,0 +1,38 @@
+{{define "content" -}}
+<section class="card narrow">
+  <form method="post" action="{{.BasePath}}/register" class="stack">
+    {{template "csrf" .}}
+    <div class="field">
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" autocomplete="username" autocapitalize="none"
+             spellcheck="false" minlength="2" maxlength="39" required autofocus>
+      <p class="hint" id="username-hint">Letters, digits, hyphen and underscore. This is your public name.</p>
+    </div>
+    <div class="field">
+      <label for="email">Email address</label>
+      <input id="email" name="email" type="email" autocomplete="email" autocapitalize="none"
+             spellcheck="false" required>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="new-password"
+             minlength="12" required aria-describedby="password-hint">
+      <p class="hint" id="password-hint">At least 12 characters. Longer passphrases are stronger than short complex ones.</p>
+    </div>
+    {{if eqs .Config.RegistrationMode "invite"}}
+    <div class="field">
+      <label for="invite">Invite code</label>
+      <input id="invite" name="invite" type="text" autocapitalize="none" spellcheck="false" required>
+    </div>
+    {{end}}
+    <div class="field">
+      <label for="display_name">Display name <span class="hint">(optional)</span></label>
+      <input id="display_name" name="display_name" type="text" maxlength="64" autocomplete="name">
+    </div>
+    <button type="submit" class="btn btn-primary">Create account</button>
+  </form>
+  <ul class="linkrow">
+    <li><a href="{{.BasePath}}/login">Already have an account? Sign in</a></li>
+  </ul>
+</section>
+{{- end}}

@@ -1,0 +1,17 @@
+{{ define "sidebar" }}
+<nav class="panel-sidebar" aria-label="Administration">
+  {{ $path := .Path }}
+  {{ range .Nav }}
+  <section class="panel-nav-section">
+    <h2 class="panel-nav-title">{{ .Label }}</h2>
+    <ul class="nav-list panel-nav-list">
+      {{ range .Items }}
+      <li class="nav-item">
+        <a class="nav-link{{ if isActive $path .Href }} nav-link-active{{ end }}" href="{{ .Href }}"{{ if isActive $path .Href }} aria-current="page"{{ end }}>{{ .Label }}</a>
+      </li>
+      {{ end }}
+    </ul>
+  </section>
+  {{ end }}
+</nav>
+{{ end }}

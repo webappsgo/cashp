@@ -1,0 +1,17 @@
+Subject: Backup Completed - {app_name}
+---
+BACKUP COMPLETED
+
+Server: {fqdn}
+
+The scheduled backup finished successfully.
+
+Filename: {filename}
+Size: {size}
+Duration: {duration}
+Time: {timestamp}
+
+--
+{app_name}
+{app_url}
+(c) {year}

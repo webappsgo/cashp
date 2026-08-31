@@ -1,0 +1,23 @@
+Subject: API Token Regenerated - {app_name}
+---
+API TOKEN REGENERATED
+
+This email was sent to: {recipient_email}
+From: {app_name} ({fqdn})
+
+Hello {recipient_username},
+
+An API token on your account was regenerated. The previous token stopped
+working immediately, so any script still using it will now fail.
+
+Time: {timestamp}
+IP address: {ip_address}
+
+If this was NOT you, review your tokens and sessions:
+
+{action_url}
+
+--
+{app_name}
+{app_url}
+(c) {year}

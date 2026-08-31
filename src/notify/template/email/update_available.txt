@@ -1,0 +1,20 @@
+Subject: Update Available - {app_name} {version}
+---
+UPDATE AVAILABLE
+
+Server: {fqdn}
+
+A newer release is available.
+
+Installed: {previous_version}
+Available: {version}
+Time: {timestamp}
+
+Review and apply the update here:
+
+{action_url}
+
+--
+{app_name}
+{app_url}
+(c) {year}

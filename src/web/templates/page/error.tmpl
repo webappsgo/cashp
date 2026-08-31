@@ -1,0 +1,18 @@
+{{ define "title" }}{{ .Data.Status }} — {{ .Data.Title }}{{ end }}
+{{ define "description" }}{{ .Data.Message }}{{ end }}
+{{ define "page_class" }}page-error{{ end }}
+
+{{ define "content" }}
+<article class="error-page">
+  <p class="error-status" aria-hidden="true">{{ .Data.Status }}</p>
+  <h1 class="error-title">{{ .Data.Title }}</h1>
+  <p class="error-message">{{ .Data.Message }}</p>
+  {{ if .Data.Hint }}<p class="error-hint">{{ .Data.Hint }}</p>{{ end }}
+  <p class="error-code">Reference code: <code class="long-string">{{ .Data.Code }}</code></p>
+  <div class="error-actions">
+    <a class="btn btn-primary" href="/">Back to the home page</a>
+    <a class="btn btn-secondary" href="/server/help">Read the help pages</a>
+    <a class="btn btn-secondary" href="/server/contact">Contact the operator</a>
+  </div>
+</article>
+{{ end }}

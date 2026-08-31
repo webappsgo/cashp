@@ -1,0 +1,20 @@
+{{ define "form_steps" }}
+<!-- Args: a slice of web.FormStep. Each step is its own server-rendered page
+     that posts and redirects to the next one, so a wizard never depends on
+     JavaScript to advance and a half-finished step survives a reload. -->
+<nav class="steps" aria-label="Progress">
+  <ol class="steps-list">
+    {{ range . }}
+    <li class="step{{ if .Complete }} step-complete{{ end }}{{ if .Current }} step-current{{ end }}">
+      <span class="step-number" aria-hidden="true">{{ if .Complete }}✓{{ else }}{{ .Number }}{{ end }}</span>
+      {{ if and .Href (not .Current) }}
+      <a class="step-title" href="{{ .Href }}">{{ .Title }}</a>
+      {{ else }}
+      <span class="step-title"{{ if .Current }} aria-current="step"{{ end }}>{{ .Title }}</span>
+      {{ end }}
+      <span class="visually-hidden">{{ if .Complete }}Completed{{ else if .Current }}Current step{{ else }}Not started{{ end }}</span>
+    </li>
+    {{ end }}
+  </ol>
+</nav>
+{{ end }}

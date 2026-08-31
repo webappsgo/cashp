@@ -1,0 +1,45 @@
+{{ define "support_layout" }}<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ .Title }} · {{ .SiteName }}</title>
+    <link rel="stylesheet" href="/static/css/common.css">
+    <link rel="stylesheet" href="/static/css/components.css">
+    <link rel="stylesheet" href="/static/css/public.css">
+    <link rel="stylesheet" href="{{ .BasePath }}/assets/support.css">
+    <link rel="stylesheet" href="/static/css/print.css" media="print">
+  </head>
+  <body class="page page-support">
+    <a class="skip-link" href="#main">Skip to main content</a>
+    {{ template "support_banner" . }}
+    <header class="support-head container">
+      <nav aria-label="Support">
+        <ul class="support-nav">
+          <li><a href="{{ .BasePath }}">Help</a></li>
+          <li><a href="{{ .BasePath }}/tickets">My tickets</a></li>
+          <li><a href="{{ .BasePath }}/chats">Live chat</a></li>
+          <li><a href="{{ .BasePath }}/kb">Knowledge base</a></li>
+          {{ if or (eq .Role "SUPPORT_AGENT") (eq .Role "SYSTEM_ADMINISTRATOR") }}
+            <li><a href="{{ .BasePath }}/agents/queue">Agent workspace</a></li>
+          {{ end }}
+          {{ if eq .Role "SYSTEM_ADMINISTRATOR" }}
+            <li><a href="{{ .BasePath }}/admin">Support settings</a></li>
+          {{ end }}
+        </ul>
+      </nav>
+    </header>
+    <main id="main" class="container" tabindex="-1">
+      <h1>{{ .Title }}</h1>
+      {{ if .Flash }}
+        <p class="support-flash support-flash-{{ .FlashKind }}" role="status">{{ .Flash }}</p>
+      {{ end }}
+      {{ template "content" . }}
+    </main>
+    <footer class="support-foot container">
+      <p>Need something else? <a href="{{ .BasePath }}">Start from the help page</a>.</p>
+    </footer>
+    {{ block "support_scripts" . }}{{ end }}
+  </body>
+</html>
+{{ end }}

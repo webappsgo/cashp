@@ -1,0 +1,50 @@
+{{ define "title" }}Hosting control panel{{ end }}
+{{ define "page_class" }}page-home{{ end }}
+
+{{ define "content" }}
+<section class="hero">
+  <h1 class="hero-title">{{ .Site.AppName }}</h1>
+  <p class="hero-tagline">Run web hosting, applications, containers, virtual machines, email, DNS and databases from one panel — on hardware you own.</p>
+  <p class="hero-actions">
+    <a class="btn btn-primary" href="/server/auth/login">Sign in</a>
+    <a class="btn btn-secondary" href="/server/about">What is {{ .Site.AppName }}?</a>
+  </p>
+</section>
+
+<section class="capabilities" aria-labelledby="capabilities-title">
+  <h2 id="capabilities-title">What this instance can host</h2>
+  <div class="card-grid">
+    <article class="card">
+      <h3 class="card-title">Websites</h3>
+      <p>Multiple domains and subdomains per account, PHP 5.6 through the current release, automatic Let's Encrypt certificates, git-push deploys, and SFTP access.</p>
+    </article>
+    <article class="card">
+      <h3 class="card-title">Applications</h3>
+      <p>Deploy Node.js, Python, Ruby, PHP, Go, Java, .NET and Rust apps with blue-green releases and one-click rollback to the previous version.</p>
+    </article>
+    <article class="card">
+      <h3 class="card-title">Containers</h3>
+      <p>Docker, Podman and Incus side by side, each account on its own isolated network, with a private OCI registry for your own images.</p>
+    </article>
+    <article class="card">
+      <h3 class="card-title">Virtual machines</h3>
+      <p>KVM guests with VNC and SPICE consoles, live migration between nodes, and GPU, USB or PCI passthrough where the hardware supports it.</p>
+    </article>
+    <article class="card">
+      <h3 class="card-title">Email, DNS and databases</h3>
+      <p>A full mail stack, authoritative DNS with DNSSEC and dynamic updates, and relational, document and key-value databases with replication.</p>
+    </article>
+    <article class="card">
+      <h3 class="card-title">Backups and monitoring</h3>
+      <p>Deduplicated, compressed backups on a grandfather-father-son retention schedule, with metrics, alerting and bare-metal restore.</p>
+    </article>
+  </div>
+</section>
+
+<section class="quickstart" aria-labelledby="quickstart-title">
+  <h2 id="quickstart-title">Everything the panel does, the API does</h2>
+  <p>Every action in this interface is available over the REST API and from the command line, so nothing is locked inside the browser.</p>
+  {{ template "code_block" dict "Label" "Check this instance" "Value" "curl -H 'Accept: application/json' https://example.com/api/healthz" }}
+  <p><a href="/server/help">Read the help pages</a> for the full command reference and API documentation links.</p>
+</section>
+{{ end }}

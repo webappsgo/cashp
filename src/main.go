@@ -4,13 +4,20 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/webappsgo/cashp/src/config"
+	"github.com/webappsgo/cashp/src/database"
 	"github.com/webappsgo/cashp/src/mode"
+	"github.com/webappsgo/cashp/src/notifysvc"
+	"github.com/webappsgo/cashp/src/scheduler"
 )
 
 // Build info variables injected at link time by ldflags.
@@ -43,7 +50,80 @@ func main() {
 		startMsg = "\033[1;32m" + startMsg + "\033[0m"
 	}
 	fmt.Println(startMsg)
-	_ = cfg
+
+	if err := run(cfg); err != nil {
+		msg := "cashp: " + err.Error()
+		if useColor {
+			msg = "\033[1;31m" + msg + "\033[0m"
+		}
+		fmt.Fprintf(os.Stderr, "%s\n", msg)
+		os.Exit(1)
+	}
+}
+
+// run wires the subsystems that are safe to construct without a running
+// HTTP server: the database, the notification package, and the built-in
+// scheduler. It blocks until SIGINT/SIGTERM, then shuts everything down in
+// reverse order. Route mounting and TLS are out of scope here — this is the
+// composition root's foundation, not the whole server.
+func run(cfg *config.Config) error {
+	dbDir := cfg.Server.Database.Dir
+	if dbDir == "" {
+		dbDir = config.DataDir()
+	}
+	driver := cfg.Server.Database.Driver
+	if driver == "" {
+		driver = database.DriverSQLite
+	}
+	db, err := database.Open(database.Config{
+		Driver: driver,
+		URL:    cfg.Server.Database.URL,
+		Dir:    dbDir,
+	})
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+	defer db.Close() //nolint:errcheck // best-effort close during shutdown
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := db.EnsureSchema(ctx); err != nil {
+		return fmt.Errorf("ensure schema: %w", err)
+	}
+
+	notifier, err := notifysvc.New(cfg, db)
+	if err != nil {
+		return fmt.Errorf("construct notifier: %w", err)
+	}
+	notifysvc.DetectSMTP(ctx, notifier)
+
+	sched := scheduler.New(scheduler.Options{
+		StateDir: config.DataDir(),
+		LogDir:   config.LogDir(),
+	})
+	if err := notifysvc.RegisterScheduler(sched, notifier); err != nil {
+		return fmt.Errorf("register scheduler tasks: %w", err)
+	}
+	if err := sched.Start(ctx); err != nil {
+		return fmt.Errorf("start scheduler: %w", err)
+	}
+
+	if err := notifysvc.NotifyStartup(ctx, notifier); err != nil {
+		fmt.Fprintf(os.Stderr, "cashp: startup notification: %v\n", err)
+	}
+
+	<-ctx.Done()
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := notifysvc.NotifyShutdown(shutdownCtx, notifier); err != nil {
+		fmt.Fprintf(os.Stderr, "cashp: shutdown notification: %v\n", err)
+	}
+	if err := sched.Stop(); err != nil {
+		fmt.Fprintf(os.Stderr, "cashp: scheduler stop: %v\n", err)
+	}
+	return nil
 }
 
 // parseFlags parses args and returns the raw --mode value (empty when not

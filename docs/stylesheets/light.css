@@ -1,0 +1,82 @@
+/* Light Theme - Clean light color scheme */
+/* Applied when scheme: default is active */
+
+:root {
+  /* Light theme color palette */
+  --light-bg: #ffffff;
+  --light-bg-alt: #f5f5f5;
+  --light-bg-elevated: #e0e0e0;
+  --light-text: #1a1a1a;
+  --light-text-muted: #666666;
+  --light-accent-blue: #0066cc;
+  --light-accent-green: #008000;
+  --light-accent-orange: #ff8c00;
+  --light-accent-red: #cc0000;
+  --light-accent-purple: #6600cc;
+  --light-accent-teal: #008080;
+}
+
+/* Apply light theme customization */
+[data-md-color-scheme="default"] {
+  --md-default-bg-color: var(--light-bg);
+  --md-default-fg-color: var(--light-text);
+  --md-default-fg-color--light: var(--light-text-muted);
+  --md-default-fg-color--lighter: var(--light-bg-elevated);
+  --md-default-fg-color--lightest: var(--light-bg-alt);
+
+  --md-primary-fg-color: var(--light-accent-purple);
+  --md-primary-fg-color--light: var(--light-accent-blue);
+  --md-primary-fg-color--dark: var(--light-accent-purple);
+  --md-primary-bg-color: var(--light-bg);
+  --md-primary-bg-color--light: var(--light-bg-alt);
+
+  --md-accent-fg-color: var(--light-accent-blue);
+  --md-accent-fg-color--transparent: rgba(0, 102, 204, 0.1);
+  --md-accent-bg-color: var(--light-accent-blue);
+
+  --md-code-fg-color: var(--light-text);
+  --md-code-bg-color: var(--light-bg-alt);
+
+  --md-typeset-a-color: var(--light-accent-blue);
+  --md-typeset-mark-color: rgba(255, 235, 59, 0.5);
+}
+
+/* Navigation */
+[data-md-color-scheme="default"] .md-nav__link:hover {
+  color: var(--light-accent-blue);
+}
+
+[data-md-color-scheme="default"] .md-nav__link--active {
+  color: var(--light-accent-purple);
+}
+
+/* Tables */
+[data-md-color-scheme="default"] .md-typeset table:not([class]) th {
+  background-color: var(--light-bg-alt);
+  color: var(--light-accent-purple);
+}
+
+/* Admonitions */
+[data-md-color-scheme="default"] .md-typeset .admonition.note,
+[data-md-color-scheme="default"] .md-typeset details.note {
+  border-color: var(--light-accent-blue);
+}
+
+[data-md-color-scheme="default"] .md-typeset .admonition.warning,
+[data-md-color-scheme="default"] .md-typeset details.warning {
+  border-color: var(--light-accent-orange);
+}
+
+[data-md-color-scheme="default"] .md-typeset .admonition.danger,
+[data-md-color-scheme="default"] .md-typeset .admonition.error,
+[data-md-color-scheme="default"] .md-typeset details.danger,
+[data-md-color-scheme="default"] .md-typeset details.error {
+  border-color: var(--light-accent-red);
+}
+
+[data-md-color-scheme="default"] .md-typeset .admonition.tip,
+[data-md-color-scheme="default"] .md-typeset .admonition.success,
+[data-md-color-scheme="default"] .md-typeset details.tip,
+[data-md-color-scheme="default"] .md-typeset details.success {
+  border-color: var(--light-accent-green);
+}

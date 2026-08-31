@@ -1,0 +1,15 @@
+{{ define "content" }}
+<section class="card">
+  <h2 class="card-title">Where to go</h2>
+  <ul class="nav-list panel-quick">
+    {{ range .Data.Links }}<li class="nav-item"><a class="nav-link" href="{{ .Href }}">{{ .Label }}</a></li>{{ end }}
+  </ul>
+</section>
+
+{{ range .Data.Topics }}
+<section class="card">
+  <h2 class="card-title">{{ .Title }}</h2>
+  <p class="prose">{{ .Body }}</p>
+</section>
+{{ end }}
+{{ end }}

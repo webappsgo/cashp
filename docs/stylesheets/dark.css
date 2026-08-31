@@ -1,0 +1,177 @@
+/* Dark Theme */
+/* Applied when scheme: slate is active */
+
+:root {
+  /* Dark theme color palette */
+  --dark-bg: #282a36;
+  --dark-bg-alt: #44475a;
+  --dark-text: #f8f8f2;
+  --dark-text-muted: #6272a4;
+  --dark-accent-cyan: #8be9fd;
+  --dark-accent-green: #50fa7b;
+  --dark-accent-orange: #ffb86c;
+  --dark-accent-pink: #ff79c6;
+  --dark-accent-purple: #bd93f9;
+  --dark-accent-red: #ff5555;
+  --dark-accent-yellow: #f1fa8c;
+}
+
+/* Apply dark theme customization */
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: var(--dark-bg);
+  --md-default-fg-color: var(--dark-text);
+  --md-default-fg-color--light: var(--dark-text-muted);
+  --md-default-fg-color--lighter: var(--dark-bg-alt);
+  --md-default-fg-color--lightest: var(--dark-bg-alt);
+
+  --md-primary-fg-color: var(--dark-accent-purple);
+  --md-primary-fg-color--light: var(--dark-accent-pink);
+  --md-primary-fg-color--dark: var(--dark-accent-purple);
+  --md-primary-bg-color: var(--dark-text);
+  --md-primary-bg-color--light: var(--dark-text);
+
+  --md-accent-fg-color: var(--dark-accent-pink);
+  --md-accent-fg-color--transparent: rgba(255, 121, 198, 0.1);
+  --md-accent-bg-color: var(--dark-accent-pink);
+
+  --md-code-fg-color: var(--dark-text);
+  --md-code-bg-color: var(--dark-bg-alt);
+
+  --md-code-hl-color: rgba(255, 184, 108, 0.2);
+  --md-code-hl-number-color: var(--dark-accent-purple);
+  --md-code-hl-special-color: var(--dark-accent-pink);
+  --md-code-hl-function-color: var(--dark-accent-green);
+  --md-code-hl-constant-color: var(--dark-accent-purple);
+  --md-code-hl-keyword-color: var(--dark-accent-pink);
+  --md-code-hl-string-color: var(--dark-accent-yellow);
+  --md-code-hl-name-color: var(--dark-text);
+  --md-code-hl-operator-color: var(--dark-accent-pink);
+  --md-code-hl-punctuation-color: var(--dark-text);
+  --md-code-hl-comment-color: var(--dark-text-muted);
+  --md-code-hl-generic-color: var(--dark-text);
+  --md-code-hl-variable-color: var(--dark-text);
+
+  --md-typeset-color: var(--dark-text);
+  --md-typeset-a-color: var(--dark-accent-cyan);
+
+  --md-typeset-kbd-color: var(--dark-text);
+  --md-typeset-kbd-accent-color: var(--dark-bg-alt);
+  --md-typeset-kbd-border-color: var(--dark-text-muted);
+
+  --md-typeset-mark-color: rgba(241, 250, 140, 0.3);
+
+  --md-typeset-table-color: var(--dark-bg-alt);
+
+  --md-admonition-fg-color: var(--dark-text);
+  --md-admonition-bg-color: var(--dark-bg-alt);
+
+  --md-footer-bg-color: var(--dark-bg-alt);
+  --md-footer-bg-color--dark: var(--dark-bg);
+}
+
+/* Navigation and sidebar */
+[data-md-color-scheme="slate"] .md-nav__link {
+  color: var(--dark-text);
+}
+
+[data-md-color-scheme="slate"] .md-nav__link:hover {
+  color: var(--dark-accent-cyan);
+}
+
+[data-md-color-scheme="slate"] .md-nav__link--active {
+  color: var(--dark-accent-pink);
+}
+
+/* Search */
+[data-md-color-scheme="slate"] .md-search__input {
+  background-color: var(--dark-bg-alt);
+  color: var(--dark-text);
+}
+
+[data-md-color-scheme="slate"] .md-search__input::placeholder {
+  color: var(--dark-text-muted);
+}
+
+/* Tables */
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th {
+  background-color: var(--dark-bg-alt);
+  color: var(--dark-accent-purple);
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) tr:hover {
+  background-color: rgba(68, 71, 90, 0.5);
+}
+
+/* Code blocks */
+[data-md-color-scheme="slate"] .highlight {
+  background-color: var(--dark-bg-alt);
+}
+
+[data-md-color-scheme="slate"] code {
+  background-color: var(--dark-bg-alt);
+  color: var(--dark-text);
+}
+
+/* Admonitions */
+[data-md-color-scheme="slate"] .md-typeset .admonition,
+[data-md-color-scheme="slate"] .md-typeset details {
+  border-color: var(--dark-accent-purple);
+  background-color: var(--dark-bg-alt);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .admonition-title,
+[data-md-color-scheme="slate"] .md-typeset summary {
+  background-color: rgba(189, 147, 249, 0.1);
+}
+
+/* Note admonition */
+[data-md-color-scheme="slate"] .md-typeset .admonition.note,
+[data-md-color-scheme="slate"] .md-typeset details.note {
+  border-color: var(--dark-accent-cyan);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .note > .admonition-title,
+[data-md-color-scheme="slate"] .md-typeset .note > summary {
+  background-color: rgba(139, 233, 253, 0.1);
+}
+
+/* Warning admonition */
+[data-md-color-scheme="slate"] .md-typeset .admonition.warning,
+[data-md-color-scheme="slate"] .md-typeset details.warning {
+  border-color: var(--dark-accent-orange);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .warning > .admonition-title,
+[data-md-color-scheme="slate"] .md-typeset .warning > summary {
+  background-color: rgba(255, 184, 108, 0.1);
+}
+
+/* Danger/Error admonition */
+[data-md-color-scheme="slate"] .md-typeset .admonition.danger,
+[data-md-color-scheme="slate"] .md-typeset .admonition.error,
+[data-md-color-scheme="slate"] .md-typeset details.danger,
+[data-md-color-scheme="slate"] .md-typeset details.error {
+  border-color: var(--dark-accent-red);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .danger > .admonition-title,
+[data-md-color-scheme="slate"] .md-typeset .error > .admonition-title,
+[data-md-color-scheme="slate"] .md-typeset .danger > summary,
+[data-md-color-scheme="slate"] .md-typeset .error > summary {
+  background-color: rgba(255, 85, 85, 0.1);
+}
+
+/* Tip/Success admonition */
+[data-md-color-scheme="slate"] .md-typeset .admonition.tip,
+[data-md-color-scheme="slate"] .md-typeset .admonition.success,
+[data-md-color-scheme="slate"] .md-typeset details.tip,
+[data-md-color-scheme="slate"] .md-typeset details.success {
+  border-color: var(--dark-accent-green);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .tip > .admonition-title,
+[data-md-color-scheme="slate"] .md-typeset .success > .admonition-title,
+[data-md-color-scheme="slate"] .md-typeset .tip > summary,
+[data-md-color-scheme="slate"] .md-typeset .success > summary {
+  background-color: rgba(80, 250, 123, 0.1);
+}

@@ -1,0 +1,20 @@
+Subject: Welcome to {app_name}
+---
+WELCOME TO {APP_NAME}
+
+This email was sent to: {recipient_email}
+From: {app_name} ({fqdn})
+
+Hello {recipient_username},
+
+Your account is ready. You can sign in at:
+
+{app_url}
+
+If you did not create this account, ignore this message and no further
+action will be taken.
+
+--
+{app_name}
+{app_url}
+(c) {year}

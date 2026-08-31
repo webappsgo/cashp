@@ -1,0 +1,49 @@
+{{ define "settings_field" }}
+<div class="form-group panel-field">
+  {{ if eq .Kind "toggle" }}
+  <div class="checkbox-group">
+    <input class="checkbox" type="checkbox" id="field-{{ .Key }}" name="{{ .Key }}" value="true"{{ if eq .Value "true" }} checked{{ end }} aria-describedby="field-{{ .Key }}-help">
+    <label class="form-label" for="field-{{ .Key }}">{{ .Label }}</label>
+  </div>
+  {{ else }}
+  <label class="form-label" for="field-{{ .Key }}">{{ .Label }}</label>
+
+  {{ if eq .Kind "readonly" }}
+  <p class="panel-readonly" id="field-{{ .Key }}">{{ if eq .Value "true" }}Always on{{ else if eq .Value "false" }}Off{{ else }}{{ fallback "not set" .Value }}{{ end }}</p>
+
+  {{ else if eq .Kind "select" }}
+  <select class="form-input" id="field-{{ .Key }}" name="{{ .Key }}" aria-describedby="field-{{ .Key }}-help">
+    {{ $current := .Value }}
+    {{ range .Options }}
+    <option value="{{ .Value }}"{{ if eq .Value $current }} selected{{ end }}>{{ .Label }}</option>
+    {{ end }}
+  </select>
+
+  {{ else if eq .Kind "password" }}
+  <input class="form-input" id="field-{{ .Key }}" name="{{ .Key }}" type="password" value="" autocomplete="new-password" spellcheck="false" aria-describedby="field-{{ .Key }}-help">
+
+  {{ else if or (eq .Kind "textarea") (eq .Kind "tags") }}
+  <textarea class="form-input form-textarea" id="field-{{ .Key }}" name="{{ .Key }}" rows="5" spellcheck="false" aria-describedby="field-{{ .Key }}-help">{{ .Value }}</textarea>
+
+  {{ else if eq .Kind "number" }}
+  <input class="form-input" id="field-{{ .Key }}" name="{{ .Key }}" type="number" inputmode="numeric" value="{{ .Value }}"{{ if gt .Max 0 }} min="{{ .Min }}" max="{{ .Max }}"{{ end }} aria-describedby="field-{{ .Key }}-help">
+
+  {{ else if eq .Kind "email" }}
+  <input class="form-input" id="field-{{ .Key }}" name="{{ .Key }}" type="email" value="{{ .Value }}" autocomplete="email" spellcheck="false" aria-describedby="field-{{ .Key }}-help">
+
+  {{ else if eq .Kind "color" }}
+  <input class="form-input" id="field-{{ .Key }}" name="{{ .Key }}" type="text" value="{{ .Value }}" pattern="#[0-9a-fA-F]{6}" spellcheck="false" aria-describedby="field-{{ .Key }}-help">
+
+  {{ else }}
+  <input class="form-input" id="field-{{ .Key }}" name="{{ .Key }}" type="text" value="{{ .Value }}" spellcheck="false" aria-describedby="field-{{ .Key }}-help">
+  {{ end }}
+  {{ end }}
+
+  <div class="form-help" id="field-{{ .Key }}-help">
+    {{ if .Help }}<p class="form-hint">{{ .Help }}</p>{{ end }}
+    {{ if and (eq .Kind "password") .Stored }}<p class="form-hint">A value is stored. Leave this blank to keep it.</p>{{ end }}
+    {{ if eq .Kind "tags" }}<p class="form-hint">One entry per line, or separated by commas.</p>{{ end }}
+    {{ if .Restart }}<p class="form-hint panel-restart">Takes effect after a restart.</p>{{ end }}
+  </div>
+</div>
+{{ end }}

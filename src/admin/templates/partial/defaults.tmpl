@@ -1,0 +1,56 @@
+{{ define "csrf" }}<input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">{{ end }}
+
+{{ define "flash" }}
+{{ if .Flashes }}
+<div class="flash-region" role="status" aria-live="polite">
+  {{ range .Flashes }}
+  <div class="flash flash-{{ .Level }}" data-level="{{ .Level }}">
+    <span class="flash-icon" aria-hidden="true">{{ levelIcon .Level }}</span>
+    <p class="flash-message">{{ .Message }}</p>
+  </div>
+  {{ end }}
+</div>
+{{ end }}
+{{ end }}
+
+{{ define "form_error" }}
+{{ if . }}<p class="form-error" role="alert">{{ . }}</p>{{ end }}
+{{ end }}
+
+<!-- Every page template redefines this block; the default keeps the layout
+     renderable on its own so a parse check never needs a page. -->
+{{ define "content" }}
+<p class="note">This page has no content.</p>
+{{ end }}
+
+<!-- Args: dict "Value" a one-time secret, "Label" its caption. The value is
+     shown exactly once and is never written to a log or a query string. -->
+{{ define "secret_once" }}
+<div class="code-block panel-secret">
+  <p class="code-label">{{ .Label }}</p>
+  <code class="code-content long-string">{{ .Value }}</code>
+  <p class="form-hint">This is shown once. Copy it now — it cannot be displayed again.</p>
+</div>
+{{ end }}
+
+<!-- Args: dict "ID" "Title" "Message" "Action" "CSRFToken" "Name" "Value"
+     "Hidden" (a slice of dict "Name" "Value") "ConfirmLabel" "TriggerLabel".
+     A native <dialog> supplies the focus trap and Escape handling; with
+     JavaScript disabled the stylesheet renders it inline, so the action stays
+     reachable and still requires an explicit confirmation. -->
+{{ define "confirm_dialog" }}
+<a class="btn btn-danger" href="#{{ .ID }}" data-confirm="{{ .ID }}">{{ fallback "Remove" .TriggerLabel }}</a>
+<dialog id="{{ .ID }}" class="dialog dialog-danger" aria-labelledby="{{ .ID }}-title">
+  <form class="dialog-form" method="post" action="{{ .Action }}">
+    <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+    <input type="hidden" name="confirm" value="yes">
+    {{ range .Hidden }}<input type="hidden" name="{{ .Name }}" value="{{ .Value }}">{{ end }}
+    <h2 class="dialog-title" id="{{ .ID }}-title">{{ .Title }}</h2>
+    <p class="dialog-message">{{ .Message }}</p>
+    <div class="dialog-actions">
+      <button class="btn btn-danger" type="submit" name="{{ .Name }}" value="{{ .Value }}">{{ fallback "Confirm" .ConfirmLabel }}</button>
+      <button class="btn btn-secondary" type="submit" formmethod="dialog" formnovalidate name="cancel" value="1">Cancel</button>
+    </div>
+  </form>
+</dialog>
+{{ end }}

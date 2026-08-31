@@ -1,0 +1,69 @@
+{{define "content" -}}
+
+<section class="card">
+  <h2>Invoices</h2>
+  {{if .Invoices}}
+  <div class="tablewrap">
+    <table>
+      <caption class="sr-only">Invoices</caption>
+      <thead>
+        <tr>
+          <th scope="col">Number</th>
+          <th scope="col">Issued</th>
+          <th scope="col">State</th>
+          <th scope="col">Total</th>
+          <th scope="col">Balance due</th>
+          <th scope="col"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Invoices}}
+        <tr>
+          <td class="mono">{{.Number}}</td>
+          <td>{{date .IssuedAt}}</td>
+          <td><span class="badge {{if eqs .State "paid"}}badge-ok{{else if eqs .State "overdue"}}badge-danger{{else if eqs .State "due"}}badge-warn{{else}}badge-muted{{end}}">{{label .State}}</span></td>
+          <td>{{money .TotalMinor .Currency}}</td>
+          <td>{{money .BalanceDueMinor .Currency}}</td>
+          <td class="actions"><a class="btn btn-sm" href="{{$.BasePath}}/invoices/{{.ID}}">View</a></td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="muted">No invoices have been issued yet.</p>
+  {{end}}
+</section>
+
+{{if .CreditNotes}}
+<section class="card">
+  <h2>Credit notes</h2>
+  <div class="tablewrap">
+    <table>
+      <caption class="sr-only">Credit notes</caption>
+      <thead><tr><th scope="col">Number</th><th scope="col">Issued</th><th scope="col">Amount</th><th scope="col">Reason</th></tr></thead>
+      <tbody>
+        {{range .CreditNotes}}
+        <tr>
+          <td class="mono">{{.Number}}</td>
+          <td>{{date .IssuedAt}}</td>
+          <td>{{money .AmountMinor .Currency}}</td>
+          <td>{{.Reason}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}
+
+<section class="card">
+  <h2>Export</h2>
+  <p>Download your full invoice and payment history in a portable format.</p>
+  <div class="actions">
+    <a class="btn" href="{{.BasePath}}/export?format=json">Export as JSON</a>
+    <a class="btn" href="{{.BasePath}}/export?format=csv">Export as CSV</a>
+  </div>
+</section>
+
+{{- end}}

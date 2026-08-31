@@ -1,0 +1,24 @@
+Subject: Two-Factor Authentication Disabled - {app_name}
+---
+TWO-FACTOR AUTHENTICATION DISABLED
+
+This email was sent to: {recipient_email}
+From: {app_name} ({fqdn})
+
+Hello {recipient_username},
+
+Two-factor authentication was turned off for your account. Sign-in now
+requires only your password.
+
+Time: {timestamp}
+IP address: {ip_address}
+
+If this was NOT you, re-enable two-factor authentication and change your
+password immediately:
+
+{action_url}
+
+--
+{app_name}
+{app_url}
+(c) {year}

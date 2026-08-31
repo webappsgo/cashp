@@ -1,0 +1,26 @@
+{{ define "layout" }}<!doctype html>
+<!-- The no-js class is removed by the shared app.js; the stylesheet uses it to
+     render confirmation dialogs inline so every action works without scripts. -->
+<html lang="en" class="theme-{{ .Theme }} no-js" data-theme="{{ .Theme }}">
+  <head>
+    {{ template "head" . }}
+  </head>
+  <body class="{{ .PageClass }}">
+    <a class="skip-link" href="#main">Skip to main content</a>
+    {{ template "header" . }}
+    <div class="panel-shell">
+      {{ if .Admin }}{{ template "sidebar" . }}{{ end }}
+      <main id="main" class="panel-main" tabindex="-1">
+        {{ template "flash" . }}
+        <header class="panel-page-head">
+          <h1 class="panel-title">{{ .Title }}</h1>
+          {{ if .Description }}<p class="panel-description">{{ .Description }}</p>{{ end }}
+        </header>
+        {{ template "content" . }}
+      </main>
+    </div>
+    {{ template "footer" . }}
+    <script src="/static/js/app.js" defer></script>
+  </body>
+</html>
+{{ end }}

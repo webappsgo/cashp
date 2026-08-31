@@ -1,0 +1,76 @@
+/* Print styles: paper is always light, and interactive chrome is dropped so a
+   printed page carries only its content. Loaded with media="print". */
+
+/* Print has one ink colour regardless of the on-screen theme, so it gets its
+   own token rather than reusing the theme palette. */
+:root {
+  --color-print-ink: #000000;
+}
+
+body {
+  background: none;
+  color: var(--color-print-ink);
+}
+
+.site-header,
+.site-nav,
+.nav-toggle-label,
+.theme-toggle,
+.cookie-banner,
+.toast-region,
+.skip-link,
+.copy-btn,
+.form-actions,
+.pagination,
+.footer-onion .copy-btn,
+.footer-i2p .copy-btn {
+  display: none !important;
+}
+
+main {
+  padding: 0;
+}
+
+.container {
+  max-width: none;
+  padding: 0;
+}
+
+a {
+  color: var(--color-print-ink);
+  text-decoration: underline;
+}
+
+/* Printed links lose their target unless the URL is written out. */
+main a[href^="http"]::after {
+  content: " (" attr(href) ")";
+  font-size: 0.85em;
+  word-break: break-all;
+}
+
+.card,
+.state,
+.log-block,
+.table-scroll,
+.key-point,
+.toc,
+.manage-cookies {
+  border: 1px solid var(--color-print-ink);
+  background: none;
+  break-inside: avoid;
+}
+
+pre,
+.log-output {
+  white-space: pre-wrap;
+  max-height: none;
+  overflow: visible;
+  border: 1px solid var(--color-print-ink);
+  background: none;
+}
+
+h1,
+h2,
+h3 {
+  break-after: avoid;
+}
