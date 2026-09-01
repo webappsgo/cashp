@@ -935,6 +935,10 @@ src/config/                 # Configuration package
 src/server/                 # HTTP server package
 src/client/                 # client (REQUIRED - all projects)
 src/agent/                  # Agent (OPTIONAL - monitoring/management projects only)
+deps/                       # OPTIONAL - committed, project-specific support
+                             # files not part of build/release output (e.g.
+                             # scripts or Dockerfiles for building a
+                             # dependency) - never a cache or temp/output dir
 docker/                     # Docker files (REQUIRED)
 docker/Dockerfile           # Multi-stage Dockerfile
 docker/docker-compose.yml   # Production docker-compose
@@ -1426,14 +1430,16 @@ For complete details, see AI.md PART 0, 1
 
 ## LONG STRINGS (REQUIRED CSS)
 ```css
-.long-string, .ip-address, .onion-address, .api-token, .hash {
+.long-string, .ip-address, .api-token, .hash {
   word-break: break-all;
   overflow-wrap: break-word;
   font-family: monospace;
 }
 ```
 
-Apply to: IPv6, Tor .onion, API tokens, hashes, UUIDs, Base64
+Apply to: IPv6, API tokens, hashes, UUIDs, Base64 — values with no adjacent copy button.
+
+`.onion-address` / `.i2p-address` are copy-button values, NOT covered by the wrap rule above — using wrap CSS on them breaks the copy target into multiple lines. They require the scroll-box treatment; see "### Long Strings (IPv6, Tor, Tokens, Hashes)" below for the full wrap-vs-scroll-box split and the required `.onion-address`/`.i2p-address` CSS.
 
 ## BREAKPOINTS (mobile-first)
 | Target | CSS |
@@ -1644,7 +1650,7 @@ On EVERY new conversation or after "context compacted" message:
 6. Built-in scheduler, GeoIP, metrics, email, backup, update
 7. Full admin panel with ALL settings
 8. Client binary for ALL projects
-9. Commit often — small, focused commits. Do NOT hoard unrelated changes into one big commit. **Findings-based work (audits, reviews, numbered fix-lists) defaults to one commit per finding** — never batch distinct findings into one commit just because they share a file or session. **Feature work is the opposite — one commit for the whole feature, never split per part. Unrelated bugs found mid-feature go to `TODO.AI.md`, except app-breaking bugs, which must be fixed immediately.** **Subagents do not commit** — complete edits and report back to the parent instance; the parent reviews the diff and owns the commit.
+9. Commit via `gitcommit --dir {project_dir} all`. A commit's scope is the resolved unit of work, not "one fix" by default — decide the scope BEFORE fixing, in this order (first match wins): **(1)** user states or implies a single commit → everything for that request in one commit, overriding every rule below; **(2)** ad hoc "fix X and anything else you find" → one commit for the whole request; **(3)** multi-file bug fixes → one commit per group of files actually coupled by dependency/root cause, split when files are independent; **(4)** findings-based work (audits, reviews, numbered fix-lists) → one commit per finding by default, batched only when genuinely inseparable; **(5)** feature work → one commit for the entire feature plus directly-related bugs, never split per part. Unrelated bugs found mid-feature go to `TODO.AI.md`, except app-breaking bugs, which must be fixed immediately. **Subagents never commit, no exceptions** — complete edits and report back to the parent instance; only the parent reviews the diff and owns the commit.
 
 ## File Locations
 - Config: `{config_dir}/server.yml`
@@ -1999,6 +2005,7 @@ Instructions for how this agent should behave...
 | `docs/` | ✓ | MkDocs documentation only | No |
 | `scripts/` | ✓ | Production/install scripts | No |
 | `tests/` | ✓ | Repository-root executable integration test scripts (`run_tests.sh`, `docker.sh`, `incus.sh`, `e2e.sh`, optional helpers). Go unit tests live alongside code as `*_test.go` | No |
+| `deps/` | | Optional, committed, project-specific support files not part of build/release output (e.g. scripts or Dockerfiles for building a dependency) — never a cache or temp/output dir | No |
 | `.github/` | If GitHub / public repo | GitHub Actions, community files, templates | No |
 | `.gitea/` | If Gitea | Gitea Actions, templates | No |
 | `.claude/` | Auto | Claude Code config — team config (rules, agents, hooks, `settings.json`) committed; personal/runtime files gitignored | Partial (see AI-Specific Files table) |
@@ -10003,7 +10010,7 @@ data:
 
   cve:
     # NVD (NIST National Vulnerability Database)
-    source: "https://nvd.nist.gov/feeds/json/cve/1.1"
+    source: "https://services.nvd.nist.gov/rest/json/cves/2.0"
     # Only download CVEs relevant to project dependencies
     filter_by_cpe: true
 
@@ -11299,14 +11306,36 @@ PHASE 5: Server startup (actual server start)
     ├─ SIGUSR1 → reopen log files (for rotation)
     └─ SIGUSR2 → dump status to log
 
-20. Log startup complete:
-    ├─ Log "Listening on {address}:{port}"
+20. Resolve display URL and print startup banner (no HTTP request context
+    exists yet, so only the non-header-dependent resolution priorities apply
+    — see "Resolution Order (Reverse Proxy Preferred)"):
+    ├─ Resolve {fqdn}: DOMAIN env var → system `hostname` → $HOSTNAME env var
+    │  → public IPv6 → public IPv4 → `localhost` fallback (priorities 2-7;
+    │  priorities 0-1, Tor onion match and reverse-proxy headers, require a
+    │  request and do NOT apply here)
+    ├─ Resolve {proto}: TLS enabled on the bound listener → `https`,
+    │  else default `http` (priority 5; header-based priorities 1-4 do not
+    │  apply here)
+    ├─ Resolve {port}: server listen port from step 13, else proto default
+    │  (priority 3-4)
+    ├─ Resolve {app_mode} via GetAppModeString()
+    ├─ Resolve {startup_datetime} = current UTC timestamp at this step
+    └─ Build `urls` from the resolved {proto}/{fqdn}/{port} and call
+       PrintServerStartupBanner(appName, version, appMode, urls,
+       forceColor) — the banner's "Listening on" line ALWAYS shows the
+       resolved {fqdn}, never the raw bind {address} (see "Banner
+       Placeholders (Must Be Defined)" for the full placeholder list)
+
+21. Log startup complete:
+    ├─ Log "Listening on {address}:{port}" (raw bind address is fine in logs
+    │  — only logs may show {address}; the banner, API, and frontend must
+    │  always show the resolved {fqdn} from step 20)
     ├─ Log "Mode: {production|development|debug}"
     ├─ Log "Tor: {.onion address}" (if enabled)
     ├─ Log "I2P: {.b32.i2p address}" (if enabled and provider available)
     └─ If first_run: display setup token in console
 
-21. Enter main loop (block until shutdown signal received)
+22. Enter main loop (block until shutdown signal received)
 ```
 
 | Step | Runs As | Why |
@@ -11325,7 +11354,7 @@ PHASE 5: Server startup (actual server start)
 | **IF USER (step 9):** | | |
 | 9. Setup user directories | **user** | Create ~/.config/, ~/.local/share/, etc. |
 | **COMMON PATH:** | | |
-| 10-21. Everything else | **user** | Dirs exist, privileged sockets bound (if any) |
+| 10-22. Everything else | **user** | Dirs exist, privileged sockets bound (if any) |
 
 **Security principle:** Drop privileges as EARLY as possible, but AFTER:
 1. Creating the service user/group
@@ -16301,6 +16330,9 @@ Allow: /
 Allow: /api
 Disallow: /server/{admin_path}
 Sitemap: {app_url}/sitemap.xml
+
+# AI crawlers - default: no additional restrictions (inherit User-agent: * above)
+# Per-bot stanzas are only rendered when that bot is explicitly denied below
 ```
 
 **Configuration:**
@@ -16312,7 +16344,38 @@ web:
       - /api
     deny:
       - /server/{admin_path}
+    # Per-AI-crawler access control (default: allow all - no AI blocking)
+    ai_bots:
+      # Applies to any recognized AI bot not listed individually below
+      default: allow
+      # Per-bot overrides: allow | deny
+      bots:
+        GPTBot: allow
+        ChatGPT-User: allow
+        ClaudeBot: allow
+        anthropic-ai: allow
+        Claude-Web: allow
+        CCBot: allow
+        Google-Extended: allow
+        Bytespider: allow
+        PerplexityBot: allow
+        Applebot-Extended: allow
+        Amazonbot: allow
+        Diffbot: allow
+        FacebookBot: allow
+        cohere-ai: allow
 ```
+
+**AI Crawler Rules:**
+- Default posture is **allow** - no AI bot is blocked unless the user explicitly sets it (or `ai_bots.default`) to `deny`.
+- `ai_bots.default: deny` flips the default for any bot not explicitly listed; explicit per-bot entries always take precedence over `default`.
+- Bots set to `allow` are covered by the existing `User-agent: *` block and get no separate stanza.
+- Bots set to `deny` render their own stanza:
+  ```
+  User-agent: {bot_name}
+  Disallow: /
+  ```
+- When `ai_bots.default: deny`, every recognized bot not explicitly set to `allow` also renders its own `Disallow: /` stanza, since a bot's own `User-agent` block overrides the wildcard `Allow: /` for that bot only.
 
 ### security.txt (RFC 9116)
 
@@ -20180,6 +20243,16 @@ type StatsInfo struct {
             </button>
           </div>
         </li>
+        <!-- I2P row mirrors Tor exactly (PART 32.2) — only rendered when features.i2p.enabled -->
+        <li class="feature-enabled">
+          🔗 I2P: <span class="status status-ok">✅ healthy</span>
+          <div class="code-block">
+            <code class="code-content">abc123xyz456abcdef789xyz456abcdef789xyz456abcdef789xyz.b32.i2p</code>
+            <button class="copy-btn" data-copy="abc123xyz456abcdef789xyz456abcdef789xyz456abcdef789xyz.b32.i2p">
+              <span class="copy-icon">📋</span><span class="copy-text" aria-live="polite">Copy</span>
+            </button>
+          </div>
+        </li>
         <li class="feature-enabled">🌍 GeoIP</li>
         <!-- PROJECT-SPECIFIC: If using optional PARTS, show actual status -->
         <!-- <li class="feature-enabled">👥 Multi-User</li> -->           <!-- if enabled -->
@@ -23052,9 +23125,8 @@ formatURL(host, 8443, true)
 │  🔒 Running in mode: production                           │
 ├───────────────────────────────────────────────────────────┤
 │  🧅 Tor:   http://{onion_address}                         │
-│  🔐 HTTPS: {proto}://{fqdn}                               │
 ├───────────────────────────────────────────────────────────┤
-│  📡 Listening on {proto}://{address}                      │
+│  📡 Listening on {proto}://{fqdn}                         │
 │  ✅ Server started on {startup_datetime}                  │
 ╰───────────────────────────────────────────────────────────╯
 ```
@@ -23070,9 +23142,7 @@ formatURL(host, 8443, true)
 │  🔗 I2P:   http://{i2p_address}                           │
 │  📧 SMTP:  {smtp_address}:{smtp_port}                     │
 ├───────────────────────────────────────────────────────────┤
-│  📡 Listening on {proto}://{address}                      │
-├───────────────────────────────────────────────────────────┤
-│  🔐 Website: {proto}://{fqdn}                             │
+│  📡 Listening on {proto}://{fqdn}                         │
 ├───────────────────────────────────────────────────────────┤
 │  ✅ Server started on {startup_datetime}                  │
 ╰───────────────────────────────────────────────────────────╯
@@ -23085,9 +23155,7 @@ formatURL(host, 8443, true)
 ├───────────────────────────────────────────────────────────┤
 │  🔒 Running in mode: production                           │
 ├───────────────────────────────────────────────────────────┤
-│  🌐 HTTP:  {proto}://{fqdn}:{port}                        │
-├───────────────────────────────────────────────────────────┤
-│  📡 Listening on {proto}://{address}:{port}               │
+│  📡 Listening on {proto}://{fqdn}:{port}                  │
 │  ✅ Server started on {startup_datetime}                  │
 ╰───────────────────────────────────────────────────────────╯
 ```
@@ -23127,9 +23195,7 @@ formatURL(host, 8443, true)
 ├───────────────────────────────────────────────────────────┤
 │  🔒 Running in mode: production                           │
 ├───────────────────────────────────────────────────────────┤
-│  🌐 HTTP:  {proto}://{fqdn}                               │
-├───────────────────────────────────────────────────────────┤
-│  📡 Listening on {proto}://{address}                      │
+│  📡 Listening on {proto}://{fqdn}                         │
 │  ✅ Server started on {startup_datetime}                  │
 ╰───────────────────────────────────────────────────────────╯
 ```
@@ -23141,9 +23207,7 @@ formatURL(host, 8443, true)
 ├───────────────────────────────────────────────────────────┤
 │  🔒 Running in mode: {app_mode} [debugging]               │
 ├───────────────────────────────────────────────────────────┤
-│  🌐 HTTP:  {proto}://{fqdn}                               │
-├───────────────────────────────────────────────────────────┤
-│  📡 Listening on {proto}://{address}                      │
+│  📡 Listening on {proto}://{fqdn}                         │
 │  ✅ Server started on {startup_datetime}                  │
 ╰───────────────────────────────────────────────────────────╯
 ```
@@ -23166,7 +23230,7 @@ formatURL(host, 8443, true)
 ├───────────────────────────────────────────────────────────┤
 │  Setup Token: {setup_token}                               │
 │                                                           │
-│  Go to {proto}://{fqdn}/server/{admin_path}/config/setup         │
+│  Go to {proto}://{fqdn}/server/{admin_path}/config/setup  │
 │  and enter this token to complete setup.                  │
 │                                                           │
 │  This token will only be shown ONCE.                      │
@@ -23185,8 +23249,7 @@ formatURL(host, 8443, true)
 ```
 🚀 {PROJECT_NAME} v{project_version}
 🔒 Mode: {app_mode}
-🌐 {proto}://{fqdn}
-📡 Listening: {proto}://{address}:{port}
+📡 Listening: {proto}://{fqdn}:{port}
 ✅ Started: {startup_datetime}
 ```
 
@@ -23233,8 +23296,7 @@ SETUP: {setup_token}
 ```
 {PROJECT_NAME} v{project_version}
 Mode: {app_mode}
-URL: {proto}://{fqdn}
-Listening: {proto}://{address}:{port}
+Listening: {proto}://{fqdn}:{port}
 Started: {startup_datetime}
 ```
 
@@ -23896,18 +23958,20 @@ fi
 |-------------|----------------|---------|
 | IPv6 address | 39 chars | `2001:0db8:85a3:0000:0000:8a2e:0370:7334` |
 | Tor v3 .onion | 62 chars | `duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion` |
+| I2P .b32.i2p | 60 chars | `ukeu3k5oycgaauneqgtnvselmt4yemvoilkln7jpvamvfx7dnkdq.b32.i2p` |
 | API token | 32-64 chars | `tok_EXAMPLE1234567890abcdefghij...` |
 | SHA-256 hash | 64 chars | `e3b0c44298fc1c149afbf4c8996fb924...` |
 | UUID | 36 chars | `550e8400-e29b-41d4-a716-446655440000` |
 | Base64 data | Variable | Long encoded strings |
 
-**Required CSS for ALL elements that may contain long strings:**
+**Two treatments — pick by whether a copy button sits next to the value.**
+
+**No adjacent copy control → wrap in place** (table cells, list rows, plain inline text — the reader has no other way to see the full value):
 
 ```css
-/* Apply to elements containing: IPs, URLs, hashes, tokens, codes */
+/* Apply to elements containing: IPs, hashes, tokens, codes with no copy button nearby */
 .long-string,
 .ip-address,
-.onion-address,
 .api-token,
 .hash,
 .uuid,
@@ -23922,6 +23986,22 @@ fi
   /* Optional: smaller font on mobile */
   font-size: 0.875rem;
 }
+```
+
+**Adjacent copy button → single-line scroll-box, never wrap** (the copy button is the intended way to get the value, so hiding overflow behind a scroll costs nothing and keeps the pill from inflating to multiple lines):
+
+```css
+.onion-address,
+.i2p-address,
+.copy-value {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  font-family: monospace;
+  font-size: 0.875rem;
+}
 
 /* Alternative: horizontal scroll for code blocks */
 .code-block {
@@ -23931,13 +24011,17 @@ fi
 }
 ```
 
+Apply `.copy-value` to any other long-string element (setup token, API token, session ID) rendered next to a copy-to-clipboard button.
+
 **Where to apply:**
 
 | Context | CSS Class | Behavior |
 |---------|-----------|----------|
-| Inline display (tables, lists) | `.long-string` | Word-break to wrap |
+| Inline display, no copy button (tables, lists) | `.long-string` | Word-break to wrap |
+| Onion / I2P address (always has a copy button) | `.onion-address` / `.i2p-address` | Single-line scroll, never wrap |
+| Any other value with an adjacent copy button | `.copy-value` | Single-line scroll, never wrap |
 | Code blocks | `.code-block` | Horizontal scroll |
-| Copy-friendly fields | `.monospace-data` | Word-break + select all |
+| Copy-friendly fields with no copy button | `.monospace-data` | Word-break + select all |
 
 **NEVER let long strings overflow their container or break mobile layouts.**
 
@@ -24447,6 +24531,15 @@ document.addEventListener('click', function(e) {
     <div class="code-block">
       <code class="code-content">abc123xyz789.onion</code>
       <button class="copy-btn" data-copy="abc123xyz789.onion">📋</button>
+    </div>
+  </li>
+  <!-- I2P row mirrors Tor exactly — only rendered when features.i2p.enabled -->
+  <li class="feature-enabled">
+    🔗 I2P:
+    <span class="status status-ok">✅ healthy</span>
+    <div class="code-block">
+      <code class="code-content">abc123xyz789.b32.i2p</code>
+      <button class="copy-btn" data-copy="abc123xyz789.b32.i2p">📋</button>
     </div>
   </li>
   <li class="feature-disabled">📊 GeoIP</li>
@@ -25069,6 +25162,24 @@ Toasts require JavaScript. For standard (non-AJAX) form POSTs, the server MUST u
 </div>
 ```
 
+### Guest Header (No Login / Single-User Apps)
+
+**When the profile dropdown above does not apply — no authenticated session, or a single-user/anonymous-facing app (PART 34 Multi-User disabled) — the header MUST still expose a way to reach Preferences and switch theme. Do NOT rely on the footer alone for this**: a footer link satisfies "reachable" but not "discoverable" — the header is where users look first, and burying the only theme control in the footer is a UX regression versus the profile-menu case above.
+
+**Guest Header HTML Structure (same `.header-actions` region the profile menu would otherwise occupy):**
+```html
+<div class="header-actions">
+  <form action="/server/preferences" method="POST" class="theme-toggle-inline">
+    <button type="submit" name="theme" value="dark" aria-label="Dark theme">🌙</button>
+    <button type="submit" name="theme" value="light" aria-label="Light theme">☀️</button>
+    <button type="submit" name="theme" value="auto" aria-label="Auto theme">🔄</button>
+  </form>
+  <a href="/server/preferences" class="header-link" aria-label="Preferences">⚙️</a>
+</div>
+```
+
+No JS required — each button is a real form submit that sets the `theme` cookie server-side and redirects back (303 See Other), exactly like the authenticated theme toggle. External JS may intercept the submit to apply the theme class without a reload (progressive enhancement, not a requirement). The footer's `/server/preferences` link (see "Default Application Footer" above) remains — it's an additional path, not the only one.
+
 ### Profile Icon
 
 **User profile dropdown accessible via avatar/icon in header. Follows GitHub/GitLab patterns.**
@@ -25092,6 +25203,7 @@ Toasts require JavaScript. For standard (non-AJAX) form POSTs, the server MUST u
 | **Settings** | `/users/settings` | Account settings |
 | **Security** | `/users/security` | Password, 2FA, sessions |
 | **API Tokens** | `/users/tokens` | Manage API tokens |
+| **Preferences** | `/server/preferences` | Theme, language, cookie/privacy preferences |
 | *(divider)* | - | - |
 | **Theme** | - | Theme toggle (Dark/Light/Auto) |
 | *(divider)* | - | - |
@@ -25113,10 +25225,14 @@ Toasts require JavaScript. For standard (non-AJAX) form POSTs, the server MUST u
     <a href="/users/settings" class="dropdown-item" role="menuitem">Settings</a>
     <a href="/users/security" class="dropdown-item" role="menuitem">Security</a>
     <a href="/users/tokens" class="dropdown-item" role="menuitem">API Tokens</a>
+    <a href="/server/preferences" class="dropdown-item" role="menuitem">Preferences</a>
     <div class="dropdown-divider" role="separator"></div>
-    <div class="dropdown-item theme-toggle">
-      Theme: <button>Dark</button> | <button>Light</button> | <button>Auto</button>
-    </div>
+    <form action="/server/preferences" method="POST" class="dropdown-item theme-toggle">
+      Theme:
+      <button type="submit" name="theme" value="dark">Dark</button> |
+      <button type="submit" name="theme" value="light">Light</button> |
+      <button type="submit" name="theme" value="auto">Auto</button>
+    </form>
     <div class="dropdown-divider" role="separator"></div>
     <a href="/server/help" class="dropdown-item" role="menuitem">Help</a>
     <form action="/server/auth/logout" method="POST">
@@ -27064,9 +27180,33 @@ html.theme-light {
 | Public (user) | `user_preferences.theme` | `dark` |
 | Admin | `admin_preferences.theme` | `dark` |
 
+The server resolves whichever of these applies into a single `.Theme` template
+variable before render (see "Theme Detection Flow" below). The toggle button's
+POST target is never a hardcoded value — it is always the *next* mode after
+`.Theme`, computed server-side via `nextTheme()`. A hardcoded target is the
+classic bug: the first click changes the theme, but every click after that
+resubmits the same value and nothing changes. Computing the target from actual
+current state on every render is what keeps repeated clicks cycling.
+
+```go
+// nextTheme returns the next mode in the cycle: dark -> light -> auto -> dark.
+// Called when rendering the toggle button so its target is always derived
+// from .Theme (the resolved cookie/DB preference) - never a fixed value.
+func nextTheme(current string) string {
+	switch current {
+	case "dark":
+		return "light"
+	case "light":
+		return "auto"
+	default: // "auto" or empty/unset
+		return "dark"
+	}
+}
+```
+
 **Theme switching (shared):**
 
-**Note:** Per "HTML5 & CSS Over JavaScript" rules - the SERVER reads the theme preference (cookie or DB) and renders the `theme-*` class on `<html>`, so every page loads with the correct theme and zero JS. `auto` renders `theme-auto`, which is pure CSS via `prefers-color-scheme` - no `matchMedia` detection needed. The toggle itself is a small POST form that sets the cookie / saves the preference; external JS only enhances it to swap the class without a reload.
+**Note:** Per "HTML5 & CSS Over JavaScript" rules - the SERVER reads the theme preference (cookie or DB) and renders the `theme-*` class on `<html>`, so every page loads with the correct theme and zero JS. `auto` renders `theme-auto`, which is pure CSS via `prefers-color-scheme` - no `matchMedia` detection needed. The toggle itself is a small POST form whose hidden value is always the server-computed `nextTheme()` result; external JS only enhances it with an instant visual preview on click, it does not intercept or replace the submit, since logged-in users' preference must reach the server to persist in the DB.
 
 ```css
 /* theme-auto follows the OS preference - pure CSS, no JS detection */
@@ -27079,11 +27219,32 @@ html.theme-light {
 ```
 
 ```javascript
-// No-reload enhancement only - the POST form + theme cookie is the source of truth
+// Instant-preview enhancement only - the real POST still happens on submit,
+// since a logged-in user's preference is persisted server-side (DB), not just
+// a cookie, and must reach the server either way. Recomputes the next mode
+// from the LIVE <html> class on every click rather than trusting the form's
+// hidden value (rendered once at page load, and stale after the first
+// JS-driven switch) - this is what keeps repeated clicks cycling instead of
+// sticking after the first one.
+const THEME_CYCLE = ['dark', 'light', 'auto'];
+
+function currentTheme() {
+  const match = document.documentElement.className.match(/theme-(dark|light|auto)/);
+  return match ? match[1] : 'dark';
+}
+
 function setTheme(theme) {
   document.documentElement.className = `theme-${theme}`;
-  document.cookie = `theme=${theme}; path=/; max-age=31536000; SameSite=Lax`;
 }
+
+document.querySelectorAll('.theme-toggle-form').forEach((form) => {
+  form.addEventListener('submit', () => {
+    // Does NOT call preventDefault() - the form still submits normally so the
+    // server persists the new value and re-renders with the correct next target.
+    const next = THEME_CYCLE[(THEME_CYCLE.indexOf(currentTheme()) + 1) % THEME_CYCLE.length];
+    setTheme(next);
+  });
+});
 ```
 
 ### Layout Partials
@@ -27322,7 +27483,8 @@ partial/
 | Element | Position | Purpose | Contents |
 |---------|----------|---------|----------|
 | `<nav>` | TOP | Navigation | Links to app sections, user menu |
-| `<footer>` | BOTTOM | Information | About, Privacy, Contact, Help, GitHub, version |
+| Header `.header-actions` | TOP | Cross-cutting UI state | Profile/preferences zone (Guest Header when logged out, Profile dropdown when logged in — see above), then theme toggle — in that order, right of the centered nav links |
+| `<footer>` | BOTTOM | Information | About, Privacy, Contact, Help, Preferences, GitHub, version |
 
 **Nav contains (app navigation):**
 - Home link
@@ -27335,22 +27497,31 @@ partial/
 - API link (users access via `/server/docs/swagger` if needed)
 - Admin link (don't advertise - admins know where it is)
 - Help link (belongs in footer)
+- Preferences link (lives next to the theme toggle in the header, not in nav — it's UI state, not app content; also always present in the footer for discoverability)
+
+**Header Layout — single row, 4 zones, in this exact order:**
+
+```
+{logo/text}          {links}          {profile/preferences}  {theme_toggle}
+```
+
+Brand sits left, nav links are horizontally centered (not pushed right against
+the actions), and the actions cluster (profile/preferences, then theme toggle)
+sits right. Do NOT split header/nav into two separate rows on desktop — that
+pushes links flush right against the header edge with no centering.
 
 **Default Navigation (nav.tmpl):**
 
 ```
-Desktop:
+Desktop (single row, 4 zones):
 ┌─────────────────────────────────────────────────────────────────┐
-│  {project_name}                                      [User Icon] │  ← Header
-├─────────────────────────────────────────────────────────────────┤
-│  Home  |  [App Section 1]  |  [App Section 2]  |  ...           │  ← Nav
+│ {project_name}   Home | Section 1 | Section 2   [User Icon][Thm] │  ← Header
 └─────────────────────────────────────────────────────────────────┘
+   ^logo/text       ^links (centered)          ^profile/prefs ^theme
 
 Mobile:
 ┌─────────────────────────────────────────────────────────────────┐
-│  {project_name}                                      [User Icon] │  ← Header
-├─────────────────────────────────────────────────────────────────┤
-│                                                      [☰ Menu]   │  ← Nav row
+│  {project_name}                       [☰]    [User Icon][Thm]   │  ← Header
 └─────────────────────────────────────────────────────────────────┘
                                               ┌───────────────────┐
                                               │  Home             │
@@ -27361,20 +27532,43 @@ Mobile:
 ```
 
 ```html
-<!-- Header bar: site name + user icon -->
+<!-- Header bar: single row — brand | centered links | profile/preferences | theme toggle -->
 <header class="header">
   <a href="/" class="site-brand">{project_name}</a>
 
-  <!-- User icon (always visible, far right) -->
-  <div class="user-menu">
+  <!-- Hidden checkbox controls mobile menu state - NO JavaScript -->
+  <input type="checkbox" id="nav-toggle" class="nav-checkbox" hidden>
+
+  <!-- Desktop: inline links, centered | Mobile: hamburger only -->
+  <nav class="nav-links">
+    <a href="/">Home</a>
+    <!-- App-specific sections (project-defined) -->
+  </nav>
+
+  <!-- Mobile: hamburger toggle (checkbox label) -->
+  <label for="nav-toggle" class="nav-toggle" aria-label="Toggle navigation">☰</label>
+
+  <!-- Slide-in panel for mobile (links only — actions below stay in header) -->
+  <div class="nav-panel">
+    <label for="nav-toggle" class="nav-close" aria-label="Close menu">✕</label>
+    <a href="/">Home</a>
+    <!-- App-specific sections (project-defined) -->
+  </div>
+  <label for="nav-toggle" class="nav-overlay"></label>
+
+  <!-- Actions: profile/preferences zone, then theme toggle (always visible, far right) -->
+  <div class="header-actions">
+    <!-- Profile/preferences zone: Guest Header when logged out, Profile Icon
+         dropdown when logged in — see "Guest Header" / "Profile Icon" above
+         for the full markup. Simplified here to show placement only. -->
     {{ if .User }}
-      <!-- Logged in: user icon dropdown -->
       <div class="dropdown">
         <button class="dropdown-toggle user-icon" aria-label="User menu">
           <svg>...</svg>
         </button>
         <div class="dropdown-menu">
           <span class="dropdown-header">{{ .User.Username }}</span>
+          <a href="/server/preferences" class="dropdown-item" role="menuitem">Preferences</a>
           <a href="/users">Profile</a>
           <a href="/users/settings">Settings</a>
           <hr />
@@ -27382,38 +27576,50 @@ Mobile:
         </div>
       </div>
     {{ else }}
-      <!-- Logged out: login icon -->
-      <a href="/server/auth/login" class="user-icon" aria-label="Login">
-        <svg>...</svg>
+      <a href="/server/preferences" class="header-link" aria-label="Preferences" title="Preferences">
+        <svg class="icon-preferences"><!-- gear icon --></svg>
       </a>
     {{ end }}
+    <!-- Theme toggle: a form whose target is the SERVER-COMPUTED next mode
+         (nextTheme(), see "System Theme Detection" → "Theme Cycle Logic"),
+         never a hardcoded value - that's what makes repeated clicks keep
+         cycling instead of sticking after the first one. .Theme is the
+         single resolved value (cookie for guests, DB preference for
+         logged-in users - see "Theme preference source" above). -->
+    <form action="/server/preferences" method="POST" class="theme-toggle-form">
+      <input type="hidden" name="theme" value="{{ nextTheme .Theme }}">
+      <button type="submit" class="theme-button" aria-label="Switch theme (currently {{ .Theme }})" title="Switch theme">
+        <svg class="icon-theme"><!-- reflects .Theme: moon/sun/circle-half --></svg>
+      </button>
+    </form>
   </div>
 </header>
+```
 
-<!-- Nav bar: separate row below header (CSS-only mobile menu) -->
-<nav class="nav">
-  <!-- Hidden checkbox controls menu state - NO JavaScript -->
-  <input type="checkbox" id="nav-toggle" class="nav-checkbox" hidden>
+```css
+.header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+}
 
-  <!-- Desktop: inline links | Mobile: hamburger only -->
-  <div class="nav-links">
-    <a href="/">Home</a>
-    <!-- App-specific sections (project-defined) -->
-  </div>
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  /* Centers the link cluster in the remaining space between brand and actions */
+  flex: 1;
+  justify-content: center;
+}
 
-  <!-- Mobile: hamburger toggle (checkbox label) -->
-  <label for="nav-toggle" class="nav-toggle" aria-label="Toggle navigation">☰</label>
-
-  <!-- Slide-in panel for mobile -->
-  <div class="nav-panel">
-    <label for="nav-toggle" class="nav-close" aria-label="Close menu">✕</label>
-    <a href="/">Home</a>
-    <!-- App-specific sections (project-defined) -->
-  </div>
-
-  <!-- Overlay - clicking label unchecks checkbox, closing menu -->
-  <label for="nav-toggle" class="nav-overlay"></label>
-</nav>
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  /* Actions stay right-aligned without pushing nav-links off-center */
+  flex: 0 0 auto;
+}
 ```
 
 **Mobile Menu Behavior:**
@@ -27421,7 +27627,7 @@ Mobile:
 - Slides LEFT to open (right-to-left)
 - Slides RIGHT to close (left-to-right)
 - Overlay dims background, click to close
-- User icon stays in header (NOT in menu) - keeps menu clean
+- Profile/preferences and theme toggle stay in header (NOT in menu) - keeps menu clean
 
 **Smart Menu :**
 - If all nav links fit on screen → show inline links, NO hamburger
@@ -27476,8 +27682,8 @@ Mobile:
 ```
 
 **Mobile Responsive Rules:**
-- Nav row below header: inline links or hamburger
-- User icon ALWAYS in header (never in menu)
+- Links live in the single header row: inline links (desktop) or hamburger (mobile) — no separate nav row
+- Profile/preferences and theme toggle ALWAYS in header actions (never in the mobile slide-in menu)
 - Menu slides from right edge
 - Touch-friendly: minimum 44x44px tap targets
 - Overlay closes menu on tap (CSS label toggles checkbox - no JS)
@@ -27944,9 +28150,15 @@ the hex values from `ThemePaletteDark`/`ThemePaletteLight`.
 ```
 
 **Theme Switching:**
-- Provide theme toggle in UI (☀️ Light / 🌙 Dark / 🔄 Auto) as a POST form that sets the `theme` cookie (or saves the DB preference) - works without JS
+- Provide theme toggle in UI (☀️ Light / 🌙 Dark / 🔄 Auto) as a POST form that sets the `theme` cookie (guests) or saves the DB preference (logged-in) - works without JS
 - Apply theme class to `<html>` element: `theme-light`, `theme-dark`, `theme-auto`
-- NO page reload required when JS is available - external JS intercepts the toggle and swaps the CSS class instantly
+- The toggle's target is always the NEXT mode computed server-side from the
+  current preference (`nextTheme()`, dark → light → auto → dark) - never a
+  hardcoded value. This is what makes repeated clicks keep cycling instead of
+  only working once.
+- Optional JS gives an instant visual preview on click, but does not prevent
+  the real submit - the form always POSTs so a logged-in user's DB preference
+  is actually persisted
 - All components (Swagger, GraphQL, admin) switch simultaneously
 
 **Accessibility Requirements:**
@@ -28017,6 +28229,8 @@ server:
   <meta name="description" content="{description}">
   <meta name="keywords" content="{keywords}">
   <meta name="author" content="{author}">
+  <meta name="robots" content="{robots}">
+  <link rel="canonical" href="{current_url}">
 
   <!-- OpenGraph -->
   <meta property="og:title" content="{title}">
@@ -28031,8 +28245,31 @@ server:
   <meta name="twitter:description" content="{description}">
   <meta name="twitter:image" content="{og_image}">
   <meta name="twitter:site" content="{twitter_handle}">
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "name": "{title}",
+    "description": "{description}",
+    "url": "{current_url}"
+  }
+  </script>
 </head>
 ```
+
+### Robots Directive
+
+`{robots}` is computed server-side per route, never hardcoded:
+
+| Route type | Value |
+|------------|-------|
+| Public pages (homepage, docs, about) | `index,follow` |
+| `/admin`, `/api/*`, auth pages (login, register, reset) | `noindex,nofollow` |
+| Internal/health/debug endpoints | `noindex,nofollow` |
+
+Default to `index,follow` only for routes explicitly marked public; every other route defaults to `noindex,nofollow` (fail closed).
 
 ### Site Verification Meta Tags
 
@@ -28818,6 +29055,8 @@ When admin edits `custom_html`, show:
     <a href="/server/contact">Contact</a>
     <span>•</span>
     <a href="/server/help">Help</a>
+    <span>•</span>
+    <a href="/server/preferences">Preferences</a>
   </p>
 
   <!-- Application branding -->
@@ -30577,7 +30816,7 @@ func RegisterAdminRoutes(r *mux.Router) {
 ├───────────────────────────────────────────────────────────┤
 │  Setup Token: {setup_token}                               │
 │                                                           │
-│  Go to {proto}://{fqdn}/server/{admin_path}/config/setup         │
+│  Go to {proto}://{fqdn}/server/{admin_path}/config/setup  │
 │  and enter this token to complete setup.                  │
 │                                                           │
 │  This token will only be shown ONCE.                      │
@@ -30632,7 +30871,7 @@ On first run, a one-time setup token is generated and displayed in console. Admi
 **Step 2: API Token**
 | Action | Notes |
 |--------|-------|
-| Auto-generate API token | User MUST copy (shown once) |
+| Auto-generate API token | User MUST copy (shown once) — display with a `.api-token` scroll-box and a `copy-btn` (see "Long Strings" above), never a bare `<code>` block; the value is unrecoverable after this step |
 | Token is tied to admin account | Used for API access |
 
 **Step 3: Server Configuration**
@@ -31164,7 +31403,9 @@ Admin Panel Header:
 | `/server/{admin_path}/config/info` | Server Info | Version, environment, deps |
 | `/server/{admin_path}/config/cluster/nodes` | Nodes | Cluster node management |
 | `/server/{admin_path}/config/cluster/add` | Add Node | Generate join token |
-| `/server/{admin_path}/help` | Help | Documentation links |
+| `/server/{admin_path}/config/pages/help` | Help | Edit help page content (matches the `config/pages/help` API route below and the `/server/{admin_path}/config/pages` grouping used by About/Privacy/Contact/Terms) |
+
+**Auth and body format — these WEB routes are NOT the same handler as the API mirror below.** Every route in this table is session-cookie authenticated (admin login session, see "Authentication Methods by Route Family" above) and its mutations (`Save`, `Create`, `Delete`, etc.) are plain HTML `<form method="post" enctype="application/x-www-form-urlencoded">` submissions — never JSON-only (no `ShouldBindJSON`-only handler), per PART 16 "No-JS-first": the admin panel MUST be fully usable with JavaScript disabled. The separate `/api/{api_version}/server/{admin_path}/config/*` routes are the machine-readable mirror: JSON body, `Authorization: Bearer adm_*` token, no session cookie. Do not point a WEB form at the Bearer-only API route or reuse one handler for both — a browser form POST has no `Authorization` header and will 401 against a Bearer-only endpoint.
 
 ### Settings Page Layout
 
@@ -31477,10 +31718,9 @@ server:
           format: cidr
           enabled: true
 
-        - name: "level1"
-          url: "https://www.iblocklist.com/lists/level1.gz"
-          # auto-detect from content/extension (P2P, gzipped)
-          format: auto
+        - name: "blocklist_de"
+          url: "https://lists.blocklist.de/lists/all.txt"
+          format: plain
           enabled: false
 
         - name: "abuse_ch_urlhaus"
@@ -31678,9 +31918,9 @@ Response for `GET /api/{api_version}/server/{admin_path}/config/network/blocklis
   "blocked_today": 147,
   "sources": [
     {
-      "name": "level1",
-      "url": "https://www.iblocklist.com/lists/level1.gz",
-      "format": "auto",
+      "name": "blocklist_de",
+      "url": "https://lists.blocklist.de/lists/all.txt",
+      "format": "plain",
       "enabled": true,
       "rule_count": 398211,
       "last_updated": "2026-04-17T04:00:12Z",
@@ -31707,7 +31947,7 @@ Response for `GET /api/{api_version}/server/{admin_path}/config/network/blocklis
 {
   "ip": "1.2.3.4",
   "blocked": true,
-  "matched_lists": ["level1", "spamhaus_drop"],
+  "matched_lists": ["blocklist_de", "spamhaus_drop"],
   "matched_range": "1.2.0.0/16"
 }
 ```
@@ -31730,9 +31970,9 @@ Response for `GET /api/{api_version}/server/{admin_path}/config/network/blocklis
 │                                                                         │
 │ ┌─ Sources ─────────────────────────────────────────────────────────┐   │
 │ │                                                                    │   │
-│ │ ☑ level1                     398,211 rules    Updated 2 hours ago  │   │
-│ │   https://www.iblocklist.com/lists/level1.gz                       │   │
-│ │   Format: auto  Size: 2.7 megabytes             [Update] [Remove]  │   │
+│ │ ☑ blocklist_de               398,211 rules    Updated 2 hours ago  │   │
+│ │   https://lists.blocklist.de/lists/all.txt                         │   │
+│ │   Format: plain Size: 2.7 megabytes             [Update] [Remove]  │   │
 │ │                                                                    │   │
 │ │ ☑ spamhaus_drop               84,520 rules    Updated 2 hours ago  │   │
 │ │   https://www.spamhaus.org/drop/drop.txt                           │   │
@@ -34408,8 +34648,8 @@ All databases come from [sapics/ip-location-db](https://github.com/sapics/ip-loc
 |----------|-----------------|---------|--------|
 | ASN | `@ip-location-db/asn-mmdb` → `asn.mmdb` | `https://cdn.jsdelivr.net/npm/@ip-location-db/asn-mmdb/asn.mmdb` | `autonomous_system_number`, `autonomous_system_organization` |
 | Country | `@ip-location-db/geo-whois-asn-country-mmdb` → `geo-whois-asn-country.mmdb` | `https://cdn.jsdelivr.net/npm/@ip-location-db/geo-whois-asn-country-mmdb/geo-whois-asn-country.mmdb` | `country_code` |
-| City (IPv4) | `@ip-location-db/dbip-city-mmdb` → `dbip-city-ipv4.mmdb` | `https://cdn.jsdelivr.net/npm/@ip-location-db/dbip-city-mmdb/dbip-city-ipv4.mmdb` | `city`, `country_code`, `state1`, `state2`, `postcode`, `latitude`, `longitude`, `timezone` |
-| City (IPv6) | `@ip-location-db/dbip-city-mmdb` → `dbip-city-ipv6.mmdb` | `https://cdn.jsdelivr.net/npm/@ip-location-db/dbip-city-mmdb/dbip-city-ipv6.mmdb` | (same fields as City IPv4) |
+| City (IPv4) | `@ip-location-db/dbip-city-mmdb` → `dbip-city-ipv4.mmdb` | `https://github.com/sapics/ip-location-db/releases/download/latest/dbip-city-ipv4.mmdb` | `city`, `country_code`, `state1`, `state2`, `postcode`, `latitude`, `longitude`, `timezone` |
+| City (IPv6) | `@ip-location-db/dbip-city-mmdb` → `dbip-city-ipv6.mmdb` | `https://github.com/sapics/ip-location-db/releases/download/latest/dbip-city-ipv6.mmdb` | (same fields as City IPv4) |
 
 **No separate "WHOIS" database.** Earlier drafts of this spec described a combined WHOIS lookup exposing a `registrant_org` field — no such dataset exists in ip-location-db. The `geo-whois-asn-country` package name is misleading: despite the name, it exposes only `country_code` (merged from RIR geofeed, whois, and ASN data at the NRO's publishing layer — the merge happens upstream, not in the file this project consumes). Organization-name data available to this project comes solely from the ASN database's `autonomous_system_organization` field (a BGP/RIR-derived AS holder name, not an RDAP/WHOIS registrant record) — use that field directly and do not label it "WHOIS" anywhere in code, config, or docs.
 
@@ -36662,8 +36902,8 @@ POST /api/{api_version}/server/{admin_path}/config/backup/restore
 ├─────────────────────────────────────────────────────────────┤
 │  Setup Token: a1b2c3d4e5f67890abcdef1234567890              │
 │                                                             │
-│  Go to {proto}://{fqdn}/server/{admin_path} and enter this token   │
-│  to verify you are the server administrator.                │
+│  Go to {proto}://{fqdn}/server/{admin_path} and enter this  │
+│  token to verify you are the server administrator.          │
 │                                                             │
 │  Your existing password and settings will be preserved.     │
 │  This token will only be shown ONCE.                        │
@@ -49248,8 +49488,7 @@ var localeFS embed.FS
     "daemon_started": "Demonio iniciado con PID {pid}",
     "already_running": "Ya en ejecución (pid {pid})",
     "running_in_mode": "Ejecutando en modo: {app_mode}",
-    "http_address": "HTTP: {proto}://{fqdn}:{port}",
-    "listening_on": "Escuchando en {proto}://{address}:{port}",
+    "listening_on": "Escuchando en {proto}://{fqdn}:{port}",
     "server_started_on": "Servidor iniciado en {startup_datetime}",
     "server_started_ok": "Servidor iniciado exitosamente",
     "received_signal": "Recibida señal {signal}, iniciando apagado graceful...",
@@ -64596,6 +64835,9 @@ make docker
 - [ ] `<meta name="author">` present (if configured)
 - [ ] OpenGraph tags present (og:title, og:description, og:image, og:url)
 - [ ] Twitter Card tags present (twitter:card, twitter:title, twitter:description)
+- [ ] `<link rel="canonical">` present and correct
+- [ ] `<meta name="robots">` present, correct index/noindex per route
+- [ ] JSON-LD structured data present and valid
 - [ ] All meta content properly escaped (XSS prevention)
 
 ### Static Files
