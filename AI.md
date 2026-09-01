@@ -10011,13 +10011,26 @@ data:
   cve:
     # NVD (NIST National Vulnerability Database)
     source: "https://services.nvd.nist.gov/rest/json/cves/2.0"
-    # Only download CVEs relevant to project dependencies
-    filter_by_cpe: true
+    # Filtering the feed to "relevant" CVEs requires reliably deriving CPE
+    # (Common Platform Enumeration) strings from the project's dependency
+    # manifest. NVD's CPE dictionary doesn't map cleanly onto Go module
+    # paths, and no derivation is defined here — guessing wrong means a real
+    # CVE affecting a real dependency is silently never downloaded, with no
+    # error surfaced. Default to the full unfiltered feed; every CVE stays
+    # relevant until an actual, verified dependency-to-CPE mapping exists.
+    filter_by_cpe: false
 
   trivy:
     # Aqua Trivy vulnerability database (optional, for container scanning)
     enabled: false
-    source: "https://ghcr.io/aquasecurity/trivy-db"
+    # trivy-db is an OCI artifact, not a plain HTTP-downloadable file — a
+    # bare `https://` GET against this repository path returns registry API
+    # JSON/HTML, never db.tar.gz. Pulling it requires an OCI registry client
+    # (e.g. go-containerregistry, the same library Trivy itself uses) that
+    # resolves the tag, fetches the manifest, and extracts the
+    # application/vnd.aquasec.trivy.db.layer.v1.tar+gzip layer blob. The tag
+    # is the DB schema version (currently 2), not "latest".
+    source: "ghcr.io/aquasecurity/trivy-db:2"
 ```
 
 ### Security Directory Structure
@@ -29555,6 +29568,7 @@ func trackingScript(r *http.Request) template.HTML {
 | Description | From branding config or project-specific |
 | Features | Key features list (project-specific) |
 | Links | GitHub, documentation, etc. |
+| Third-party attribution | GeoIP (DB-IP / NRO CC BY 4.0 notices — see PART 20: GEOIP), plus any other license-required attribution |
 
 **⚠️ CRITICAL: Content MUST come from IDEA.md - NEVER use generic placeholders.**
 
@@ -29607,8 +29621,16 @@ func trackingScript(r *http.Request) template.HTML {
       <li><a href="https://jokeapi.readthedocs.io">Documentation</a></li>
     </ul>
   </section>
+
+  <section class="attribution">
+    <h2>Third-Party Attribution</h2>
+    <p><a href="https://db-ip.com/">IP Geolocation by DB-IP</a></p>
+    <p>Country and ASN data licensed CC BY 4.0 by the Number Resource Organization (NRO).</p>
+  </section>
 </article>
 ```
+
+**GeoIP attribution content above is canonical — see PART 20: GEOIP → "License & Attribution" for the source of these notices; do not let this copy drift if that section is ever updated.**
 
 **Note:** Tor address is NOT shown here. Tor access is available via:
 - **Footer**: "Tor Support" link → `/server/help#tor-access` (shown when Tor is enabled)
@@ -34198,7 +34220,7 @@ Every project MUST include these scheduled tasks:
 | `ssl_renewal` | Daily at 03:00 | Renew `{config_dir}/ssl/letsencrypt/{fqdn}/` certs 7 days before expiry | No |
 | `geoip_update` | Weekly (Sunday 03:00) | Download/update ip-location-db GeoIP databases | Yes |
 | `blocklist_update` | Daily at 04:00 | Download/update IP/domain blocklists | Yes |
-| `cve_update` | Daily at 05:00 | Download/update CVE/security databases | Yes |
+| `cve_update` | Daily at 05:00 | Download/update CVE (NVD) and Trivy vulnerability databases — trivy has no separate scheduled task despite its own directory/config; this task owns it too | Yes |
 | `update_check` | Daily at 06:00 | Check release channel for a newer version — notify-only unless `update.auto_install: true` (default false); honors `update.defer_days` | Yes |
 | `session_cleanup` | Every 15 minutes | Remove expired sessions | No |
 | `token_cleanup` | Every 15 minutes | Remove expired tokens | No |
@@ -34665,7 +34687,7 @@ All databases come from [sapics/ip-location-db](https://github.com/sapics/ip-loc
 | Country | CC BY 4.0 | NRO (RIR whois + geofeed + ASN data, merged) |
 | City | CC BY 4.0 | DB-IP |
 
-**Required, verbatim, on a page reachable from every screen that displays GeoIP-derived data (e.g. an "About" or footer link) AND in `LICENSE.md`'s third-party attribution section (see PART 2):**
+**Required, verbatim, on `/server/about` (see "Standard Pages" → /server/about) AND in `LICENSE.md`'s third-party attribution section (see PART 2):**
 
 ```html
 <a href="https://db-ip.com/">IP Geolocation by DB-IP</a>
@@ -34701,6 +34723,11 @@ server:
     deny_countries: []
     allow_countries: []
 
+    # Named, operator-authored country lists for reuse across allow/deny
+    # fields and environments. Ships empty — see "Country Blocking Presets"
+    # below for why no preset is bundled by default.
+    presets: {}
+
     # Which databases to download and use - all three are CC BY 4.0 and
     # require the attribution above whenever their data is used
     databases:
@@ -34718,6 +34745,7 @@ server:
 | `geoip.dir` | Directory the downloaded `.mmdb` files live in |
 | `geoip.deny_countries` | ISO 3166-1 alpha-2 codes to block; all others allowed |
 | `geoip.allow_countries` | ISO 3166-1 alpha-2 codes to allow exclusively; wins if both lists are set |
+| `geoip.presets` | Named operator-authored country lists (`name -> []code`), for reuse; empty by default — see Country Blocking Presets |
 | `geoip.databases.asn` | Enable ASN lookups |
 | `geoip.databases.country` | Enable country lookups |
 | `geoip.databases.city` | Enable city lookups |
@@ -34737,6 +34765,32 @@ server:
 - Country blocking requires the Country database; if it's missing or disabled, country blocking is skipped with a logged warning (fail-open per the risk-signal rule above)
 - Tor exit nodes are evaluated by exit-node country, not by any inferred user origin
 - Private/internal IPs (RFC 1918, RFC 4193, loopback) are never looked up or country-blocked
+
+## Country Blocking Presets (Operator-Defined, Never Auto-Applied)
+
+**The admin panel MUST let operators save the current `deny_countries` or
+`allow_countries` selection as a named, reusable preset** (`geoip.presets`,
+`name -> []code`) — so a list built once can be reapplied to other
+allow/deny fields or exported/imported across environments without
+hand-retyping ISO codes each time.
+
+**No preset ships pre-populated, and this project MUST NOT bundle a
+hardcoded regulatory country list (e.g. "OFAC sanctioned", "FATF high-risk")
+as a built-in default.** Every project in this family stays server-agnostic
+about jurisdiction and use case — sanctions/regulatory lists change over
+time, differ by regime, and a template-bundled list presented as current
+compliance guidance would go stale silently and could be relied on past the
+point it's accurate. That is the same "outcome asserted, mechanism/accuracy
+unverified" shape already fixed elsewhere in this spec (CVE CPE filtering,
+Trivy DB source) — bundling a specific sanctions list here would reintroduce
+it in a compliance-sensitive form.
+
+**Preset rules:**
+- A preset is only ever a name plus the country codes the operator entered — the project never fetches, infers, or auto-suggests preset contents from any external source
+- `deny_countries: []` / `allow_countries: []` remain the defaults on every fresh install regardless of what presets exist — allow all, deny none, unchanged by this feature
+- Selecting a preset in the admin UI only pre-fills `deny_countries`/`allow_countries` for the operator to review and save; it is never applied automatically or silently
+- If an operator needs a compliance-driven blocklist, they build and save it themselves as a preset, sourced from their own current legal/compliance review — never from a template default
+- Presets are a pure config-reuse convenience; the actually-enforced behavior is always driven by `deny_countries`/`allow_countries` at the time of the request, never by the preset name itself
 
 # PART 21: METRICS
 
