@@ -270,12 +270,35 @@ Ref: `.claude/rules/service-rules.md`, AI.md PART 25 (line 38326)
 ## PART 26 — Makefile
 Ref: `.claude/rules/makefile-rules.md`, AI.md PART 26 (line 38639)
 - [x] DONE — `Makefile` created at project root from verbatim template
+- [x] go-lint finding FIXED: `test` and `dev` targets invoked `GO_DOCKER`
+      without a preceding `@mkdir -p $(GO_CACHE) $(GO_BUILD)` as the
+      recipe's first line — other targets already created these dirs
+      first; a clean tmp/cache dir could make the Docker run fail on the
+      mount. Added the same `@mkdir -p $(GO_CACHE) $(GO_BUILD)` line as
+      the first recipe line in both targets.
+- [x] go-lint finding FIXED: `LDFLAGS` variable passed
+      `-X 'main.BuildDate=$(BUILD_DATE)'` to `go build` — violates AI.md
+      PART 28 / `.claude/rules/cicd-rules.md` (`BUILD_DATE` is Docker
+      OCI-label-only, never an ldflag; only `VERSION`/`COMMIT_ID`/
+      `BUILD_EPOCH` are legitimate ldflags). Removed that `-X` entry from
+      `LDFLAGS`. To keep `--version`/admin/web pages showing a build date
+      without the ldflag, `src/common/version.Set()` now derives
+      `BuildDate` from `BuildEpoch` (RFC3339, still a legitimate ldflag)
+      instead of taking it directly from an injected value.
 
 ## PART 27 — Docker
 Ref: `.claude/rules/docker-rules.md`, AI.md PART 27 (line 39460)
 - [x] `docker/Dockerfile` (multi-stage, casjaysdev/go:latest toolchain, minimal runtime)
 - [x] `docker/Dockerfile.dev`, `docker/Dockerfile.aio`, all four compose files
 - [x] `docker/rootfs/usr/local/bin/entrypoint.sh` (+ `rootfs-aio/` variant)
+- [x] go-lint finding FIXED: `docker/Dockerfile`, `docker/Dockerfile.dev`,
+      and `docker/Dockerfile.aio` all passed `BuildDate` to `go build`
+      via `-X 'main.BuildDate=${BUILD_DATE}'` — same PART 28 violation as
+      the Makefile. Removed the `BuildDate` `-X` entry from all three
+      files' ldflags strings; kept the `ARG BUILD_DATE` declarations in
+      both build and runtime stages unchanged, matching AI.md PART 27's
+      own canonical Dockerfile example (line 39995/40020), which declares
+      `ARG BUILD_DATE` but omits it from the `go build -ldflags` line.
 
 ## PART 28 — CI/CD Workflows
 Ref: `.claude/rules/cicd-rules.md`, AI.md PART 28 (line 41096)
@@ -283,6 +306,12 @@ Ref: `.claude/rules/cicd-rules.md`, AI.md PART 28 (line 41096)
       `release.yml`, `beta.yml`, `daily.yml`, `docker.yml`, `docker-aio.yml`
 - [x] Third-party Actions pinned to full commit SHA
 - [x] `Jenkinsfile` at root (explicit commands, never invokes Makefile)
+- [x] go-lint flagged `ci.yml`/`release.yml` go build ldflags as "missing
+      BuildDate" — investigated and this is correct as-is, not a bug: per
+      `.claude/rules/cicd-rules.md` and AI.md PART 28, `BUILD_DATE` is
+      derived from `BUILD_EPOCH` for Docker OCI labels only and must
+      NEVER be an ldflag; `VERSION`/`COMMIT_ID`/`BUILD_EPOCH` are the only
+      ldflags, which both workflows already set correctly. No change made.
 
 ## PART 29 — Testing & Development
 Ref: `.claude/rules/testing-rules.md`, AI.md PART 29 (line 45167)

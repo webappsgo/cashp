@@ -3461,6 +3461,12 @@ Spec version: {line count or hash}
 | Hardcoding secrets | Security vulnerability |
 | Using deprecated APIs | Maintainability issue |
 
+### Host System Safety Rule
+
+**Never build, run, or test project toolchains directly on the host.** All builds, test runs, and debugging steps that could affect host state (installing packages, changing network config, running `systemctl`, `mount`, `reboot`, `iptables`, or similar) MUST run inside a container, VM, chroot, or network namespace — see the Build & Execution hierarchy (QEMU/KVM > Incus > Docker > host) elsewhere in this file.
+
+If a requested action would run a forbidden command on the host, AI MUST refuse and explain the container/VM alternative rather than executing it directly.
+
 ## Code Style Rules
 
 ### Comment Placement
@@ -16162,15 +16168,16 @@ func extractContextFromPath(path string) (*Context, error) {
 
 | Scenario | HTTP Status | Error |
 |----------|-------------|-------|
-| Invalid path format | 400 | `{"error": "invalid API path"}` |
-| Missing org slug | 400 | `{"error": "org slug required in path"}` |
-| Resource not found | 404 | `{"error": "user or org not found: xyz"}` |
-| No access to resource | 403 | `{"error": "no access to requested resource"}` |
+| Invalid path format | 400 | `{"ok": false, "error": "BAD_REQUEST", "message": "invalid API path"}` |
+| Missing org slug | 400 | `{"ok": false, "error": "BAD_REQUEST", "message": "org slug required in path"}` |
+| Resource not found | 404 | `{"ok": false, "error": "NOT_FOUND", "message": "user or org not found: xyz"}` |
+| No access to resource | 403 | `{"ok": false, "error": "FORBIDDEN", "message": "no access to requested resource"}` |
 
 **API response includes context:**
 
 ```json
 {
+  "ok": true,
   "data": [...],
   "meta": {
     "context": {
@@ -17016,30 +17023,38 @@ server:
 | `/api/{api_version}/orgs/{slug}/security/audit/retention` | GET | Get retention settings |
 | `/api/{api_version}/orgs/{slug}/security/audit/retention` | PATCH | Update retention (org owner only) |
 
-### OIDC/LDAP/SAML Events
+### OIDC/LDAP Events
 
 | Event | Description | Logged Data |
 |-------|-------------|-------------|
 | `oidc.login` | User logged in via OIDC | User ID, provider name, IP |
 | `oidc.login_failed` | OIDC login failed | Provider name, IP, reason |
 | `oidc.user_created` | Auto-provisioned user via OIDC | User ID, provider name |
+| `oidc.logout` | User logged out of an OIDC-backed session | User ID, provider name, whether IdP RP-initiated logout was triggered |
 | `oidc.admin_granted` | Admin access via group mapping | User ID, provider name, group name |
 | `oidc.admin_revoked` | Admin access removed (group change) | User ID, provider name |
-| `oidc.logout` | RP-initiated logout (also ended IdP session) | User ID, provider name |
-| `oidc.sessions_revoked` | All provider sessions invalidated (provider deleted) | Provider name, session count, revoked by |
-| `ldap.login` | User logged in via LDAP | User ID, IP |
-| `ldap.login_failed` | LDAP login failed | IP, reason |
+| `oidc.token_refreshed` | Access token refreshed via refresh token | User ID, provider name |
+| `oidc.session_revoked` | Local sessions revoked because the provider was deleted/disabled | Provider name, session count, changed by |
+| `ldap.login` | User logged in via LDAP | User ID, provider name, IP |
+| `ldap.login_failed` | LDAP login failed | Provider name, IP, reason |
+| `ldap.user_created` | Auto-provisioned user via LDAP | User ID, provider name |
 | `ldap.admin_granted` | Admin access via group mapping | User ID, group DN |
 | `ldap.admin_revoked` | Admin access removed (group change) | User ID |
-| `ldap.sessions_revoked` | All provider sessions invalidated (provider deleted) | Provider name, session count, revoked by |
+| `ldap.session_revoked` | Local sessions revoked because the provider was deleted/disabled | Provider name, session count, changed by |
+| `ldap.bind_locked` | Per-identity bind-failure lockout triggered (password-spray defense) | Identity (masked), provider name, IP, failure count |
+
+### SAML Events
+
+| Event | Description | Logged Data |
+|-------|-------------|-------------|
 | `saml.login` | User logged in via SAML | User ID, provider name, IP |
-| `saml.login_failed` | SAML login failed (bad signature, expired assertion, replay, etc.) | Provider name, IP, reason |
+| `saml.login_failed` | SAML login failed (bad signature, expired assertion, audience mismatch, replayed assertion, etc.) | Provider name, IP, reason |
 | `saml.user_created` | Auto-provisioned user via SAML | User ID, provider name |
-| `saml.admin_granted` | Admin access via group mapping | User ID, provider name, group value |
-| `saml.admin_revoked` | Admin access removed (group change) | User ID, provider name |
-| `saml.slo_initiated` | Single Logout started (SP- or IdP-initiated) | User ID, provider name, initiator |
-| `saml.slo_completed` | Single Logout completed | User ID, provider name |
-| `saml.sessions_revoked` | All provider sessions invalidated (provider deleted) | Provider name, session count, revoked by |
+| `saml.admin_granted` | Admin access via group/attribute mapping | User ID, provider name, group/attribute value |
+| `saml.admin_revoked` | Admin access removed (group/attribute change) | User ID, provider name |
+| `saml.slo_initiated` | Single Logout started (SP-initiated LogoutRequest sent, or IdP-initiated LogoutRequest received) | User ID, provider name, initiator (`sp` or `idp`) |
+| `saml.slo_completed` | Single Logout completed (local session ended and LogoutResponse exchanged) | User ID, provider name |
+| `saml.session_revoked` | Local sessions revoked because the provider was deleted/disabled | Provider name, session count, changed by |
 
 ### Configuration Events
 
@@ -17060,7 +17075,7 @@ server:
 | `config.saml_provider_added` | SAML provider configured | Provider name, added by |
 | `config.saml_provider_updated` | SAML provider changed | Provider name, changed by |
 | `config.saml_provider_removed` | SAML provider removed | Provider name, removed by |
-| `config.saml_sp_cert_regenerated` | SP signing/encryption keypair regenerated or replaced | Provider name, subject, changed by |
+| `config.saml_sp_cert_regenerated` | SP signing/encryption keypair regenerated or replaced (auto-gen expiry or admin action) | Provider name, new cert fingerprint, expiry, changed by |
 | `config.admin_groups_updated` | Admin group mapping changed | Old groups, new groups, changed by |
 
 ### Security Events
@@ -22392,13 +22407,16 @@ Need additional compatible endpoints?"
 
 ```json
 {
-  "id": "item_123",
-  "name": "Example",
-  "created_at": "2024-01-15T10:30:00Z"
+  "ok": true,
+  "data": {
+    "id": "item_123",
+    "name": "Example",
+    "created_at": "2024-01-15T10:30:00Z"
+  }
 }
 ```
 
-*Returns the item directly without wrapper.*
+*The item is carried in `data` — every success response uses the `{ "ok": true, "data": ... }` envelope so it is programmatically distinguishable from errors.*
 
 #### Action Response (Create, Update, Delete)
 
@@ -22455,6 +22473,7 @@ Need additional compatible endpoints?"
 
 ```json
 {
+  "ok": true,
   "data": [],
   "pagination": {
     "page": 1,
@@ -29365,7 +29384,7 @@ document.querySelectorAll('[data-action="cookie-preferences"]').forEach((btn) =>
 
 **CCPA "Do Not Sell" (only when `server.privacy.data.sold = true`):**
 
-The opt-out is a POST form on the privacy page; the server sets the `ccpa_opt_out=true` cookie (and downgrades `cookie_consent` to essential-only) and reads it on every request - see `privacyData()` in PART 12. No localStorage, no JS required; external JS may enhance the form for no-reload feedback.
+The opt-out is a POST form on the privacy page to `/server/ccpa`; the server sets the `ccpa_opt_out=true` cookie (1 year, and downgrades `cookie_consent` to essential-only), honors the GPC (Global Privacy Control) signal server-side, and reads it on every request - see `privacyData()` in PART 12. No localStorage, no JS required; external JS may enhance the form for no-reload feedback.
 
 **Banner CSS (`static/css/components.css` - never inline):**
 
@@ -29872,67 +29891,70 @@ func trackingScript(r *http.Request) template.HTML {
 
 ```json
 {
-  "summary": {
-    "data_stored_on_server": true,
-    "data_sold": false,
-    "user_control": true
-  },
-  "cookies": {
-    "essential": {
-      "enabled": true,
-      "description": "Required for the site to function. Includes session management, security tokens (CSRF), and authentication."
-    },
-    "preferences": {
-      "enabled": true,
-      "description": "Remember your settings such as theme (dark/light), language, and UI preferences."
-    },
-    "analytics": {
-      "enabled": true,
-      "description": "Help us understand how visitors use our site. Analytics data is anonymized and never sold."
-    }
-  },
+  "ok": true,
   "data": {
-    "sold": false,
-    "stored_on_server": true,
-    "sharing": [
-      {
-        "condition": "analytics",
-        "when": "Tracking configured AND user consents",
-        "data": "Anonymized: page views, browser type, country"
+    "summary": {
+      "data_stored_on_server": true,
+      "data_sold": false,
+      "user_control": true
+    },
+    "cookies": {
+      "essential": {
+        "enabled": true,
+        "description": "Required for the site to function. Includes session management, security tokens (CSRF), and authentication."
       },
-      {
-        "condition": "email",
-        "when": "SMTP configured for sending emails",
-        "data": "Email address, message content"
+      "preferences": {
+        "enabled": true,
+        "description": "Remember your settings such as theme (dark/light), language, and UI preferences."
       },
-      {
-        "condition": "user_initiated",
-        "when": "User explicitly shares content",
-        "data": "Whatever user chooses to share"
+      "analytics": {
+        "enabled": true,
+        "description": "Help us understand how visitors use our site. Analytics data is anonymized and never sold."
       }
-    ]
-  },
-  "tracking": {
-    "enabled": false,
-    "type": "",
-    "type_name": ""
-  },
-  "retention": {
-    "period": "Account data is retained while your account is active. Upon account deletion, all personal data is permanently deleted within 30 days.",
-    "export_available": true,
-    "deletion_available": true
-  },
-  "third_party": {
-    "services": []
-  },
-  "ccpa": {
-    "applicable": false,
-    "opt_out_url": "/server/privacy#ccpa-opt-out",
-    "user_opted_out": false
-  },
-  "content": {
-    "consent_message": "...",
-    "data_usage": "..."
+    },
+    "data": {
+      "sold": false,
+      "stored_on_server": true,
+      "sharing": [
+        {
+          "condition": "analytics",
+          "when": "Tracking configured AND user consents",
+          "data": "Anonymized: page views, browser type, country"
+        },
+        {
+          "condition": "email",
+          "when": "SMTP configured for sending emails",
+          "data": "Email address, message content"
+        },
+        {
+          "condition": "user_initiated",
+          "when": "User explicitly shares content",
+          "data": "Whatever user chooses to share"
+        }
+      ]
+    },
+    "tracking": {
+      "enabled": false,
+      "type": "",
+      "type_name": ""
+    },
+    "retention": {
+      "period": "Account data is retained while your account is active. Upon account deletion, all personal data is permanently deleted within 30 days.",
+      "export_available": true,
+      "deletion_available": true
+    },
+    "third_party": {
+      "services": []
+    },
+    "ccpa": {
+      "applicable": false,
+      "opt_out_url": "/server/privacy#ccpa-opt-out",
+      "user_opted_out": false
+    },
+    "content": {
+      "consent_message": "...",
+      "data_usage": "..."
+    }
   }
 }
 ```
@@ -30101,8 +30123,8 @@ curl -H "Accept: application/xml" https://jokes.example.com/api/v1/joke</code></
 
   <h4>Onion Address</h4>
   <div class="code-block">
-    <code class="code-content">{{ .TorAddress }}</code>
-    <button type="button" class="copy-btn" data-copy="{{ .TorAddress }}" aria-label="Copy to clipboard">
+    <code class="code-content">{{ .OnionAddress }}</code>
+    <button type="button" class="copy-btn" data-copy="{{ .OnionAddress }}" aria-label="Copy to clipboard">
       <span class="copy-icon">📋</span>
       <span class="copy-text" aria-live="polite">Copy</span>
     </button>
@@ -34801,8 +34823,8 @@ it in a compliance-sensitive form.
 
 | Feature | Description |
 |---------|-------------|
-| Format | Prometheus text exposition format |
-| Endpoint | `/server/metrics` (plus service sub-endpoints and aliases below) |
+| Format | Prometheus text exposition format (plus Grafana/Loki JSON services) |
+| Endpoint | `/server/metrics` + `/server/metrics/{prometheus\|grafana\|loki}` (root alias `/metrics[/{service}]` gated on `server.metrics.root.enabled`) |
 | Authentication | Mandatory per-service bearer tokens (`prometheus`, `grafana`, `loki`) |
 | Library | `github.com/prometheus/client_golang` |
 
@@ -34835,7 +34857,7 @@ it in a compliance-sensitive form.
 
 | Deployment | Access Method | Recommendation |
 |------------|---------------|----------------|
-| **Single server** | Firewall rules | Block external access to `/server/metrics` and `/metrics` port/path |
+| **Single server** | Firewall rules | Block external access to the `/server/metrics` and `/metrics` port/paths |
 | **Behind reverse proxy** | Proxy config | Do NOT proxy `/server/metrics` or `/metrics` to public |
 | **Kubernetes** | NetworkPolicy | Restrict to monitoring namespace |
 | **Cloud** | Security groups | Allow only from Prometheus IP |
@@ -36570,6 +36592,7 @@ server:
 6. Verify daily incremental (all checks must pass)
 7. If ALL verifications pass:
    - Apply retention policy (delete old backups per retention settings)
+   - If total backup size exceeds max_total_size: delete oldest first until under the cap
 8. If ANY verification fails:
    - Delete failed backup file
    - Keep existing valid backups
@@ -36577,7 +36600,7 @@ server:
    - Retry on next scheduled run
 ```
 
-**Verification :**
+**Verification:**
 
 Every backup is verified **immediately after creation** - backups must be 100% working:
 
@@ -36645,36 +36668,7 @@ Every backup is verified **immediately after creation** - backups must be 100% w
 | `{project_name}-daily.tar.gz[.enc]` | Daily incremental (changes since full) | Always 1 (replaced each run) |
 | `{project_name}-hourly.tar.gz[.enc]` | Hourly incremental (if enabled) | Always 1 (replaced each run) |
 
-### Retention Configuration
-
-```yaml
-server:
-  backup:
-    retention:
-      # Full backups to keep (default: 1 = yesterday only)
-      max_backups: 1
-      # Optional: keep weekly backup (e.g., every Sunday's backup)
-      keep_weekly: 0
-      # Optional: keep monthly backup (e.g., 1st of month)
-      keep_monthly: 0
-      # Optional: keep yearly backup (e.g., Jan 1st)
-      keep_yearly: 0
-      # Hard size cap: percent of backup volume or absolute size; 0 = disabled
-      max_total_size: "10%"
-```
-
-**Retention Settings:**
-
-| Setting | Default | Valid | Description |
-|---------|---------|-------|-------------|
-| `max_backups` | 1 | ≥1 | Daily full backups to keep |
-| `keep_weekly` | 0 | ≥0 | Weekly backups (Sunday) - 0 = disabled |
-| `keep_monthly` | 0 | ≥0 | Monthly backups (1st) - 0 = disabled |
-| `keep_yearly` | 0 | ≥0 | Yearly backups (Jan 1st) - 0 = disabled |
-| `max_total_size` | `"10%"` | % or bytes | Hard size cap (e.g. `"10%"`, `"50G"`); `0` = disabled; overrides count limits |
-
-**Falsey Values (all mean disabled):**
-- `0`, `false`, `no`, `none`, `disable`, `disabled`, `off`
+### Retention Validation & Examples
 
 **Validation (warn, don't error - server must start):**
 
@@ -36715,10 +36709,6 @@ WARN: keep_monthly: 24 exceeds recommended 12 (2 years of monthly backups)
 │              [Cancel]  [Save Anyway]                    │
 └─────────────────────────────────────────────────────────┘
 ```
-
-**Default: 2 files total (yesterday + today's incremental)**
-
-**With hourly enabled: 3 files total** (yesterday + daily + hourly incrementals)
 
 **Retention Priority Order:**
 ```
@@ -36873,7 +36863,7 @@ on a Sunday counts as daily + weekly + monthly + yearly — uses highest priorit
 | **CLI** | Interactive prompt | Prompts: `Enter backup password:` |
 | **CLI** | `--password` flag | Uses provided password |
 | **WebUI** | Shows dialog | Password input dialog before restore |
-| **API** | Returns 400 error | `{"error": "password_required", "message": "Encrypted backup requires password"}` |
+| **API** | Returns 400 error | `{"ok": false, "error": "VALIDATION_FAILED", "message": "Encrypted backup requires password"}` |
 
 **CLI Restore:**
 
@@ -44481,6 +44471,8 @@ Create a second pipeline schedule so `docker:build-devel` also runs daily, indep
 | Target Branch | `main` or `master` |
 | Activated | Yes |
 
+This schedule, combined with the `docker:build-devel` job's push rule, gives `:devel` the same "every push + daily" cadence as GitHub/Gitea's `docker.yml` `build-devel` job.
+
 ## Variable Mapping
 
 | GitHub Actions | GitLab CI | Description |
@@ -44536,9 +44528,8 @@ pipeline {
 
     triggers {
         // Daily build at 3am UTC (matches GitHub Actions daily.yml)
-        cron('0 3 * * *')
-        // Devel image build at 4am UTC (matches GitHub Actions docker.yml build-devel job)
-        cron('0 4 * * *')
+        // Devel image rebuild at 4am UTC (matches docker.yml build-devel job schedule)
+        cron('0 3 * * *\n0 4 * * *')
     }
 
     environment {
@@ -47970,16 +47961,16 @@ pymdown-extensions>=10.0
 :root {
   /* Light theme color palette */
   --light-bg: #ffffff;
-  --light-bg-alt: #f5f5f5;
-  --light-bg-elevated: #e0e0e0;
-  --light-text: #1a1a1a;
-  --light-text-muted: #666666;
-  --light-accent-blue: #0066cc;
-  --light-accent-green: #008000;
-  --light-accent-orange: #ff8c00;
-  --light-accent-red: #cc0000;
-  --light-accent-purple: #6600cc;
-  --light-accent-teal: #008080;
+  --light-bg-alt: #f6f8fa;
+  --light-bg-elevated: #d1d9e0;
+  --light-text: #1f2328;
+  --light-text-muted: #59636e;
+  --light-accent-blue: #0969da;
+  --light-accent-green: #1a7f37;
+  --light-accent-orange: #9a6700;
+  --light-accent-red: #d1242f;
+  --light-accent-purple: #8250df;
+  --light-accent-teal: #0969da;
 }
 
 /* Apply light theme customization */
@@ -47997,7 +47988,7 @@ pymdown-extensions>=10.0
   --md-primary-bg-color--light: var(--light-bg-alt);
 
   --md-accent-fg-color: var(--light-accent-blue);
-  --md-accent-fg-color--transparent: rgba(0, 102, 204, 0.1);
+  --md-accent-fg-color--transparent: rgba(9, 105, 218, 0.1);
   --md-accent-bg-color: var(--light-accent-blue);
 
   --md-code-fg-color: var(--light-text);
@@ -48046,7 +48037,7 @@ pymdown-extensions>=10.0
 
 ### docs/index.md
 
-```markdown
+````markdown
 # {PROJECT_NAME}
 
 {Brief project description}
@@ -48087,11 +48078,11 @@ docker run --name "{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -
 ## License
 
 MIT - See [LICENSE.md]({PLATFORM_REPO_URL}/blob/main/LICENSE.md)
-```
+````
 
 ### docs/installation.md
 
-```markdown
+````markdown
 # Installation
 
 ## Docker (Recommended)
@@ -48126,11 +48117,11 @@ sudo systemctl enable {project_name}
 ## Configuration
 
 See [Configuration](configuration.md) for all options.
-```
+````
 
 ### docs/configuration.md
 
-```markdown
+````markdown
 # Configuration
 
 ## Config File
@@ -48168,11 +48159,11 @@ Document:
 - external auth provider settings (OIDC/LDAP/SAML) if enabled
 - well-known namespace settings and optional entries if enabled
 - health/public endpoint toggles that operators can change
-```
+````
 
 ### docs/api.md
 
-```markdown
+````markdown
 # API Reference
 
 ## REST API
@@ -48204,7 +48195,7 @@ GraphQL playground: [/server/docs/graphql](/server/docs/graphql)
 ```graphql
 # ... (GraphQL schema)
 ```
-```
+````
 
 ### docs/admin.md
 
@@ -48247,7 +48238,7 @@ Programmatic access via `/api/{api_version}/server/{admin_path}/` with bearer to
 - External identity for users/admins is documented here:
   - OIDC providers
   - LDAP providers
-  - SAML providers (including the SP metadata endpoint and SLO)
+  - SAML 2.0 providers (SP metadata endpoint, ACS, SLO, SP cert management)
   - first-login username confirmation flow
 
 ## Public Security Endpoints
@@ -48282,6 +48273,7 @@ Programmatic access via `/api/{api_version}/server/{admin_path}/` with bearer to
 
 - OIDC providers, scopes, and claim mapping
 - LDAP providers, attribute mapping, and group mapping
+- SAML 2.0 providers, attribute mapping, group/role assertion mapping, and SP metadata
 - Which flows apply to users, admins, or both
 
 ## Discovery & Protocol Endpoints
@@ -48304,7 +48296,7 @@ Programmatic access via `/api/{api_version}/server/{admin_path}/` with bearer to
 
 ### docs/development.md
 
-```markdown
+````markdown
 # Development Guide
 
 ## Prerequisites
@@ -48346,7 +48338,7 @@ make test
 - Follow Go standard formatting
 - Add tests for new features
 - Update documentation
-```
+````
 
 ---
 
@@ -51276,9 +51268,22 @@ The hidden service is declared in the generated torrc; Tor creates and persists 
 | Version 3 | `HiddenServiceVersion 3` | v3 onion (56 chars, ed25519) |
 | Target port | `HiddenServicePort {virtual_port} 127.0.0.1:{tor_backend_port}` | Forwards to dedicated PROXY-protocol listener |
 | Virtual port | First value of `HiddenServicePort` (e.g., `80`) | `.onion` port users connect to |
-| Circuit ID export | `HiddenServiceExportCircuitID haproxy` | Per-circuit ID via PROXY protocol (opaque token, not an IP) |
+| Circuit ID export | `HiddenServiceExportCircuitID haproxy` | Per-rendezvous-circuit ID via PROXY protocol (opaque token, not an IP) |
 | Guard defense | `VanguardsLiteEnabled 1` | Guard-discovery-attack defense (built into Tor; keep enabled) |
-| Key persistence | `{data_dir}/tor/site/` (`hs_ed25519_secret_key`, `hostname`) | Tor generates and persists the key + address |
+| Key persistence | `{data_dir}/tor/site/hs_ed25519_secret_key` | Tor creates/loads key for persistent address |
+| Hostname | `{data_dir}/tor/site/hostname` | Tor writes the .onion address; server reads it |
+
+### Circuit-ID Export & PROXY-Protocol Backend Listener
+
+`HiddenServiceExportCircuitID haproxy` makes Tor prepend a HAProxy **PROXY-protocol v1 header** to *every* connection it forwards to the hidden-service target, encoding the 64-bit rendezvous-circuit ID in the source address (`fc00::/8` IPv6 range). This ID is the opaque per-session token the committed Tor logging/audit/rate-limit rules key on as `tor:{circuit_id}` — never an IP, never deanonymizing.
+
+Because the PROXY header is sent on every connection, the `HiddenServicePort` target MUST be a **dedicated loopback listener** the app binds specifically for Tor (`127.0.0.1:{tor_backend_port}`), **separate from the public clearnet listener** — clearnet connections carry no PROXY header and would fail to parse against a listener that requires one. The app:
+
+- binds the dedicated Tor backend listener and parses the PROXY-protocol header on its accept path (Go: the `go-proxyproto` package),
+- reads the circuit ID from that header and uses it as the `tor:{circuit_id}` key for logs, audit trails, admin UI, and rate limiting,
+- points `HiddenServicePort {virtual_port} 127.0.0.1:{tor_backend_port}` at this listener (not the clearnet HTTP port).
+
+`VanguardsLiteEnabled 1` keeps Tor's built-in layer-2 vanguards on (guard-discovery-attack defense for the service); it is never disabled. Full layer-3 vanguards/bandguards/rendguard, if ever wanted, are control-protocol operations the app can drive itself — no external tool.
 
 **Required bine imports:**
 ```go
@@ -58622,7 +58627,7 @@ User receives: "Password reset requested by administrator.
 - Same response time for both cases (prevent timing attacks)
 - Links to recovery flow instead of revealing information
 
-### 2FA, Passkeys & OIDC
+### 2FA, Passkeys & External Identity (OIDC / LDAP / SAML)
 
 **Supported Authentication Methods:**
 | Method | Description |
@@ -58630,11 +58635,17 @@ User receives: "Password reset requested by administrator.
 | Password | Standard username/email + password |
 | TOTP (2FA) | Time-based one-time passwords (Google Authenticator, Authy, etc.) |
 | Passkeys | WebAuthn/FIDO2 passwordless authentication |
-| OIDC | External identity providers |
+| OIDC | External identity providers (OpenID Connect) |
+| LDAP | Directory bind authentication (Active Directory, OpenLDAP, FreeIPA) |
+| SAML 2.0 | SAML Service Provider (Web Browser SSO + SLO) |
 
 **OIDC Providers (Examples):**
 - Self-hosted: Authentik, Authelia, Keycloak, Dex, Zitadel
 - Cloud: Auth0, Okta, Azure AD, Google, GitHub, GitLab
+
+**SAML 2.0 IdPs (Examples):**
+- Self-hosted: Keycloak (SAML client), Shibboleth, ADFS, Authentik
+- Cloud: Okta, Azure AD / Entra ID, OneLogin, Auth0
 
 **Recovery Keys (CRITICAL):**
 | Rule | Description |
@@ -59079,6 +59090,12 @@ server:
           sp_entity_id: "https://app.example.com/server/auth/saml/okta/metadata"
           # Assertion Consumer Service URL (where the IdP POSTs the assertion)
           acs_url: "https://app.example.com/server/auth/saml/okta/acs"
+          # Require the IdP to sign assertions/responses (STRONGLY recommended)
+          want_assertions_signed: true
+          # Sign our AuthnRequest / LogoutRequest with the SP key
+          sign_requests: true
+          # Allowed clock skew when validating assertion NotBefore/NotOnOrAfter
+          clock_skew: 2m
           # Auto-create regular user on first login (ONLY if multi-user enabled)
           auto_register: true
           # Map SAML assertion attributes to user fields
@@ -59138,7 +59155,7 @@ server:
 
 ### External Identity Provider Requirements
 
-- External identity support for Server Admins MUST include OIDC, LDAP, and SAML
+- External identity support for Server Admins MUST include OIDC, LDAP, and SAML 2.0
 - OIDC, LDAP, and SAML MUST each support multiple named providers
 - All OIDC, LDAP, and SAML providers MUST be manageable from the Admin WebUI under `/server/{admin_path}/config/security/auth/*`
 - If `server.users.enabled: true`, the same provider definitions MUST also apply the regular-user auth rules (`auto_register`, username resolution, and `role_mapping`)
@@ -59173,7 +59190,7 @@ server:
 - When a refresh token is issued, long-lived sessions SHOULD refresh on `token_refresh_interval` (default `15m`); a failed refresh ends the local session
 - **Local logout vs IdP logout:** with `rp_initiated_logout: true` (default) and a provider that advertises `end_session_endpoint`, local logout MUST also redirect to the IdP end-session endpoint so the IdP session is terminated; if the endpoint is absent or `rp_initiated_logout: false`, only the local session is ended and this MUST be documented to the operator
 - Back-channel logout (OIDC Back-Channel Logout 1.0) is OPTIONAL and OFF by default; when enabled the SP MUST expose a logout receiver and terminate the matching local session on a valid logout token
-- When an OIDC provider is deleted, `revoke_sessions_on_delete: true` (default) MUST invalidate all active sessions whose `source` is `oidc:{provider}`
+- When an OIDC provider is deleted, `revoke_sessions_on_delete: true` (default) MUST invalidate all active sessions whose `source` is `oidc:{provider}`; external-only accounts can no longer authenticate, while local-fallback accounts fall back to password (the same rule applies to SAML provider deletion)
 
 ### SAML Provider Expectations & Common Providers
 
@@ -59198,17 +59215,19 @@ server:
 - The project MUST NOT assume every IdP emits attributes under the same names; `attribute_mapping` is REQUIRED whenever the IdP does not cleanly expose username/email/name/groups
 - The SP MUST publish metadata at `/server/auth/saml/{provider}/metadata` (public/enabled by default) so IdP admins can configure the relying party without manual field entry
 - Assertions MUST be signature-validated against the IdP signing certificate from metadata; unsigned or mis-signed assertions MUST be rejected
-- The SP MUST enforce assertion conditions: `NotBefore`/`NotOnOrAfter` (with a small clock skew), `AudienceRestriction` matching `sp_entity_id`, and `Recipient` matching `acs_url`
+- The SP MUST enforce assertion conditions: `NotBefore`/`NotOnOrAfter` (with a small clock skew, `clock_skew`), `Destination` matching the ACS URL, `AudienceRestriction` matching `sp_entity_id`, and `Recipient` matching `acs_url`
 - The SP MUST reject replayed assertions by tracking the assertion `ID`/`InResponseTo` for the assertion validity window
 - **IdP-initiated login:** the IdP POSTs an unsolicited `Response` to the ACS with no stored `InResponseTo`. This is accepted ONLY when the provider is explicitly configured to allow it (`allow_idp_initiated: true`; unsolicited assertions weaken CSRF guarantees), and is rejected by default. Signature, audience, and replay checks are unchanged.
 - If the IdP does not emit a groups attribute, group-based admin mapping is unavailable for that provider and this MUST be documented, exactly as for OIDC/LDAP
-- With a `persistent` NameID format, the NameID becomes the stable `external_id`; with a transient format the SP MUST fall back to a documented stable attribute for `external_id`
+- With a `persistent` NameID format, the NameID becomes the stable `external_id`; with a transient format the SP MUST fall back to a documented stable attribute for `external_id`; the `external_id` MUST NOT be a mutable email or display name
+- If the IdP does not emit email, the same optional/collected/unsupported documentation rule as OIDC applies
 - SP signing/encryption keys MUST be auto-generated (self-signed) on provider creation when `auto_generate_cert: true` (zero-config default), or supplied by the admin via `sp_cert_path`/`sp_key_path`; the private key MUST be stored encrypted and included in backups. See "SAML SP Certificate Management" below for rotation.
 
 ### SAML SP Certificate Management
 
 - **Default (zero-config):** on first enable of a provider, the server generates a self-signed SP signing/encryption keypair (`auto_generate_cert: true`), persists the private key encrypted at rest (same store as 2FA secrets), and publishes the public cert in SP metadata. The server rotates before `cert_expiry_days` expiry and re-publishes metadata.
 - **Admin-supplied:** `auto_generate_cert: false` uses operator PEM `sp_cert_path`/`sp_key_path` (e.g. a cert already trusted by the IdP). Rotation is the operator's responsibility.
+- Because most IdPs pin the SP cert from uploaded metadata, rotating the SP cert requires re-handing metadata (or the new cert) to the IdP; the admin UI surfaces the current cert fingerprint + expiry.
 
 ### Starter Group Mapping Presets
 
@@ -59255,6 +59274,7 @@ server:
 - LDAP referrals are NOT chased by default (`follow_referrals: false`); enabling referral chasing MUST reuse the same TLS and bind policy for the referred server
 - Search and bind operations MUST honor `connect_timeout`/`request_timeout`; a timeout is treated as provider-unavailable and falls back to cached local credentials (admins) or fails the login (users)
 - Repeated service-account bind failures MUST back off for `bind_failure_backoff` to avoid tripping directory-side lockout; service-account credential rotation is supported by editing the provider and MUST NOT require a restart
+- Failed end-user binds MUST be throttled per identity (bounded failures per window, with backoff) to blunt password spraying; this throttling is independent of local-account lockout and of the service-account `bind_failure_backoff`
 - The `test` route MUST perform a live bind + sample user/group lookup and report TLS mode, bind result, and resolved group sample without persisting a session
 
 ### Common SAML Attribute Presets
@@ -59343,8 +59363,8 @@ server:
 | `username` | Final local username (claim-derived or user-chosen on first login) |
 | `password` | Local Argon2id hash. Use a real fallback password hash when local fallback login is supported; otherwise store an unusable random secret so password login stays disabled for that external-only account |
 | `source` | `local`, `oidc:{provider}`, `ldap:{provider}`, `saml:{provider}` |
-| `external_id` | Stable provider subject / LDAP unique ID / SAML persistent NameID |
-| `groups` | Cached external groups/roles from last successful login |
+| `external_id` | Stable provider subject / LDAP unique ID / SAML persistent NameID (or mapped stable attribute when NameID is transient) |
+| `groups` | Cached external groups/roles from last successful login (OIDC/LDAP groups or SAML group-attribute values) |
 | `last_sync` | Last successful OIDC/LDAP/SAML sync timestamp |
 
 **Matching rule:** for OIDC/LDAP/SAML-backed regular users, the stable identity key is `external_id` + provider source, NOT mutable username/email.
@@ -59362,8 +59382,8 @@ server:
 **How Group Mapping Works:**
 
 1. User authenticates via OIDC/LDAP/SAML
-2. Server retrieves user's group memberships from identity provider
-3. If user belongs to ANY group in `admin_groups` → grant Server Admin access
+2. Server retrieves user's group memberships (OIDC/LDAP) or group-attribute values (SAML) from the identity provider
+3. If user belongs to ANY group/value in `admin_groups` → grant Server Admin access
 4. Admin access persists for session duration
 5. On next login, group membership is re-evaluated
 6. If user is removed from all `admin_groups` → admin access revoked
@@ -59385,20 +59405,21 @@ server:
 | `/server/{admin_path}/config/security/auth/ldap/new` | Add LDAP provider |
 | `/server/{admin_path}/config/security/auth/ldap/{provider}` | Edit, test, enable/disable, or remove one LDAP provider |
 | `/server/{admin_path}/config/security/auth/saml` | List/manage SAML providers |
-| `/server/{admin_path}/config/security/auth/saml/new` | Add SAML provider |
-| `/server/{admin_path}/config/security/auth/saml/{provider}` | Edit, test, enable/disable, regenerate SP cert, or remove one SAML provider |
+| `/server/{admin_path}/config/security/auth/saml/new` | Add SAML provider (auto-generates a self-signed SP keypair unless certs supplied) |
+| `/server/{admin_path}/config/security/auth/saml/{provider}` | Edit, test, enable/disable, download SP metadata, regenerate or upload SP certs, or remove one SAML provider |
 
 | Element | Type | Description |
 |---------|------|-------------|
 | OIDC Providers | Section | List of configured OIDC providers with add/edit/remove/test actions |
 | LDAP Providers | Section | List of configured LDAP providers with add/edit/remove/test actions |
-| SAML Providers | Section | List of configured SAML providers with add/edit/remove/test actions, plus SP metadata download and SP certificate management |
+| SAML Providers | Section | List of configured SAML providers with add/edit/remove/test actions, SP metadata download, and SP signing/encryption cert management (auto-generated self-signed or admin-supplied) |
 | Applies To | Readonly summary | Server Admin auth always; regular-user auth too when multi-user mode is enabled |
 | Admin Groups | Tag input | Per-provider groups that grant Server Admin access |
 | Role Mapping | Table | Per-provider mapping from external groups to application roles |
-| Test Connection | Button | Test one selected OIDC/LDAP/SAML provider |
+| Test Connection | Button | Test one selected OIDC/LDAP/SAML provider (SAML: fetch/parse IdP metadata, validate SP cert, dry-run AuthnRequest) |
 | Test Group Mapping | Button | Test one selected provider's groups and resulting role |
 | SP Certificate | Panel | View/download SP cert, regenerate self-signed keypair, or upload admin-supplied cert (SAML only) |
+| Download SP Metadata | Button | SAML only: download this provider's SP metadata XML for handoff to the IdP |
 
 **Sane Defaults:**
 - `admin_groups`: Empty (no external groups granted admin by default)
@@ -59414,6 +59435,35 @@ server:
 | **Simplicity** | Admin-only mode doesn't need user management |
 | **Isolation** | Server admin credentials separate from user data |
 | **Recovery** | Can access admin even if database is corrupted |
+
+### SAML 2.0 Browser SSO Flow
+
+**SP-initiated login (`/server/auth/saml/{provider}`):**
+
+1. Server builds a SAML `AuthnRequest`, signs it with the SP key when `sign_requests: true`, and stores the request ID + a CSRF `RelayState` bound to the browser session.
+2. Browser is sent to the IdP SSO endpoint (Redirect binding for the request; the IdP replies via POST binding to the ACS).
+3. IdP authenticates the user and POSTs a signed (optionally encrypted) `Response` to `/server/auth/saml/{provider}/acs`.
+4. Server validates, in order: XML-DSig signature against the IdP metadata signing cert; `Destination` equals the ACS URL; `Audience` equals the SP entity ID; `InResponseTo` matches the stored request ID; the `NotBefore`/`NotOnOrAfter` window within `clock_skew`; and that the assertion ID has not been seen before (replay cache).
+5. On success, attributes are mapped per `attribute_mapping`; `admin_groups`/`role_mapping` are applied; and the first-login username confirmation flow runs for new accounts (identical to OIDC/LDAP).
+
+**IdP-initiated login:** the IdP POSTs an unsolicited `Response` to the ACS with no stored `InResponseTo`. This is accepted ONLY when the provider is explicitly configured to allow it (`allow_idp_initiated: true`; unsolicited assertions weaken CSRF guarantees); otherwise it is rejected. Signature, audience, and replay checks are unchanged.
+
+**Assertion validation is non-negotiable:** an unsigned assertion, a signature that does not chain to the IdP metadata cert, a wrong `Audience`/`Destination`, or a replayed assertion MUST all be rejected with an audit event (`saml.login_failed`).
+
+### SAML Single Logout (SLO)
+
+- **SP-initiated:** with `slo_enabled: true`, local logout builds a signed `LogoutRequest`, ends the local session, and redirects the browser to the IdP SLO endpoint (`idp_slo_url`, Redirect binding). The IdP returns a `LogoutResponse` to `/server/auth/saml/{provider}/slo/callback`.
+- **IdP-initiated:** the IdP POSTs a signed `LogoutRequest` to `/server/auth/saml/{provider}/slo`; the server validates the signature, terminates the matching local session(s) by `NameID`/session index, and returns a signed `LogoutResponse`.
+- SLO requires signed logout messages; unsigned `LogoutRequest`/`LogoutResponse` are rejected.
+
+### API-mode SAML Flow
+
+SAML is a browser protocol; API clients cannot complete it headlessly. The API flow bridges to the system browser:
+
+1. `GET /api/{api_version}/server/auth/saml/{provider}` returns `{ redirect_url, poll_token }`. `redirect_url` is the AuthnRequest URL; `poll_token` is a short-lived opaque handle bound to that request's `RelayState`.
+2. The client opens `redirect_url` in the system browser. The user authenticates at the IdP; the IdP POSTs the assertion to the normal browser ACS endpoint, which completes login and marks the `poll_token` satisfied.
+3. The client polls `POST /api/{api_version}/server/auth/saml/{provider}/poll` with the `poll_token`: `202` while pending, `200` + session/bearer token once the ACS step completed, `410` once the token expires.
+4. If the account is new, the poll response signals that the first-login username confirmation step is required before a token is issued.
 
 ## Configuration
 
@@ -59467,7 +59517,7 @@ server:
       allow_bio: true
 
     auth:
-      # Session duration (matches user_session cookie max age)
+      # Session duration (matches server.session.user.max_age default)
       session_duration: 7d
       # Require 2FA for all users
       require_2fa: false
@@ -60481,8 +60531,8 @@ Organizations - only for projects with multi-user collaboration.
 | `/server/{admin_path}/config/security/auth/ldap/new` | Add LDAP provider |
 | `/server/{admin_path}/config/security/auth/ldap/{provider}` | LDAP provider detail/edit/test/remove |
 | `/server/{admin_path}/config/security/auth/saml` | SAML provider list |
-| `/server/{admin_path}/config/security/auth/saml/new` | Add SAML provider |
-| `/server/{admin_path}/config/security/auth/saml/{provider}` | SAML provider detail/edit/test/remove/regenerate SP cert |
+| `/server/{admin_path}/config/security/auth/saml/new` | Add SAML provider (auto-generates a self-signed SP keypair unless certs supplied) |
+| `/server/{admin_path}/config/security/auth/saml/{provider}` | SAML provider detail/edit/test/remove, SP metadata download, SP cert management |
 
 ### Admin - Web (`/server/{admin_path}/config/web/`)
 
@@ -61783,29 +61833,6 @@ When using remote database, the same tables are created but with appropriate typ
 
 ### Server Database Tables (server.db)
 
-#### Admin Credentials Table
-
-**Stores Server Admin credentials - NEVER in config file.**
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | INTEGER | Primary key |
-| `username` | String | Admin username |
-| `email` | String | Admin email |
-| `password_hash` | String | Argon2id hash (PHC format) |
-| `token_hash` | String | SHA-256 hash of API token |
-| `token_prefix` | String | First 8 chars of token (for identification) |
-| `totp_secret` | String | 2FA secret (encrypted, optional) |
-| `totp_enabled` | Boolean | 2FA enabled |
-| `created_at` | Timestamp | Account creation |
-| `updated_at` | Timestamp | Last update |
-| `last_login_at` | Timestamp | Last login |
-
-**Notes:**
-- One row per Server Admin — the first is created via the setup wizard; additional admins are added via `/server/{admin_path}/config/admins` invites or OIDC/LDAP/SAML provisioning (PART 34)
-- Setup token displayed in console ONCE, used to access `/server/{admin_path}/config/setup`
-- Admin password and API token created during setup wizard (user must copy)
-
 #### Admin Sessions Table
 
 | Column | Type | Description |
@@ -61832,6 +61859,34 @@ When using remote database, the same tables are created but with appropriate typ
 
 ### Users Database Tables (users.db)
 
+#### Admin Credentials Table (admins)
+
+**Stores Server Admin credentials - NEVER in config file.**
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INTEGER | Primary key |
+| `username` | String | Admin username |
+| `email` | String | Admin email |
+| `password_hash` | String | Argon2id hash (PHC format) |
+| `totp_secret` | String | 2FA secret (encrypted, optional) |
+| `totp_enabled` | Boolean | 2FA enabled |
+| `source` | String | `local`, `oidc:{provider}`, `ldap:{provider}`, `saml:{provider}` (null/`local` for wizard-created admins) |
+| `external_id` | String | Stable provider subject / LDAP unique ID / SAML NameID or mapped stable attribute (external admins) |
+| `groups` | JSON | Cached external groups/roles from last successful login (OIDC/LDAP groups or SAML group-attribute values) |
+| `last_sync` | Timestamp | Last successful OIDC/LDAP/SAML sync |
+| `created_at` | Timestamp | Account creation |
+| `updated_at` | Timestamp | Last update |
+| `last_login_at` | Timestamp | Last login |
+
+**Notes:**
+- Multiple admin rows supported — one row per Server Admin
+- First admin created via setup wizard on first run
+- Additional admins via invite (`/server/{admin_path}/config/admins/invite`) or OIDC/LDAP/SAML `admin_groups` provisioning (PART 34)
+- Setup token displayed in console ONCE, used to access `/server/{admin_path}/config/setup`
+- Admin password and API token created during setup wizard (user must copy)
+- Admin API tokens live in the unified `tokens` table (`owner_type = 'admin'`), not in this table
+
 #### Users Table
 
 | Column | Type | Description |
@@ -61847,9 +61902,9 @@ When using remote database, the same tables are created but with appropriate typ
 | `website` | String | Optional personal website URL |
 | `visibility` | String | Profile visibility: `public` (default), `private` |
 | `role` | String | User role |
-| `source` | String | `local`, `oidc:{provider}`, `ldap:{provider}` |
-| `external_id` | String | Stable provider subject / LDAP unique ID / SAML persistent NameID (external accounts) |
-| `groups` | JSON | Cached external groups/roles from last successful login |
+| `source` | String | `local`, `oidc:{provider}`, `ldap:{provider}`, `saml:{provider}` |
+| `external_id` | String | Stable provider subject / LDAP unique ID / SAML NameID or mapped stable attribute (external accounts) |
+| `groups` | JSON | Cached external groups/roles from last successful login (OIDC/LDAP groups or SAML group-attribute values) |
 | `last_sync` | Timestamp | Last successful OIDC/LDAP/SAML sync |
 | `email_verified` | Boolean | Email verified status |
 | `approved` | Boolean | Admin approved (if required) |
@@ -61862,16 +61917,19 @@ When using remote database, the same tables are created but with appropriate typ
 | `updated_at` | Timestamp | Last update |
 | `last_login_at` | Timestamp | Last login |
 
-#### User Tokens Table
+#### Tokens Table (tokens)
+
+**Unified token storage — all API token types (admin, user, org, and agent variants) in one table.**
 
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | Integer | Primary key |
-| `user_id` | Integer | Foreign key to users |
+| `owner_type` | String | `admin`, `user`, or `org` |
+| `owner_id` | Integer | Foreign key to admins/users/orgs |
 | `name` | String | User-defined label |
 | `token_hash` | String | SHA-256 hash of API token |
 | `token_prefix` | String | First 8 chars (for identification) |
-| `scopes` | JSON | Optional permission scopes |
+| `scope` | String | `global`, `read-write`, or `read` |
 | `expires_at` | Timestamp | Optional expiration |
 | `last_used_at` | Timestamp | Last usage |
 | `created_at` | Timestamp | Creation time |
