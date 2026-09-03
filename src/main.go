@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -25,8 +26,18 @@ var (
 	Version    = "devel"
 	CommitID   = "unknown"
 	BuildEpoch = "0"
-	BuildDate  = "unknown"
 )
+
+// buildDate renders BuildEpoch as an RFC 3339 timestamp, or "unknown" when
+// no epoch was injected. BuildDate is never itself an ldflag (AI.md PART
+// 28: BUILD_DATE is Docker OCI label-only) so it is always derived here.
+func buildDate() string {
+	epoch, err := strconv.ParseInt(BuildEpoch, 10, 64)
+	if err != nil || epoch <= 0 {
+		return "unknown"
+	}
+	return time.Unix(epoch, 0).UTC().Format(time.RFC3339)
+}
 
 func main() {
 	modeStr, debugPtr, colorMode := parseFlags(os.Args[1:])
@@ -142,7 +153,7 @@ func parseFlags(args []string) (modeStr string, debugPtr *bool, colorMode string
 	fs.Parse(args) //nolint:errcheck // ExitOnError already handles parse failures
 
 	if *versionFlag || *versionShortFlag {
-		fmt.Printf("cashp %s (commit %s, built %s)\n", Version, CommitID, BuildDate)
+		fmt.Printf("cashp %s (commit %s, built %s)\n", Version, CommitID, buildDate())
 		os.Exit(0)
 	}
 

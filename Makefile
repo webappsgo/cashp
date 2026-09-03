@@ -24,11 +24,11 @@ COMMIT_ID := $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo "N/A")
 OFFICIAL_SITE := $(shell [ -f site.txt ] && cat site.txt || echo "$${OFFICIAL_SITE:-}")
 
 # Linker flags to embed build info
+# BUILD_DATE is Docker OCI label-only (never an ldflag) — see AI.md PART 28
 LDFLAGS := -s -w \
 	-X 'main.Version=$(VERSION)' \
 	-X 'main.CommitID=$(COMMIT_ID)' \
 	-X 'main.BuildEpoch=$(BUILD_EPOCH)' \
-	-X 'main.BuildDate=$(BUILD_DATE)' \
 	-X 'main.OfficialSite=$(OFFICIAL_SITE)'
 
 # Directories
@@ -225,6 +225,7 @@ docker:
 # TEST - Run all tests with coverage enforcement (via Docker)
 # =============================================================================
 test:
+	@mkdir -p $(GO_CACHE) $(GO_BUILD)
 	@echo "Running tests with coverage..."
 	@$(GO_DOCKER) sh -c " \
 		mkdir -p \"\$${TMPDIR:-/tmp}/$(PROJECT_ORG)\" && \
@@ -244,6 +245,7 @@ test:
 # Fast: local platform only, no ldflags, random temp dir for isolation
 # Builds server + CLI + agent (if they exist)
 dev:
+	@mkdir -p $(GO_CACHE) $(GO_BUILD)
 	@$(GO_DOCKER) go mod tidy
 	@mkdir -p "$${TMPDIR:-/tmp}/$(PROJECT_ORG)" && \
 		BUILD_DIR=$$(mktemp -d "$${TMPDIR:-/tmp}/$(PROJECT_ORG)/$(PROJECT_NAME)-XXXXXX") && \

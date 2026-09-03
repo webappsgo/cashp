@@ -40,7 +40,18 @@ Ref: `.claude/rules/binary-rules.md`, AI.md PART 8 (line 10548)
       `--port`/`--baseurl`/`--status`/`--service`/`--daemon`/`--maintenance`/
       `--update`/`--shell`/`--lang` wired in `src/main.go` — the supporting
       packages all exist now; this is the final orchestrator pass
-- [x] `-h`/`--help` (stdlib default), `-v`/`--version` output wired
+- [x] `-v`/`--version` output wired (derives `BuildDate` from `BuildEpoch`,
+      never an ldflag — AI.md PART 28)
+- [ ] `-h`/`--help`: currently stdlib `flag.ExitOnError` default only (exits
+      0 correctly, satisfies binary-rules.md's "exit immediately... without
+      checking privilege state") but AI.md PART 8's "Server --help Output"
+      (line 10842) documents a specific custom-formatted block (Information/
+      Shell Integration/Server Configuration/Service Management sections,
+      every flag listed) via `fs.Usage = func() { printHelp(fs) }` — stdlib's
+      generic `flag.PrintDefaults()` doesn't match and is also missing every
+      flag not yet wired (see the item above this one). Write the custom
+      `printHelp`/`fs.Usage` once the full flag set lands, not before —
+      doing it now would need immediate rework and ship an incomplete list.
 - [x] `--color`/`NO_COLOR`/`COLOR` resolution wired (`resolveColor` in `src/main.go`)
 
 ## PART 9 — Error Handling & Caching
@@ -299,6 +310,40 @@ Ref: `.claude/rules/docker-rules.md`, AI.md PART 27 (line 39460)
       both build and runtime stages unchanged, matching AI.md PART 27's
       own canonical Dockerfile example (line 39995/40020), which declares
       `ARG BUILD_DATE` but omits it from the `go build -ldflags` line.
+- [x] go-lint finding FIXED: `docker/Dockerfile`, `docker/Dockerfile.dev`,
+      and `docker/Dockerfile.aio`'s `go build` lines were missing
+      `-trimpath` (present in the Makefile's build targets —
+      AI.md:39221/39231/39244/39258/39280/39286/39293). AI.md PART 27's own
+      canonical Dockerfile example (line 39980-40034) omits it too, but
+      that's an inconsistency in the spec's literal template, not a
+      documented prohibition — `-trimpath` is legitimate, harmless Go build
+      practice already used identically elsewhere in this codebase, and
+      adding it does not violate any AI.md NEVER rule. Added `-trimpath` as
+      a separate flag (not inside `-ldflags`) to all three Dockerfiles' `go
+      build` invocations to match the Makefile convention.
+- [x] go-lint findings FIXED (regression from the `BuildDate`-ldflag
+      removal above): removing `-X 'main.BuildDate=...'` left
+      `src/main.go`'s and `src/client/main.go`'s local `BuildDate` package
+      vars permanently `"unknown"` (nothing set them anymore), and
+      `src/agent/main.go` called `version.Set()` — which derives `BuildDate`
+      from `BuildEpoch` correctly — but then printed its own stale local
+      `BuildDate` var instead of `version.Get().BuildDate`. Fixed by adding
+      a `buildDate()` helper (same RFC3339-from-epoch pattern already used
+      in `src/api/version.go`'s `Build.DateString()`) to `src/main.go` and
+      `src/client/main.go`, and switching `src/agent/main.go`'s `--version`
+      print to `version.Get().BuildDate`. Verified via Docker `go build
+      ./... && go vet ./... && go test ./src/... -cover` — clean, no
+      regressions.
+- [x] go-lint finding CHECKED, false positive: flagged all three
+      Dockerfiles' `go build` lines for missing `-buildvcs=false`. That
+      flag exists to avoid Git's "dubious ownership" exit-128 failure when
+      a *bind-mounted* `.git` has a UID mismatch with the container user
+      (`~/.claude/memory/go_conventions.md` § Docker Build Pattern — a
+      host-Docker-run concern). Inside these Dockerfiles the build context
+      is a `COPY`, not a bind mount, and `.dockerignore` excludes `.git/`
+      entirely (confirmed) — there is no `.git` directory present for
+      `go build` to VCS-stamp or trip on. AI.md PART 27's own canonical
+      Dockerfile example also omits `-buildvcs=false`. No change made.
 
 ## PART 28 — CI/CD Workflows
 Ref: `.claude/rules/cicd-rules.md`, AI.md PART 28 (line 41096)

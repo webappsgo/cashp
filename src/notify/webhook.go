@@ -445,9 +445,9 @@ func (slackAdapter) build(endpoint string, r Rendered) (string, []byte, error) {
 func (slackAdapter) schema() []Field {
 	return []Field{{
 		Name: TransportSlack, Label: "Slack webhook URL", Kind: "url", Required: true, Secret: true,
-		Placeholder: "https://hooks.slack.com/services/T000/B000/XXXX",
+		Placeholder: "https://hooks.slack.com/services/<workspace-id>/<channel-id>/<token>",
 		Help:        "Incoming Webhook URL from your Slack app. Each URL is bound to one channel.",
-		Example:     "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX",
+		Example:     "https://hooks.slack.com/services/<workspace-id>/<channel-id>/<token>",
 		Security:    "Anyone holding this URL can post to the channel; it is stored encrypted and never shown in full after saving.",
 	}}
 }

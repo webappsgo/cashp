@@ -6,6 +6,8 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strconv"
+	"time"
 
 	"github.com/webappsgo/cashp/src/client/cmd"
 )
@@ -15,8 +17,18 @@ var (
 	Version    = "devel"
 	CommitID   = "unknown"
 	BuildEpoch = "0"
-	BuildDate  = "unknown"
 )
+
+// buildDate renders BuildEpoch as an RFC 3339 timestamp, or "unknown" when
+// no epoch was injected. BuildDate is never itself an ldflag (AI.md PART
+// 28: BUILD_DATE is Docker OCI label-only) so it is always derived here.
+func buildDate() string {
+	epoch, err := strconv.ParseInt(BuildEpoch, 10, 64)
+	if err != nil || epoch <= 0 {
+		return "unknown"
+	}
+	return time.Unix(epoch, 0).UTC().Format(time.RFC3339)
+}
 
 func main() {
 	binaryName := "cashp-cli"
@@ -30,7 +42,7 @@ func main() {
 			Version:    Version,
 			CommitID:   CommitID,
 			BuildEpoch: BuildEpoch,
-			BuildDate:  BuildDate,
+			BuildDate:  buildDate(),
 		},
 		BinaryName: binaryName,
 		Stdin:      os.Stdin,

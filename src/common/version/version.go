@@ -53,6 +53,12 @@ var (
 // Set records the build information supplied by the main package's ldflags
 // variables. Empty arguments keep the existing placeholder value so a build
 // without ldflags still prints something meaningful.
+//
+// buildDate is accepted for backward-compatible call signatures but is
+// never sourced from an ldflag (AI.md PART 28: BUILD_DATE is Docker OCI
+// label-only) — BuildDate is always derived from buildEpoch here instead,
+// falling back to the explicit buildDate argument only when buildEpoch
+// does not parse.
 func Set(version, commitID, buildEpoch, buildDate string) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -65,7 +71,9 @@ func Set(version, commitID, buildEpoch, buildDate string) {
 	if v := strings.TrimSpace(buildEpoch); v != "" {
 		current.BuildEpoch = v
 	}
-	if v := strings.TrimSpace(buildDate); v != "" {
+	if epoch, err := strconv.ParseInt(strings.TrimSpace(current.BuildEpoch), 10, 64); err == nil && epoch > 0 {
+		current.BuildDate = time.Unix(epoch, 0).UTC().Format(time.RFC3339)
+	} else if v := strings.TrimSpace(buildDate); v != "" {
 		current.BuildDate = v
 	}
 }

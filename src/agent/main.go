@@ -17,12 +17,14 @@ import (
 )
 
 // Build information injected at link time, matching the pattern the server
-// binary uses in src/main.go.
+// binary uses in src/main.go. BuildDate is never itself an ldflag (AI.md
+// PART 28: BUILD_DATE is Docker OCI label-only) — version.Set derives it
+// from BuildEpoch, and version.Get().BuildDate is used wherever it is
+// displayed.
 var (
 	Version    = "devel"
 	CommitID   = "unknown"
 	BuildEpoch = "0"
-	BuildDate  = "unknown"
 )
 
 // Exit codes. They follow the CLI's convention so a wrapper script can
@@ -39,7 +41,7 @@ const (
 )
 
 func main() {
-	version.Set(Version, CommitID, BuildEpoch, BuildDate)
+	version.Set(Version, CommitID, BuildEpoch, "")
 	os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
@@ -61,7 +63,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		PrintHelp(stdout, binaryName)
 		return ExitOK
 	case opts.Version:
-		fmt.Fprintf(stdout, "%s %s (commit %s, built %s)\n", binaryName, Version, CommitID, BuildDate)
+		fmt.Fprintf(stdout, "%s %s (commit %s, built %s)\n", binaryName, Version, CommitID, version.Get().BuildDate)
 		return ExitOK
 	case opts.ShellSet:
 		if err := shell.Handle(stdout, binaryName, opts.ShellAction, opts.ShellName); err != nil {
