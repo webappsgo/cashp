@@ -51589,6 +51589,7 @@ No impact on binary size - Tor is external. Application binary remains small and
 | Tor data directory | `{data_dir}/tor/` | Server creates with 0700 |
 | Control connection | TCP `127.0.0.1:auto` | All OSes - no socket file on disk |
 | Hidden service keys | `{data_dir}/tor/site/` | Server creates with 0700 |
+| Vanity candidate keys | `{data_dir}/tor/vanity/{address}/` | Server creates with 0700 (see "Vanity Address Generation") |
 | Tor process PID | `{data_dir}/tor/tor.pid` | |
 | Tor log file | `{log_dir}/tor.log` | |
 
@@ -51997,6 +51998,37 @@ func ValidateTorConfig(config *TorConfig) []ValidationError {
 - User clicks notification or "Apply" button to activate
 - Old keys deleted, new vanity keys activated
 - Tor restarts with new address
+
+**Search algorithm:** the built-in search brute-forces v3 onion keypairs in-process — the same approach as `mkp224o`, with no external tool dependency: each worker generates a random ed25519 keypair, derives the v3 onion address per rend-spec-v3 (`base32(pubkey ‖ checksum ‖ 0x03)` where `checksum = SHA3-256(".onion checksum" ‖ pubkey ‖ 0x03)[0:2]`), compares the prefix, and repeats until a worker finds a match. A vanity key is an ordinary random ed25519 keypair merely *selected* by its address — the search does not weaken key security.
+
+**Parameters** (JSON body of POST `…/config/network/tor/vanity`):
+
+| Field | Default | Rules |
+|-------|---------|-------|
+| `prefix` | required | 1–6 chars, base32 charset `a-z2-7` only (`0`, `1`, `8`, `9`, and uppercase cannot appear in an onion address); an invalid or too-long prefix is rejected (422) before any worker starts |
+| `workers` | logical CPUs − 1 (min 1) | 1 to logical CPUs; the default leaves one core free for serving traffic |
+
+- **One search at a time** — POST while a search is running returns 409 naming the running search's prefix
+- A running search does NOT survive a server restart; found candidates on disk do
+- DELETE `…/config/network/tor/vanity` cancels the running search; candidates already written to disk are kept
+
+**Status** (GET `…/config/network/tor/vanity`):
+
+```json
+{
+  "state": "running",
+  "prefix": "myapp",
+  "workers": 7,
+  "attempts": 123456789,
+  "rate": 250000,
+  "elapsed_seconds": 8100,
+  "candidates": ["myappxk...id.onion"]
+}
+```
+
+`state` is `idle`/`running`/`found`; `attempts`/`rate` are approximate (per-worker counters, sampled); `candidates` lists the found addresses on disk. The admin panel's progress line and the "vanity address ready" notification render from this endpoint.
+
+**Storage & handoff:** a found candidate is written atomically (temp dir + rename) to `{data_dir}/tor/vanity/{address}/` (`0700`) as the same three `0600` files Tor persists in `{data_dir}/tor/site/` — `hs_ed25519_secret_key` (the 64-byte expanded key behind the `== ed25519v1-secret: type0 ==` header), `hs_ed25519_public_key`, `hostname` — byte-for-byte the layout `mkp224o` emits, so a found candidate dir, an external `mkp224o` output dir, and the live site dir are interchangeable. The search never writes into `{data_dir}/tor/site/` (the current address stays live while searching), and secret key material is never logged — only the found address. **Apply** (POST `…/tor/vanity/apply` with `{"address": "…"}`) is a file swap, never a re-derivation: stop Tor → delete the old keys in `{data_dir}/tor/site/` → move the candidate's three files in → start Tor → verify the published hostname equals the candidate address (fail loudly on mismatch) → remove the emptied candidate dir, keeping any others. Key import reuses exactly this swap path — an imported key directory is treated like a found candidate.
 
 ### External Vanity Generation (7+ characters)
 
