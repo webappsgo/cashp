@@ -27054,6 +27054,42 @@ src/server/template/
 - NO generic browser error pages - always render themed template
 - **Every request MUST terminate in a rendered response — the error path itself must never fail the request.** A panic/`recover` middleware and a template-render failure MUST both fall back to a minimal, hardcoded error response (correct status code, short body, honoring content negotiation — HTML for browsers, JSON for API clients) instead of a blank body, a dropped connection, or a leaked stack trace. The failure handler must never be the thing that breaks the site — the backend mirror of the service-worker guaranteed-`Response` rule.
 
+**Panic-safety implementation (recover middleware):**
+
+```go
+// RecoverMiddleware guarantees every request terminates in a response, even
+// when a handler panics. Wrap the router with this as the outermost
+// middleware, before routing, logging, or any other layer that could itself
+// panic.
+func RecoverMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("panic recovered: %v\n%s", rec, debug.Stack())
+				renderFallbackError(w, r, http.StatusInternalServerError)
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+// renderFallbackError is the last-resort error response used when the
+// themed error.tmpl itself fails to render, or a panic is recovered here.
+// It MUST NOT depend on the template engine, theme system, or any state
+// that could itself panic or fail — plain strings only.
+func renderFallbackError(w http.ResponseWriter, r *http.Request, status int) {
+	if strings.Contains(r.Header.Get("Accept"), "application/json") {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		fmt.Fprintf(w, `{"error":%q,"status":%d}`, http.StatusText(status), status)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	fmt.Fprintf(w, "<html><body><h1>%d %s</h1></body></html>", status, http.StatusText(status))
+}
+```
+
 **Error page structure:**
 ```html
 {{template "public.tmpl" .}}
@@ -34174,6 +34210,19 @@ server:
 | **Automatic Recovery** | Missed tasks run on startup if within catch-up window |
 | **Cluster Aware** | Only one node runs each task in cluster mode |
 | **No External Dependencies** | Built-in, no cron or external scheduler needed |
+
+### Task Execution Panic Safety (MUST)
+
+**A single scheduled task MUST NEVER be able to crash the scheduler or the server process.**
+
+Every task run MUST execute inside its own panic/`recover` boundary, isolated from the scheduler's own control loop and from every other task:
+
+| Requirement | Description |
+|-------------|-------------|
+| **Per-task recover** | Each task invocation runs behind a `defer`+`recover` (or equivalent isolation) that catches any panic raised by that task's code |
+| **Scheduler loop survives** | A panicking task MUST be logged and marked `failed` for that run — the scheduler loop itself MUST keep running and MUST still fire the task's next scheduled occurrence |
+| **No cross-task impact** | A panic in one task MUST NOT skip, delay, or corrupt the state of any other task |
+| **Same guarantee as HTTP handlers** | This is the same non-negotiable guarantee as the per-request panic/`recover` requirement in "Error Pages (MUST Match Theme)" — a background job is not exempt just because no browser is watching it |
 
 ## NEVER Use External Schedulers
 
@@ -49990,16 +50039,18 @@ LANG=es_ES.UTF-8 {project_name}-cli --help
 2. Translate ALL keys (no key may be omitted)
 3. Add language code to `config.server.i18n.available_languages`
 4. Language automatically appears in the language selector (WebUI) and `--lang` flag (CLI/agent)
-5. Run `make i18n-validate` to verify all keys are present
+5. Run `make test` (or the raw Docker command below) to verify all keys are present
 6. Rebuild ALL binaries — server, CLI, and agent all get the new language via `go:embed`
 
 ### Build-Time Validation
 
+No standalone `cmd/i18n-validate` binary — PART 3's allowed-directories list bans a
+root `cmd/` directory. Validation instead lives in `src/common/i18n/*_test.go` as
+ordinary Go tests, run like every other test inside Docker (this PART →
+"Host System Safety Applies to All Testing & Debugging"):
+
 ```bash
-# Makefile target
-i18n-validate:
-	@echo "Validating translation files..."
-	@go run cmd/i18n-validate/main.go src/common/i18n/locales/
+$GO_DOCKER casjaysdev/go:latest go test -run "TestKeyConsistency|TestLocalesFS" ./src/common/i18n/...
 
 # Validates:
 # - All language files have identical key sets to en.json
@@ -50008,6 +50059,9 @@ i18n-validate:
 # - All plural categories required by the language are present
 # - No orphaned keys (keys in other languages not in en.json)
 ```
+
+`make test` already runs the full `./...` suite, including this package — no
+separate Makefile target is needed.
 
 ### RTL (Right-to-Left) Support
 
