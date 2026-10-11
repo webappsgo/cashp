@@ -32,8 +32,8 @@ have_internal=$(grep -cE '^internal_name:[[:space:]]*.+$' IDEA.md 2>/dev/null ||
 |-------|----------------|----------|
 | `{project_name}` | IDEA.md `## Project variables` | Existing long-form `CLAUDE.md` / `.claude/CLAUDE.md` project details, then `basename "$PWD"` |
 | `{project_org}` | IDEA.md `## Project variables` | Existing long-form `CLAUDE.md` / `.claude/CLAUDE.md` project details, then `basename "$(dirname "$PWD")"` |
-| `{internal_name}` | IDEA.md `## Project variables` (always — set once at first run, never edited after) | Existing long-form `CLAUDE.md` / `.claude/CLAUDE.md` project details, then first-time setup: copy from `{project_name}` |
-| `{internal_org}` | IDEA.md `## Project variables` (always — set once at first run, never edited after) | Existing long-form `CLAUDE.md` / `.claude/CLAUDE.md` project details, then first-time setup: copy from `{project_org}` |
+| `{internal_name}` | IDEA.md `## Project variables` (always — set at first run; reset only on an explicit rename or fork) | Existing long-form `CLAUDE.md` / `.claude/CLAUDE.md` project details, then first-time setup: copy from `{project_name}` |
+| `{internal_org}` | IDEA.md `## Project variables` (always — set at first run; reset only on an explicit rename or fork) | Existing long-form `CLAUDE.md` / `.claude/CLAUDE.md` project details, then first-time setup: copy from `{project_org}` |
 | `{plist_name}` | **Derived (not stored)**: `io.github.{project_org}.{internal_name}` | — |
 
 **Detection commands (use commands — never guess):**
@@ -44,7 +44,7 @@ project_name=$(basename "$PWD")
 # Project org: parent directory name (assumes ~/org/project structure)
 project_org=$(basename "$(dirname "$PWD")")
 
-# Internal name: same as project_name on first run, frozen forever after
+# Internal name: same as project_name on first run, stable after
 internal_name="$project_name"
 
 # Plist name: derived from project_org and internal_name (macOS Bundle ID convention)
@@ -57,9 +57,9 @@ plist_name="io.github.${project_org}.${internal_name}"
 #   plist_name    = io.github.myorg.myproject  (always derived)
 ```
 
-**Why a separate `{internal_name}`:** if a project renames itself later (`{project_name}` changes from `myproject` to `myproject2`), the new name applies to user-visible places (binary command, docs, repo). But `{internal_name}` stays `myproject` forever, keeping `{config_dir}`, `{data_dir}`, `{log_dir}`, `{cache_dir}`, the systemd service unit, the macOS Bundle ID, and every other on-disk identifier stable. No data migration, no orphaned plists, no broken systemd dependencies.
+**Why a separate `{internal_name}`:** if a project renames itself later (`{project_name}` changes from `myproject` to `myproject2`), the new name applies to user-visible places (binary command, docs, repo). But `{internal_name}` stays `myproject` across ordinary renames, keeping `{config_dir}`, `{data_dir}`, `{log_dir}`, `{cache_dir}`, the systemd service unit, the macOS Bundle ID, and every other on-disk identifier stable. No data migration, no orphaned plists, no broken systemd dependencies.
 
-**Rule:** `{internal_name}` is set ONCE at first-time setup and is immutable for the life of the project. Editing it after the project is in production is a bug — the only sanctioned way to change it is a coordinated migration of every directory, service, and plist on every host.
+**Rule:** `{internal_name}` is set once at first-time setup and stays stable across ordinary project renames. It is reset only on an explicit user-directed org/repo rename (update IDEA.md, grep every consumer, and migrate every directory, service, and plist on every host) or at a fork's first setup (reset to the fork's own `{project_name}` so it never shares paths, units, or identifiers with the upstream). Any other edit after the project is in production is a bug.
 
 ## First-Time Setup Flow
 
@@ -79,12 +79,12 @@ AI reads AI.md for the first time
 │   │   ├─► 3. Create IDEA.md if it doesn't exist
 │   │   │   - If a long-form/project-specific `CLAUDE.md` or `.claude/CLAUDE.md` already exists, MIGRATE its valid project description, project variables, and business logic into IDEA.md first
 │   │   │   - Do NOT copy loader-only instructions, duplicated AI.md rules, or stale implementation text into IDEA.md
-│   │   │   - On creation, write `internal_name: <project_name>` to `## Project variables` and warn the user it is frozen forever
+│   │   │   - On creation, write `internal_name: <project_name>` to `## Project variables` and warn the user it is stable
 │   │   │
 │   │   └─► 4. Create or update IDEA.md `## Project variables`:
 │   │       - project_name  → actual project name (lowercase)
 │   │       - project_org   → actual org name (lowercase)
-│   │       - internal_name → on first run = project_name; afterwards read from IDEA.md, IMMUTABLE
+│   │       - internal_name → on first run = project_name; afterwards read from IDEA.md, STABLE (reset only on an explicit rename or fork)
 │   │       - Derived UPPERCASE placeholders are computed from these values when referenced
 │   │       - {plist_name} is derived as io.github.{project_org}.{internal_name} and is NOT stored
 │   │
@@ -102,13 +102,13 @@ AI reads AI.md for the first time
 | `{PROJECT_NAME}` | UPPERCASE | Mutable | `MYAPP` |
 | `{project_org}` | lowercase | Mutable | `myorg` |
 | `{PROJECT_ORG}` | UPPERCASE | Mutable | `MYORG` |
-| `{internal_name}` | lowercase | **Frozen** at first-time setup | `myapp` |
-| `{INTERNAL_NAME}` | UPPERCASE | **Frozen** | `MYAPP` |
-| `{internal_org}` | lowercase | **Frozen** at first-time setup | `myorg` |
-| `{INTERNAL_ORG}` | UPPERCASE | **Frozen** | `MYORG` |
+| `{internal_name}` | lowercase | **Stable** at first-time setup | `myapp` |
+| `{INTERNAL_NAME}` | UPPERCASE | **Stable** | `MYAPP` |
+| `{internal_org}` | lowercase | **Stable** at first-time setup | `myorg` |
+| `{INTERNAL_ORG}` | UPPERCASE | **Stable** | `MYORG` |
 | `{plist_name}` | derived | Derived from `{project_org}` + `{internal_name}` | `io.github.myorg.myapp` |
 
-**`{internal_name}` rule:** set ONCE on first run (initial value = `{project_name}`), then immutable for the project's lifetime. Used for every on-disk identifier (`{config_dir}`, `{data_dir}`, `{log_dir}`, `{cache_dir}`, systemd unit, `{plist_name}`) so a project rename does not orphan paths or services.
+**`{internal_name}` rule:** set ONCE on first run (initial value = `{project_name}`), then stable across ordinary renames (reset only on an explicit org/repo rename with path migration, or at a fork's first setup). Used for every on-disk identifier (`{config_dir}`, `{data_dir}`, `{log_dir}`, `{cache_dir}`, systemd unit, `{plist_name}`) so a project rename does not orphan paths or services.
 
 **After setup, this section remains reference-only. The placeholders above are resolved from `IDEA.md ## Project variables`; `AI.md` itself stays read-only.**
 
@@ -156,7 +156,7 @@ Example:
 
     project_name:  jokes
     project_org:   casjay
-    # FROZEN — set once at first-time setup, never edit
+    # STABLE — set at first-time setup; change only on an explicit rename or fork reset
     internal_name: jokes
     app_name:      jokes
     official_site: jokes.example.com
@@ -169,9 +169,9 @@ Example:
 - Required.
 - On first-time setup, initial value MUST equal `project_name`.
 - Once a project ships (any host has touched a `{config_dir}`, `{data_dir}`, systemd
-  unit, or plist named after `internal_name`), the value is frozen forever. Editing
-  it later is a bug — there is no migration path short of a coordinated rename of
-  every directory, service, and plist on every host.
+  unit, or plist named after `internal_name`), the value is stable across ordinary renames. Changing
+  it is allowed only on an explicit org/repo rename (with a coordinated migration of
+  every directory, service, and plist on every host) or at a fork's first setup.
 - A project rename changes `project_name` only. `internal_name` stays.
 
 ## Business logic
@@ -238,9 +238,9 @@ permission rules, business invariants. The HOW lives in AI.md PARTS 0-36; PART 3
    - `## Project variables`
    - `## Business logic`
 3. Normalize discovered variables into lower_snake_case `key: value` entries
-4. If `internal_name` cannot be proven from the existing project state, initialize it to `project_name` on first migration and treat it as frozen after that
+4. If `internal_name` cannot be proven from the existing project state, initialize it to `project_name` on first migration and treat it as stable after that
 5. If statements from `CLAUDE.md` or `.claude/CLAUDE.md` conflict with `AI.md`, `AI.md` wins; either fix the migrated text or ask the user if the intent is unclear
-6. After migration, keep root `CLAUDE.md` and/or `.claude/CLAUDE.md` only as short efficient loaders and keep the real project plan/spec in `IDEA.md`
+6. After migration, keep root `CLAUDE.md` and/or `.claude/CLAUDE.md` only as short efficient loaders and keep the real project plan/spec in `IDEA.md`, and mirror the final root `CLAUDE.md` content into `AGENTS.md` as a real file copy (never a symlink)
 7. Never silently discard meaningful project-specific content; migrate it, trim it, or ask the user where it belongs
 
 ---
@@ -639,7 +639,7 @@ if cacheSize > 1024*1024*1024 {
 | **TLS variants on their own ports** | Implicit-TLS listeners use their standard port (SMTPS 465, POP3S 995, IMAPS 993, NNTPS 563); STARTTLS stays on the plain port where the RFC defines it; certificates come from the same TLS config as HTTPS |
 | **Per-protocol config** | Each listener gets its own `{proto}.address`/`{proto}.port` config keys + `{PROTO}_PORT` env override, defaulting to the standard port |
 | **Independent enable/disable** | Every raw listener is individually toggleable in config, disabled by default unless it IS the project's core function; the HTTP admin/API listener keeps following the HTTP rules above |
-| **Custom raw services** | Projects exposing a non-IANA raw port (termbin-style netcat paste service, etc.) document the port in IDEA.md; once shipped that port is the published interface — treat it as frozen like `{internal_name}` |
+| **Custom raw services** | Projects exposing a non-IANA raw port (termbin-style netcat paste service, etc.) document the port in IDEA.md; once shipped that port is the published interface — treat it as stable like `{internal_name}` |
 | **Privileged ports** | Binding <1024 inside the container is fine (container has the capability); bare-host deploys follow Privileged Port Binding (<1024) in PART 5 — service-install escalation with bind-then-drop |
 
 **Why remapping breaks raw protocols:**
@@ -701,7 +701,7 @@ permissions:
 jobs:
   build:
     # Inherits read-only — no overrides needed
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     ...
 
   release:
@@ -729,13 +729,13 @@ Every external action (`uses: owner/action@...`) MUST be pinned to a full commit
 - uses: actions/checkout@v4
 
 # Correct — SHA is immutable
-- uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+- uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 ```
 
 **When updating a pinned SHA**, verify three things:
 
 1. **Action is still maintained** — check the upstream repo is not archived, deprecated, or abandoned
-2. **Runtime is still supported** — open the action's `action.yml` at the new SHA and check `runs.using`; if it names a runtime that GitHub has deprecated or scheduled for removal, the action will silently fail after that date. Example: `node20` is removed from GitHub-hosted runners on **2026-09-16** — any action still on `node20` must be updated to a SHA where it has migrated to `node24` — all common `actions/*` and `docker/*` actions have already done so
+2. **Runtime is still supported** — open the action's `action.yml` at the new SHA and check `runs.using`; if it names a runtime that GitHub has deprecated or scheduled for removal, the action will silently fail after that date. Example: `node20` is removed from GitHub-hosted runners on **2026-09-23** — any action still on `node20` must be updated to a SHA where it has migrated to `node24` — all common `actions/*` and `docker/*` actions have already done so
 3. **No supply-chain change** — skim the diff between the old and new SHA; unexpected new dependencies, changed entrypoints, or network calls added to setup steps are red flags
 
 Renovate covers `github-actions` SHA updates automatically via `pinDigests: true` — but it only updates the SHA, not the runtime verification. The runtime check is always manual.
@@ -859,7 +859,7 @@ The GitHub Releases API returns HTTP 422 `"tag_name is not a valid tag"` when th
 The `release` job already has `contents: write` to push assets — this covers tag push as well.
 
 ```yaml
-- uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+- uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
   with:
     # required: full history needed to inspect and push tags
     fetch-depth: 0
@@ -1535,7 +1535,9 @@ Each AI tool directory MUST have a project memory file containing critical rules
 
 **Claude Code Note:** Claude prefers `CLAUDE.md` at project root (discovered recursively). `.claude/CLAUDE.md` is an alternate location. Personal preferences go in `CLAUDE.local.md` (auto-gitignored).
 
-**Role of `CLAUDE.md`:** root `CLAUDE.md` and `.claude/CLAUDE.md` are **efficient loaders**, not the full spec. They MUST stay short and point back to `AI.md`, which remains the source of truth.
+**AGENTS.md (REQUIRED, root):** Many non-Claude coding agents/tools read `AGENTS.md` at the project root instead of `CLAUDE.md`. Generate/reconcile `AGENTS.md` as an exact copy of root `CLAUDE.md`'s final content — same loader text, kept in sync whenever `CLAUDE.md` changes. Always a real file copy, never a symlink (symlinks are not portable across all platforms/filesystems).
+
+**Role of `CLAUDE.md`:** root `CLAUDE.md` and `.claude/CLAUDE.md` are **efficient loaders**, not the full spec. They MUST stay short and point back to `AI.md`, which remains the source of truth. The same loader content is also mirrored into `AGENTS.md` at the project root as a real file copy — never a symlink.
 
 **If `CLAUDE.md` or `.claude/CLAUDE.md` already exists:**
 - **READ both first** - NEVER overwrite blindly
@@ -1547,6 +1549,7 @@ Each AI tool directory MUST have a project memory file containing critical rules
 - Move long-form implementation/spec content into `AI.md` or `.claude/rules/*.md` as appropriate, then leave root `CLAUDE.md` / `.claude/CLAUDE.md` as short loaders
 - If existing root `CLAUDE.md` or `.claude/CLAUDE.md` conflicts with `AI.md`, then `AI.md` wins; update the loader file to reference the canonical rule instead of duplicating stale text
 - Loader files must end up short and efficient, but valid existing guidance must be migrated, not discarded
+- After finalizing root `CLAUDE.md`, copy its exact content into `AGENTS.md` at the project root (create or overwrite it) — real file, never a symlink
 
 **Required Content Structure (~50-100 lines max):**
 
@@ -1775,15 +1778,10 @@ Both files use the same structure. Settings are merged: `settings.local.json` ov
 
 ```json
 {
-  "model": "",
-  "thinking": "off",
   "permissions": {
     "allow": [],
     "deny": [],
     "ask": []
-  },
-  "preferences": {
-    "auto_commit": false
   },
   "hooks": {
     "PreToolUse": [],
@@ -1797,10 +1795,7 @@ Both files use the same structure. Settings are merged: `settings.local.json` ov
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `model` | string | Model override (empty = default, e.g., `"claude-sonnet-4-20250514"`) |
-| `thinking` | string | Extended thinking: `"off"`, `"on"`, or token limit (e.g., `"10000"`) |
 | `permissions` | object | Tool permission rules (allow/deny/ask arrays) |
-| `preferences` | object | Behavior preferences |
 | `hooks` | object | Pre/post tool execution hooks |
 | `env` | object | Environment variables for Bash commands |
 
@@ -1808,41 +1803,40 @@ Both files use the same structure. Settings are merged: `settings.local.json` ov
 
 ```json
 {
-  "model": "",
-  "thinking": "off",
   "permissions": {
     "allow": [
+      "Bash(**)",
       "Read(**)",
       "Edit(**)",
-      "Bash(go *)",
-      "Bash(make *)",
-      "Bash(docker *)",
-      "Bash(docker-compose *)",
-      "Bash(git *)",
-      "Bash(curl *)",
-      "Bash(tree *)",
-      "Bash(find *)",
-      "Bash(grep *)",
-      "Bash(rm *)",
-      "Bash(mv *)",
-      "Bash(cp *)",
-      "Bash(mkdir *)",
-      "Bash(chmod *)",
-      "Bash(ln *)",
-      "Bash(cat *)",
-      "Bash(head *)",
-      "Bash(tail *)",
-      "Bash(ls *)",
-      "Bash(pwd *)",
-      "Bash(timeout *)",
-      "Bash(sort *)",
-      "Bash(wc *)",
-      "Bash(diff *)",
-      "WebSearch",
-      "WebFetch(domain:github.com)",
-      "WebFetch(domain:pkg.go.dev)",
-      "WebFetch(domain:go.dev)",
-      "WebFetch(domain:golang.org)"
+      "Skill(**)",
+      "Agent",
+      "WebFetch",
+      "Monitor",
+      "Edit(~/Projects/**/.git/COMMIT_MESS)",
+      "Edit(**/.git/COMMIT_MESS)",
+      "Edit(**/.git/COMMIT_EDITMSG)",
+      "Edit(**/AI.md)",
+      "Edit(**/CLAUDE.md)",
+      "Edit(**/IDEA.md)",
+      "Edit(**/SPEC.md)",
+      "Edit(**/TODO.AI.md)",
+      "Edit(**/TODO.md)",
+      "Edit(**/PLAN.AI.md)",
+      "Edit(**/PLAN.md)",
+      "Edit(**/.env)",
+      "Edit(**/app.env)",
+      "Edit(**/default.env)",
+      "Edit(**/.no_push)",
+      "Edit(**/.dockerignore)",
+      "Edit(**/.gitignore)",
+      "Edit(**/.gitattributes)",
+      "Edit(**/.editorconfig)",
+      "Edit(**/.npmignore)",
+      "Edit(**/.eslintignore)",
+      "Edit(**/.prettierignore)",
+      "Edit(**/settings.json)",
+      "Edit(**/settings.local.json)",
+      "WebSearch"
     ],
     "deny": [
       "Bash(git commit *)",
@@ -1855,9 +1849,6 @@ Both files use the same structure. Settings are merged: `settings.local.json` ov
       "Bash(git reset *)",
       "Bash(git checkout -- *)"
     ]
-  },
-  "preferences": {
-    "auto_commit": false
   },
   "hooks": {
     "PreToolUse": [
@@ -2142,7 +2133,7 @@ See the single authoritative table earlier in this file (search: `### Allowed Ro
 
 **Directory placeholders (with platform-specific defaults):**
 
-**All on-disk paths use `{internal_name}` (frozen identity), not `{project_name}` (mutable).** A project rename never moves these directories.
+**All on-disk paths use `{internal_name}` (stable identity), not `{project_name}` (mutable).** A project rename never moves these directories.
 
 | Placeholder | Linux/BSD Default | macOS Default | Windows Default |
 |-------------|-------------------|---------------|-----------------|
@@ -2911,7 +2902,7 @@ fi
 5. **Inject required variables** if missing from the old file:
    - `project_name` — derive from `basename "$PWD"` (or git remote), confirm with user
    - `project_org` — derive from `basename "$(dirname "$PWD")"` (or git remote), confirm with user
-   - `internal_name` — initial value MUST equal `project_name` (frozen forever after this — see PART 0 first-time setup rules)
+   - `internal_name` — initial value MUST equal `project_name` (stable after this — see PART 0 first-time setup rules)
 
 6. **Show the user the proposed rewrite** as a diff or full file preview. Wait for explicit approval. Do NOT write the new file until approved.
 
@@ -2921,7 +2912,7 @@ fi
 
 - Migration is a one-time operation per project. Once IDEA.md is in the three-section format, do NOT re-run migration on subsequent reads (the detection step above is the gate).
 - If old content does not fit cleanly into one of the three sections, ASK the user — do not invent a fourth section, do not silently drop content.
-- If the old IDEA.md already had `internal_name` set to a value different from `project_name`, KEEP that value. The freeze rule applies — the existing internal_name is the frozen identity, even if it differs from project_name (the project may have already been renamed once).
+- If the old IDEA.md already had `internal_name` set to a value different from `project_name`, KEEP that value. The freeze rule applies — the existing internal_name is the stable identity, even if it differs from project_name (the project may have already been renamed once).
 - After successful migration, mention to the user that any optional PART activations (PARTS 34-36) should be declared in SPEC.md if not already present.
 
 ### Translation Rule (ALL Code Changes)
@@ -3149,7 +3140,7 @@ Getting code correct on the first try is much harder than iterating with feedbac
 
 **When ALL items in TODO.AI.md are completed:**
 
-**Subagents:** do not write COMMIT_MESS or call gitcommit — complete your edits and report back to the parent instance to handle the commit.
+**Subagents:** do not write COMMIT_MESS or call gitcommit — complete your edits and report back to the parent instance to handle the commit. Subagents also never run `make`, tests, lint, or any build/test gate — the parent runs them once after reviewing the full diff.
 
 1. **Remove all completed items from TODO.AI.md** - delete each item only after it is fully resolved and committed; never truncate the whole file at once
 2. **Write COMMIT_MESS** with the following format:
@@ -3454,6 +3445,7 @@ Spec version: {line count or hash}
 | Running `gitcommit <command>` mid-task with files in an inconsistent state | Every commit is pushed — half-finished work goes public. Finish the unit of work first |
 | Subagent writing `.git/COMMIT_MESS` | Commit message must be written by the parent instance after reviewing the actual diff |
 | Subagent calling `gitcommit` | Only the parent (main) instance runs gitcommit — subagents complete edits and report back |
+| Subagent running `make`, tests, lint, or a build gate | Only the parent (main) instance runs the test and lint gates, once, after reviewing the full diff — subagents complete edits and report back |
 | Bare `@name` in commit body | Any `@username` in a commit message creates a GitHub contributor notification/link — never use bare `@` unless intentionally crediting a real contributor; write names without `@` or wrap in backticks |
 | Deleting files without confirmation | Destructive action |
 | Changing NON-NEGOTIABLE sections | Specification violation |
@@ -4216,9 +4208,7 @@ User preferences like theme, language, and UI settings can be stored client-side
 | Cookies | Theme, language, UI preferences, consent flags | Configurable expiry; server-readable, so pages render correctly without JS |
 | `localStorage` | Client-only state the server never needs (e.g. draft form text) | Until cleared |
 
-These work for anonymous visitors and don't require user accounts. Server-side user preferences (stored in `user_preferences` table) require PART 34.
-
-**Cross-device preference sync (export/import — stateless, no PART 34 required):** only `theme` and `lang` are portable across browsers/devices — never `cookie_consent`/`ccpa_opt_out` (per-browser legal acknowledgments) or the build-stamp cookie. Since preferences aren't tied to identity, the same values always produce the same code/URL — the code/URL *is* the state, not a lookup key, so nothing is ever stored server-side. Guest preferences live at `/server/preferences` (distinct from the authenticated `/server/{admin_path}/{admin_username}/preferences` and PART-34 `/users/settings/preferences` routes), API-mirrored at `/api/{api_version}/server/preferences` — the export/import actions are sub-routes of it, never the standalone `/prefs/*` path, nor bare `/preferences` without the `/server` prefix — and `preferences` MUST be added to the `{admin_path}` reserved-word list (see "Route Conflict Detection") so an operator can never set `admin_path=preferences` and collide with it. If an old/non-canonical route (e.g. a bare `/preferences` or `/prefs/*`) exists in already-written code, delete it outright and update all callers to `/server/preferences` — never keep it as a redirect or alias "for backward compatibility" (see "Canonical Terms Only"). `GET /server/preferences/export` returns both a full import URL (`https://{host}/server/preferences/import?theme=dark&lang=fr`, plain query string, stable across schema changes) and a short code (`base64url` of the same query string, for manual retyping without paste). `GET /server/preferences/import?theme=dark&lang=fr` validates each value against its normal enum/BCP-47 allowlist — an imported value is still untrusted input — sets the matching cookies, and `303 See Other`s to a clean URL so the code never lingers in the address bar or history.
+These work for anonymous visitors and don't require user accounts. Server-side user preferences (stored in `user_preferences` table) require PART 34. Cross-device sync (export/import, stateless, no PART 34 required) is also available for the guest `theme`/`lang` cookies — see "Client-Side Preferences (cookies)" in PART 16 for the full cookie table, JS write snippet, and export/import route mechanics.
 
 ## AI Implementation Process
 
@@ -5937,16 +5927,16 @@ Full license: https://spdx.org/licenses/BSD-3-Clause.html
 # .github/workflows/licenses.yml
 name: License Check
 
-on: [push, pull_request]
+on: [push, pull_request, workflow_dispatch]
 
 jobs:
   check-licenses:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container:
       image: casjaysdev/go:latest
       options: "--user 0:0"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Check licenses
         run: |
@@ -6142,13 +6132,13 @@ PROJECT_ORG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+
 | `{PROJECT_NAME}` | UPPERCASE | env vars, Makefile vars | `PROJECT_NAME=jokes` |
 | `{project_org}` | lowercase | filenames, paths, owners | `casjay`, `~/Projects/github/casjay/` |
 | `{PROJECT_ORG}` | UPPERCASE | env vars, Makefile vars | `PROJECT_ORG=casjay` |
-| `{internal_name}` | lowercase, **frozen** | every on-disk identifier: `{config_dir}`, `{data_dir}`, `{log_dir}`, `{cache_dir}`, `{pid_file}`, systemd unit name, `{plist_name}` | `jokes` (even after a project rename) |
-| `{INTERNAL_NAME}` | UPPERCASE, **frozen** | env vars referring to the stable identity | `INTERNAL_NAME=jokes` |
+| `{internal_name}` | lowercase, **stable** | every on-disk identifier: `{config_dir}`, `{data_dir}`, `{log_dir}`, `{cache_dir}`, `{pid_file}`, systemd unit name, `{plist_name}` | `jokes` (even after a project rename) |
+| `{INTERNAL_NAME}` | UPPERCASE, **stable** | env vars referring to the stable identity | `INTERNAL_NAME=jokes` |
 | `{plist_name}` | derived | macOS LaunchAgent/LaunchDaemon Bundle ID — always `io.github.{project_org}.{internal_name}` | `io.github.casjay.jokes` |
 
 **Note:** camelCase (Go variables) and PascalCase (Go types) are NOT template placeholders. Write them directly in code using the actual project name (e.g., `jokesServer`, `type JokesServer struct`).
 
-**Mutability rule:** `{project_name}` may change (project rename); `{internal_name}` may NOT. Initial value of `{internal_name}` equals `{project_name}` and is frozen forever after first-time setup.
+**Mutability rule:** `{project_name}` may change (project rename); `{internal_name}` does not follow an ordinary rename. Initial value of `{internal_name}` equals `{project_name}` and is stable after first-time setup. It resets only on an explicit user-directed org/repo rename (update IDEA.md, grep every consumer, migrate on-disk paths and units) or at a fork's first setup (reset to the fork's own `{project_name}`).
 
 **Examples (assuming no git remote, inferred from path):**
 
@@ -6173,7 +6163,7 @@ PROJECT_ORG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+
 | `~/Projects/` | Base projects directory (recommended) | Can be `~/Projects/`, `~/Documents/`, `/opt/`, etc. |
 | `{gitprovider}` | Git hosting provider or `local` | `github`, `gitlab`, `bitbucket`, `private`, `local` |
 | `{project_org}` | Organization/username (inferred) | `apimgr`, `casjay`, `myorg` |
-| `{internal_name}` | Frozen on-disk project name (inferred) | `jokes`, `icons`, `myproject` |
+| `{internal_name}` | Stable on-disk project name (inferred) | `jokes`, `icons`, `myproject` |
 
 **Examples of recommended structure:**
 ```
@@ -6228,6 +6218,7 @@ PROJECT_ORG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+
 │       ├── daily.yml       # Daily builds
 │       └── docker.yml      # Docker images
 ├── CLAUDE.md               # Project memory - critical rules (REQUIRED, primary location)
+├── AGENTS.md               # identical copy of CLAUDE.md, for non-Claude agents
 ├── CLAUDE.local.md         # Personal project preferences (gitignored)
 ├── .claude/                # Claude Code configuration
 │   ├── CLAUDE.md           # Project memory (alternate location)
@@ -8969,7 +8960,7 @@ Binary checks:
 
 #### The `{internal_name}` System User/Group
 
-**Created automatically during first root/service startup. The system user uses the frozen `{internal_name}` — renaming the project does NOT change it.**
+**Created automatically during first root/service startup. The system user uses the stable `{internal_name}` — renaming the project does NOT change it.**
 
 | Property | Value |
 |----------|-------|
@@ -26146,6 +26137,48 @@ async function clearClientData() {
 }
 ```
 
+### Client-Side Preferences (cookies)
+
+**Guest/UI preferences are stored in cookies — the server reads them to render pages (theme class, language) with zero server persistence and zero user account needed. localStorage holds only optional JS convenience copies; nothing stored there is load-bearing.**
+
+| Cookie | Values | Default |
+|--------|--------|---------|
+| `theme` | `dark` \| `light` \| `auto` | `dark` |
+| `lang` | BCP 47 tag: `en`, `es`, `fr`, … | `Accept-Language` header |
+| `cookie_consent` | JSON: granular categories + timestamp | unset (banner shown) |
+| `ccpa_opt_out` | `true` | unset |
+| `{project_name}_build` | running build stamp `{project_version}-{short_commit}` | set on first HTML response — drives the PART 9 version-change purge |
+
+**This page must be editable, not read-only:** every cookie above needs a control on `/server/preferences` that the visitor can act on directly — a theme selector, a language selector, cookie-consent category toggles (reachable here, not only from the first-visit banner), a CCPA opt-out toggle, and a control for every app-specific `{project_name}_pref_*` setting below. Rendering the current values as plain text with no way to change them turns a preferences page into a status page — the entire point of this page is letting the guest change these settings in place.
+
+**App-specific guest preferences:** the table above is the base set every project needs — add project-specific guest-scoped preferences to it too: settings a visitor can adjust without an account (default view mode, results-per-page, sort order, syntax-highlighting theme, unit system, etc.). Name them `{project_name}_pref_{key}`, document each one in this project's own AI.md preferences table, and hold them to the same rules as `theme`/`lang`: cookie-only, read per request, never persisted server-side. They belong in this guest-scoped cookie set precisely because no login is involved — once a setting must be tied to an identity (available cross-device without an export code, or gated per-user), it belongs in PART 34's `user_preferences` table instead, never here.
+
+**Preference writes (JS enhancement — the server sets the same cookies on its POST endpoints):**
+```javascript
+// Write - the server reads these on the next request
+document.cookie = "theme=light; path=/; max-age=31536000; SameSite=Lax";
+document.cookie = "lang=fr; path=/; max-age=31536000; SameSite=Lax";
+```
+
+**Rules:**
+- Preferences survive logout and session expiry — they are UI state, not account data
+- Never persist guest preferences server-side — the server reads the cookie per request; PART 34's `user_preferences` table (if implemented) is for authenticated per-account settings, never for the guest cookie state described here
+- Never store PII in cookies or localStorage
+- Always fall back to a safe default when a cookie is missing or invalid
+- App-specific preferences use the same cookie table and rules above — don't invent a second storage mechanism for them
+
+**Cross-device preference sync (export/import — stateless, no PART 34 required):**
+
+Preferences aren't tied to identity — any two guests who set the same `theme`/`lang` produce the same code/URL, because the code/URL *is* the preference values, not a lookup key. This lets a preference be carried to a new browser/device without an account and without the server ever storing anything.
+
+- `theme`, `lang`, and every app-specific `{project_name}_pref_*` cookie are exportable — export/import round-trips the full guest preference set, not just theme/lang. `cookie_consent` and `ccpa_opt_out` are NEVER included — consent is a per-browser legal acknowledgment that must be re-affirmed on each device, not a portable preference. `{project_name}_build` is NEVER included — it is a device-local cache-purge stamp.
+- Guest preferences live at `/server/preferences` (distinct from the authenticated `/server/{admin_path}/{admin_username}/preferences` and PART-34 `/users/settings/preferences` routes), API-mirrored at `/api/{api_version}/server/preferences` — the export/import actions are sub-routes of it, never the standalone `/prefs/*` path, nor bare `/preferences` without the `/server` prefix. `preferences` MUST be added to the `{admin_path}` reserved-word list (see "Route Conflict Detection") so an operator can never set `admin_path=preferences` and collide with it. If an old/non-canonical route (e.g. a bare `/preferences` or `/prefs/*`) exists in already-written code, delete it outright and update all callers to `/server/preferences` — never keep it as a redirect or alias "for backward compatibility" (see "Canonical Terms Only").
+- **Export** (`GET /server/preferences/export`, API-mirrored at `GET /api/{api_version}/server/preferences/export`, or a "Copy preferences" UI action): reads the current `theme`, `lang`, and app-specific `{project_name}_pref_*` cookies and returns two forms of the same state:
+  - **Full URL** — `https://{host}/server/preferences/import?theme=dark&lang=fr`: a plain query string, human-readable, and stable across schema changes (a link made before a new preference key existed just omits it on import).
+  - **Short code** — `base64url(theme=dark&lang=fr)`: the query string alone, for manual retyping on a device without copy/paste; the import form strips a leading `https://.../server/preferences/import?` if pasted with it.
+- **Import** (`GET /server/preferences/import?theme=dark&lang=fr`, API-mirrored at `GET /api/{api_version}/server/preferences/import`, or a paste-a-code field feeding the same route): validates each parameter against its normal enum/BCP-47 allowlist — reject or drop anything unknown or malformed, an imported value is still untrusted input — sets the matching cookies, then `303 See Other` to `/` (or the referring page) so the code never lingers in the visible URL or browser history.
+- No account, no DB row, no user-preferences table required for this guest flow — decode → validate → set cookie → redirect happens in the one request; nothing is written or looked up server-side.
+
 ### Offline Behavior
 
 | Resource Type | Cache Strategy | Offline Behavior |
@@ -28049,7 +28082,7 @@ Full CSS rules (custom properties, theming, layout): see "CSS Rules" earlier in 
 - GraphiQL interface
 - CLI colored output
 - TUI (bubbletea/lipgloss)
-- Native GUI (GTK/Cocoa/Win32)
+- Native-feel GUI (`gogpu/ui`, pure Go)
 - ReadTheDocs documentation (if possible)
 - All interactive elements
 
@@ -28191,7 +28224,7 @@ var TerminalPaletteLight = TerminalPalette{
 **Native GUI does NOT consume the literal hex palette above either** —
 native widget theming should follow the OS, not a custom app palette.
 `src/client/gui/theme_*.go` only detects light/dark (see System Theme
-Detection below) and lets the native toolkit (GTK/Cocoa/Win32) apply its
+Detection below) and lets the toolkit (`gogpu/ui`) apply its
 own light/dark widget theme; it does not paint individual widgets with
 the hex values from `ThemePaletteDark`/`ThemePaletteLight`.
 
@@ -39986,7 +40019,7 @@ Container registries (GHCR, Docker Hub, etc.) read metadata from the manifest in
 **Apply annotations via `docker/metadata-action` in GitHub Actions:**
 
 ```yaml
-- uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9  # v6.1.0
+- uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302  # v6.2.0
   id: meta
   with:
     images: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}
@@ -39995,7 +40028,7 @@ Container registries (GHCR, Docker Hub, etc.) read metadata from the manifest in
       org.opencontainers.image.title={project_name}
       org.opencontainers.image.licenses=MIT
 
-- uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+- uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
   with:
     annotations: ${{ steps.meta.outputs.annotations }}
     labels: ${{ steps.meta.outputs.labels }}
@@ -41535,6 +41568,7 @@ on:
     branches: [main, master]
   schedule:
     - cron: '0 6 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -41546,25 +41580,25 @@ concurrency:
 jobs:
   lint:
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container:
       image: casjaysdev/go:latest
       options: "--user 0:0"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: go vet ./...
       - run: staticcheck ./...
 
   test:
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container:
       image: casjaysdev/go:latest
       options: "--user 0:0"
     env:
       CGO_ENABLED: "0"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Run tests with coverage
         run: |
           mkdir -p "/tmp/${{ github.repository_owner }}"
@@ -41583,23 +41617,23 @@ jobs:
   build:
     if: github.event_name != 'schedule'
     needs: [lint, test]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container:
       image: casjaysdev/go:latest
       options: "--user 0:0"
     env:
       CGO_ENABLED: "0"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: go build -buildvcs=false ./...
 
   vuln-scan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container:
       image: casjaysdev/go:latest
       options: "--user 0:0"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: govulncheck ./...
 
   # Additional jobs (same pattern — container: image: casjaysdev/go:latest):
@@ -41620,6 +41654,7 @@ on:
     tags:
       - 'v*'
       - '[0-9]*.[0-9]*.[0-9]*'
+  workflow_dispatch: {}
 
 concurrency:
   group: release-${{ github.ref }}
@@ -41633,7 +41668,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container:
       image: casjaysdev/go:latest
       options: "--user 0:0"
@@ -41660,7 +41695,7 @@ jobs:
             goarch: arm64
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set build info
         run: |
@@ -41746,7 +41781,7 @@ jobs:
 
   release:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       # create GitHub release + upload assets, plus tag ownership (Ensure release tag)
       contents: write
@@ -41756,7 +41791,7 @@ jobs:
       attestations: write
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # required: full history needed to inspect and push tags
           fetch-depth: 0
@@ -41822,7 +41857,7 @@ jobs:
           subject-path: binaries/${{ env.PROJECT_NAME }}-*
 
       - name: Create Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           files: binaries/*
@@ -41841,6 +41876,7 @@ on:
   push:
     branches:
       - beta
+  workflow_dispatch:
 
 concurrency:
   group: beta-${{ github.ref }}
@@ -41854,12 +41890,12 @@ env:
 
 jobs:
   version:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       version: ${{ steps.v.outputs.version }}
       tag: ${{ steps.v.outputs.tag }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Compute version
         id: v
         run: |
@@ -41875,7 +41911,7 @@ jobs:
 
   build:
     needs: [version]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container:
       image: casjaysdev/go:latest
       options: "--user 0:0"
@@ -41902,7 +41938,7 @@ jobs:
             goarch: arm64
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set build info
         run: |
@@ -41984,7 +42020,7 @@ jobs:
 
   release:
     needs: [version, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       # create GitHub release + upload assets
       contents: write
@@ -41994,7 +42030,7 @@ jobs:
       attestations: write
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Download all artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
@@ -42027,7 +42063,7 @@ jobs:
           subject-path: binaries/${{ env.PROJECT_NAME }}-*
 
       - name: Create Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
           tag_name: ${{ needs.version.outputs.tag }}
           files: binaries/*
@@ -42064,11 +42100,11 @@ env:
 
 jobs:
   version:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Compute version
         id: v
         run: |
@@ -42079,7 +42115,7 @@ jobs:
 
   build:
     needs: [version]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container:
       image: casjaysdev/go:latest
       options: "--user 0:0"
@@ -42106,7 +42142,7 @@ jobs:
             goarch: arm64
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set build info
         run: |
@@ -42188,7 +42224,7 @@ jobs:
 
   release:
     needs: [version, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       # create GitHub release + upload assets
       contents: write
@@ -42198,7 +42234,7 @@ jobs:
       attestations: write
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Download all artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
@@ -42238,7 +42274,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - name: Create Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
           tag_name: daily
           name: "Daily Build ${{ env.VERSION }}"
@@ -42300,23 +42336,23 @@ env:
 
 jobs:
   build-standard:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     if: github.event_name != 'schedule'
     permissions:
       contents: read
       packages: write
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3  # v4.1.0
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
 
       - name: Log in to Container Registry
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -42358,7 +42394,7 @@ jobs:
           echo "tags=$TAGS" >> $GITHUB_OUTPUT
 
       - name: Build and push (standard)
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
           context: .
           file: docker/Dockerfile
@@ -42399,23 +42435,23 @@ jobs:
             manifest:org.opencontainers.image.licenses=MIT
 
   build-devel:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/'))
     permissions:
       contents: read
       packages: write
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3  # v4.1.0
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
 
       - name: Log in to Container Registry
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -42431,7 +42467,7 @@ jobs:
           echo "BUILD_DATE=$(date -u -d @$BUILD_EPOCH +"%Y-%m-%dT%H:%M:%SZ")" >> $GITHUB_ENV
 
       - name: Build and push (devel)
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
           context: .
           file: docker/Dockerfile.dev
@@ -42510,22 +42546,22 @@ env:
 
 jobs:
   build-aio:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: write
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3  # v4.1.0
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
 
       - name: Log in to Container Registry
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -42569,7 +42605,7 @@ jobs:
           echo "tags=$TAGS" >> $GITHUB_OUTPUT
 
       - name: Build and push (all-in-one)
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
           context: .
           file: docker/Dockerfile.aio
@@ -42660,7 +42696,7 @@ Key differences from GitHub Actions:
 | Container Registry | Enable in Site Administration → Packages |
 | Token | User Settings → Applications → Generate Access Token |
 
-For self-hosted runners, change `runs-on: ubuntu-latest` to your runner label.
+For self-hosted runners, change `runs-on: ubuntu-26.04` to your runner label.
 
 ## Workflow Files (Gitea/Forgejo Actions)
 
@@ -42685,6 +42721,7 @@ on:
     tags:
       - 'v*'
       - '[0-9]*.[0-9]*.[0-9]*'
+  workflow_dispatch: {}
 
 concurrency:
   group: release-${{ gitea.ref }}
@@ -42698,7 +42735,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container:
       image: casjaysdev/go:latest
       options: "--user 0:0"
@@ -42725,7 +42762,7 @@ jobs:
             goarch: arm64
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set build info
         run: |
@@ -42811,12 +42848,12 @@ jobs:
 
   release:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # required: full history needed to inspect and push tags
           fetch-depth: 0
@@ -42877,7 +42914,7 @@ jobs:
           sha512sum $FILES > sha512.txt
 
       - name: Create Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           files: binaries/*
@@ -42894,6 +42931,7 @@ on:
   push:
     branches:
       - beta
+  workflow_dispatch:
 
 concurrency:
   group: beta-${{ gitea.ref }}
@@ -42907,12 +42945,12 @@ env:
 
 jobs:
   version:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       version: ${{ steps.v.outputs.version }}
       tag: ${{ steps.v.outputs.tag }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Compute version
         id: v
         run: |
@@ -42928,7 +42966,7 @@ jobs:
 
   build:
     needs: [version]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container:
       image: casjaysdev/go:latest
       options: "--user 0:0"
@@ -42955,7 +42993,7 @@ jobs:
             goarch: arm64
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set build info
         run: |
@@ -43037,12 +43075,12 @@ jobs:
 
   release:
     needs: [version, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Download all artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
@@ -43070,7 +43108,7 @@ jobs:
           sha512sum $FILES > sha512.txt
 
       - name: Create Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
           tag_name: ${{ needs.version.outputs.tag }}
           files: binaries/*
@@ -43106,11 +43144,11 @@ env:
 
 jobs:
   version:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Compute version
         id: v
         run: |
@@ -43121,7 +43159,7 @@ jobs:
 
   build:
     needs: [version]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     container:
       image: casjaysdev/go:latest
       options: "--user 0:0"
@@ -43148,7 +43186,7 @@ jobs:
             goarch: arm64
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set build info
         run: |
@@ -43230,12 +43268,12 @@ jobs:
 
   release:
     needs: [version, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Download all artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
@@ -43271,7 +43309,7 @@ jobs:
           git push origin :refs/tags/daily 2>/dev/null || true
 
       - name: Create Release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
           tag_name: daily
           name: "Daily Build ${{ env.VERSION }}"
@@ -43307,20 +43345,20 @@ env:
 
 jobs:
   build-standard:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     if: gitea.event_name != 'schedule'
     permissions:
       contents: read
       packages: write
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3  # v4.1.0
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
 
       - name: Set registry from server URL
         run: |
@@ -43334,7 +43372,7 @@ jobs:
           echo "IMAGE_NAME=$(echo "${{ gitea.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITEA_ENV
 
       - name: Log in to Container Registry
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ gitea.actor }}
@@ -43378,7 +43416,7 @@ jobs:
           echo "tags=$TAGS" >> $GITEA_OUTPUT
 
       - name: Build and push (standard)
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
           context: .
           file: docker/Dockerfile
@@ -43419,20 +43457,20 @@ jobs:
             manifest:org.opencontainers.image.licenses=MIT
 
   build-devel:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     if: gitea.event_name == 'schedule' || gitea.event_name == 'workflow_dispatch' || (gitea.event_name == 'push' && !startsWith(gitea.ref, 'refs/tags/'))
     permissions:
       contents: read
       packages: write
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3  # v4.1.0
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
 
       - name: Set registry from server URL
         run: |
@@ -43444,7 +43482,7 @@ jobs:
           echo "IMAGE_NAME=$(echo "${{ gitea.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITEA_ENV
 
       - name: Log in to Container Registry
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ gitea.actor }}
@@ -43458,7 +43496,7 @@ jobs:
           echo "BUILD_DATE=$(date -u -d @$BUILD_EPOCH +"%Y-%m-%dT%H:%M:%SZ")" >> $GITEA_ENV
 
       - name: Build and push (devel)
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
           context: .
           file: docker/Dockerfile.dev
@@ -43536,19 +43574,19 @@ env:
 
 jobs:
   build-aio:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
       packages: write
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3  # v4.1.0
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5  # v4.1.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
 
       - name: Set registry from server URL
         run: |
@@ -43560,7 +43598,7 @@ jobs:
           echo "IMAGE_NAME=$(echo "${{ gitea.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITEA_ENV
 
       - name: Log in to Container Registry
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4.2.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ gitea.actor }}
@@ -43602,7 +43640,7 @@ jobs:
           echo "tags=$TAGS" >> $GITEA_OUTPUT
 
       - name: Build and push (all-in-one)
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
           context: .
           file: docker/Dockerfile.aio
@@ -43670,7 +43708,7 @@ jobs:
 - Use `secrets.GITEA_TOKEN` or `secrets.FORGEJO_TOKEN` for authentication
 - Works with gitea.com, self-hosted Gitea, and self-hosted Forgejo
 - Container registry auto-detected from server URL (e.g., `git.example.com/owner/repo`)
-- Self-hosted runners: change `runs-on: ubuntu-latest` to your runner label
+- Self-hosted runners: change `runs-on: ubuntu-26.04` to your runner label
 - Forgejo can use `.gitea/workflows/` directory for Gitea compatibility
 - Some advanced GitHub features may not be available on older versions
 
@@ -46158,12 +46196,12 @@ make test
 ```yaml
 # .github/workflows/ci.yml (test job with coverage)
 test:
-  runs-on: ubuntu-latest
+  runs-on: ubuntu-26.04
   container:
     image: casjaysdev/go:latest
     options: "--user 0:0"
   steps:
-    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
     - name: Run tests with coverage
       run: go test -cover -coverprofile=coverage.out ./...
@@ -53822,7 +53860,7 @@ if env.IsAutoDetectDisplayModeGUI() {
 
 | DisplayMode | Priority | When Auto-Detected | CLI Binary Behavior |
 |-------------|----------|-------------------|---------------------|
-| **DisplayModeGUI** | 1 | Native display, no remote | Launch native GUI (GTK/Cocoa/Win32) |
+| **DisplayModeGUI** | 1 | Native display, no remote | Launch native GUI (`gogpu/ui`, pure Go) |
 | **DisplayModeTUI** | 2 | Interactive terminal | Launch bubbletea TUI |
 | **DisplayModeCLI** | 3 | Command provided or piped | Text output with colors |
 | **DisplayModeHeadless** | 4 | No display, no TTY | Error (CLI requires interaction) |
@@ -53909,7 +53947,7 @@ Why CLI needs a setup wizard:
 
 | Requirement | GUI | TUI |
 |-------------|-----|-----|
-| **Professional UI/UX** | Native look (GTK/Cocoa/Win32) | Clean bubbletea interface |
+| **Professional UI/UX** | Native-feel look (`gogpu/ui`, OS-themed, pure Go) | Clean bubbletea interface |
 | **Full server functionality** | 100% feature coverage | 100% feature coverage |
 | **Keyboard navigation** | Tab, Enter, Escape | Full keyboard support |
 | **Real-time validation** | Input validation | Input validation |
@@ -54014,7 +54052,7 @@ func selectSetupMode() SetupMode {
 | **Reliability** | TUI works on any terminal, X11 can fail |
 | **Bandwidth** | TUI uses minimal bandwidth vs GUI rendering |
 
-**GUI Setup Wizard (Native - GTK/Cocoa/Win32):**
+**GUI Setup Wizard (Native-feel - `gogpu/ui`, pure Go):**
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -54152,14 +54190,16 @@ func EnsureConfigured() error {
 
 ### GUI Mode Requirements
 
-**When GUI mode is available, use NATIVE platform toolkit. No Electron, no web views.**
+**When GUI mode is available, use a pure-Go GUI toolkit. `CGO_ENABLED=0` is absolute (see go_conventions.md's Code Rules — "always; pure Go, no C, no exceptions") — no toolkit that requires cgo is permitted, no exceptions. No Electron, no web views.**
 
 | Platform | Toolkit | Notes |
 |----------|---------|-------|
-| **Linux** | GTK4 or Qt6 | GTK4 preferred for GNOME, Qt6 for KDE |
-| **macOS** | Cocoa (AppKit) | Native macOS UI via cgo |
-| **Windows** | Win32/WinUI | Native Windows UI |
-| **BSD** | GTK4 or Qt6 | Same as Linux |
+| **Linux** | `github.com/gogpu/ui` + `github.com/gogpu/gogpu` | Pure Go, zero CGO — `goffi` `dlopen`s `libX11`/`libwayland-client` at runtime, no link-time C dependency; native Wayland, not XWayland compat |
+| **macOS** | `github.com/gogpu/ui` + `github.com/gogpu/gogpu` | Pure Go, no cgo — Metal access via the Objective-C runtime through `goffi` |
+| **Windows** | `github.com/gogpu/ui` + `github.com/gogpu/gogpu` | Pure Go, no cgo — DX12 via `goffi` |
+| **BSD** | none | `gogpu/gogpu`'s windowing layer does not implement BSD yet (stubbed via build tags). Compile GUI support out on `freebsd`/`netbsd`/`openbsd` (`caps.GUISupported == false`); falls back to TUI, or CLI if no TTY (see APPLICATION.md's Smart Detect Rules) |
+
+**One toolkit, one implementation, every platform GUI is supported on.** `gogpu/ui` (+ `gogpu/gogpu` for windowing) is cross-platform in a single codebase for Linux/macOS/Windows — there is no per-OS launcher file and no `runtime.GOOS` dispatch. `gioui.org` (Gio) and `fyne.io/fyne/v2` are **NOT compliant** — both require cgo on Linux (Gio's own install docs list `libwayland-dev`/`libx11-dev`/`libxkbcommon-x11-dev`/etc.; Fyne is built on `go-gl`/`glfw`) and are therefore banned project-wide, not just discouraged.
 
 ```go
 // src/client/gui/gui.go
@@ -54168,7 +54208,17 @@ func EnsureConfigured() error {
 package gui
 
 import (
-    "runtime"
+    "log"
+
+    "github.com/gogpu/gg"
+    _ "github.com/gogpu/gg/gpu"
+    "github.com/gogpu/gg/integration/ggcanvas"
+    "github.com/gogpu/gogpu"
+    "github.com/gogpu/ui/app"
+    "github.com/gogpu/ui/primitives"
+    "github.com/gogpu/ui/render"
+    "github.com/gogpu/ui/theme/material3"
+    "github.com/gogpu/ui/widget"
 )
 
 // GUI is conditionally compiled
@@ -54179,232 +54229,76 @@ func IsGUIAvailable() bool {
     return env.HasDisplay && !env.IsSSH && !env.IsMosh
 }
 
+// LaunchGUI opens the gogpu/ui window. gogpu/ui is pure Go, zero CGO (via
+// goffi's runtime dlopen) and cross-platform — the same code runs
+// unmodified on Linux (X11/Wayland), macOS, and Windows. BSD has no
+// backend yet, so IsGUIAvailable/caps.GUISupported must already be false
+// there and this function must never be reached on freebsd/netbsd/openbsd.
 func LaunchGUI(config *Config) error {
-    switch runtime.GOOS {
-    case "linux", "freebsd", "openbsd", "netbsd":
-        return launchGTKGui(config)
-    case "darwin":
-        return launchCocoaGui(config)
-    case "windows":
-        return launchWin32Gui(config)
-    default:
-        return ErrGUIUnsupported
-    }
-}
-```
+    gogpuApp := gogpu.NewApp(gogpu.DefaultConfig().
+        WithTitle("{PROJECT_NAME} CLI").
+        WithSize(800, 600))
 
-### Platform-Specific GUI Launchers
+    m3 := material3.New(widget.Hex(0x6750A4))
 
-```go
-// --- gui_gtk.go (Linux and BSD) ---
-//go:build (linux || freebsd || openbsd || netbsd) && gui
-// +build linux freebsd openbsd netbsd
-// +build gui
+    uiApp := app.New(
+        app.WithWindowProvider(gogpuApp),
+        app.WithPlatformProvider(gogpuApp),
+        app.WithEventSource(gogpuApp.EventSource()),
+    )
+    uiApp.SetRoot(buildMainWindow(config, m3))
 
-package gui
-
-import (
-    "github.com/diamondburned/gotk4/pkg/gtk/v4"
-    "github.com/diamondburned/gotk4/pkg/gio/v2"
-)
-
-func launchGTKGui(config *Config) error {
-    app := gtk.NewApplication("{plist_name}.cli", gio.ApplicationFlagsNone)
-
-    app.ConnectActivate(func() {
-        win := gtk.NewApplicationWindow(app)
-        win.SetTitle("{PROJECT_NAME} CLI")
-        win.SetDefaultSize(800, 600)
-
-        // Build UI from config
-        buildMainWindow(win, config)
-
-        win.Show()
+    var canvas *ggcanvas.Canvas
+    gogpuApp.OnDraw(func(dc *gogpu.Context) {
+        w, h := dc.Width(), dc.Height()
+        if w <= 0 || h <= 0 {
+            return
+        }
+        if canvas == nil {
+            provider := gogpuApp.GPUContextProvider()
+            if provider == nil {
+                return
+            }
+            var err error
+            canvas, err = ggcanvas.New(provider, w, h)
+            if err != nil {
+                log.Printf("ggcanvas: %v", err)
+                return
+            }
+        }
+        uiApp.Frame()
+        cw, ch := canvas.Size()
+        if cw != w || ch != h {
+            if err := canvas.Resize(w, h); err != nil {
+                log.Printf("resize: %v", err)
+            }
+            cw, ch = w, h
+        }
+        sv := dc.SurfaceView()
+        sw, sh := dc.SurfaceSize()
+        canvas.Draw(func(cc *gg.Context) {
+            cc.SetRGBA(0.94, 0.94, 0.94, 1)
+            cc.DrawRectangle(0, 0, float64(cw), float64(ch))
+            cc.Fill()
+            uiApp.Window().DrawTo(render.NewCanvas(cc, cw, ch))
+        })
+        if err := canvas.RenderDirect(sv, sw, sh); err != nil {
+            log.Printf("render: %v", err)
+        }
     })
 
-    return app.Run(nil)
+    return gogpuApp.Run()
 }
 
-func buildMainWindow(win *gtk.ApplicationWindow, config *Config) {
-    // Main container
-    box := gtk.NewBox(gtk.OrientationVertical, 10)
-    box.SetMarginTop(10)
-    box.SetMarginBottom(10)
-    box.SetMarginStart(10)
-    box.SetMarginEnd(10)
-
-    // Header
-    header := gtk.NewHeaderBar()
-    header.SetShowTitleButtons(true)
-    win.SetTitlebar(header)
-
-    // Content area - implement based on CLI functionality
-    // ...
-
-    win.SetChild(box)
+func buildMainWindow(config *Config, m3 *material3.Theme) *primitives.BoxWidget {
+    // Content area — implement based on CLI functionality. Use
+    // gogpu/ui's Material 3 / Fluent / Cupertino theme packages for OS
+    // light/dark detection; never invent a literal hex palette (see
+    // Color Palette rule) — the 0x6750A4 seed above is a placeholder,
+    // resolve it from the detected OS theme instead.
+    return primitives.Box().Padding(24).Gap(12)
 }
 ```
-
-```go
-// --- gui_darwin.go ---
-//go:build darwin && gui
-// +build darwin,gui
-
-package gui
-
-/*
-#cgo CFLAGS: -x objective-c
-#cgo LDFLAGS: -framework Cocoa
-#import <Cocoa/Cocoa.h>
-
-void launchCocoaApp(const char* title, int width, int height);
-*/
-import "C"
-import "unsafe"
-
-func launchCocoaGui(config *Config) error {
-    title := C.CString("{PROJECT_NAME} CLI")
-    defer C.free(unsafe.Pointer(title))
-
-    C.launchCocoaApp(title, 800, 600)
-    return nil
-}
-
-// Objective-C implementation in gui_darwin.m:
-// @interface AppDelegate : NSObject <NSApplicationDelegate>
-// @property (strong) NSWindow *window;
-// @end
-//
-// @implementation AppDelegate
-// - (void)applicationDidFinishLaunching:(NSNotification *)notification {
-//     NSRect frame = NSMakeRect(0, 0, 800, 600);
-//     self.window = [[NSWindow alloc] initWithContentRect:frame
-//         styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-//                    NSWindowStyleMaskResizable | NSWindowStyleMaskMiniaturizable)
-//         backing:NSBackingStoreBuffered defer:NO];
-//     [self.window setTitle:@"{PROJECT_NAME} CLI"];
-//     [self.window center];
-//     [self.window makeKeyAndOrderFront:nil];
-// }
-// @end
-```
-
-```go
-// --- gui_windows.go ---
-//go:build windows && gui
-// +build windows,gui
-
-package gui
-
-import (
-    "syscall"
-    "unsafe"
-
-    "golang.org/x/sys/windows"
-)
-
-var (
-    user32           = windows.NewLazySystemDLL("user32.dll")
-    createWindowExW  = user32.NewProc("CreateWindowExW")
-    defWindowProcW   = user32.NewProc("DefWindowProcW")
-    dispatchMessageW = user32.NewProc("DispatchMessageW")
-    getMessageW      = user32.NewProc("GetMessageW")
-    postQuitMessage  = user32.NewProc("PostQuitMessage")
-    registerClassExW = user32.NewProc("RegisterClassExW")
-    showWindow       = user32.NewProc("ShowWindow")
-    translateMessage = user32.NewProc("TranslateMessage")
-    updateWindow     = user32.NewProc("UpdateWindow")
-)
-
-const (
-    WS_OVERLAPPEDWINDOW = 0x00CF0000
-    WS_VISIBLE          = 0x10000000
-    SW_SHOW             = 5
-    WM_DESTROY          = 0x0002
-)
-
-func launchWin32Gui(config *Config) error {
-    className := windows.StringToUTF16Ptr("{project_name}_cli_window")
-    windowName := windows.StringToUTF16Ptr("{PROJECT_NAME} CLI")
-
-    // Register window class
-    var wc WNDCLASSEXW
-    wc.CbSize = uint32(unsafe.Sizeof(wc))
-    wc.LpfnWndProc = syscall.NewCallback(wndProc)
-    wc.HInstance = 0
-    wc.LpszClassName = className
-
-    registerClassExW.Call(uintptr(unsafe.Pointer(&wc)))
-
-    // Create window
-    hwnd, _, _ := createWindowExW.Call(
-        0,
-        uintptr(unsafe.Pointer(className)),
-        uintptr(unsafe.Pointer(windowName)),
-        WS_OVERLAPPEDWINDOW|WS_VISIBLE,
-        // x, y, width, height
-        100, 100, 800, 600,
-        0, 0, 0, 0,
-    )
-
-    showWindow.Call(hwnd, SW_SHOW)
-    updateWindow.Call(hwnd)
-
-    // Message loop
-    var msg MSG
-    for {
-        ret, _, _ := getMessageW.Call(
-            uintptr(unsafe.Pointer(&msg)), 0, 0, 0,
-        )
-        if ret == 0 {
-            break
-        }
-        translateMessage.Call(uintptr(unsafe.Pointer(&msg)))
-        dispatchMessageW.Call(uintptr(unsafe.Pointer(&msg)))
-    }
-
-    return nil
-}
-
-func wndProc(hwnd, msg, wParam, lParam uintptr) uintptr {
-    switch msg {
-    case WM_DESTROY:
-        postQuitMessage.Call(0)
-        return 0
-    }
-    ret, _, _ := defWindowProcW.Call(hwnd, msg, wParam, lParam)
-    return ret
-}
-
-type WNDCLASSEXW struct {
-    CbSize        uint32
-    Style         uint32
-    LpfnWndProc   uintptr
-    CbClsExtra    int32
-    CbWndExtra    int32
-    HInstance     uintptr
-    HIcon         uintptr
-    HCursor       uintptr
-    HbrBackground uintptr
-    LpszMenuName  *uint16
-    LpszClassName *uint16
-    HIconSm       uintptr
-}
-
-type MSG struct {
-    Hwnd    uintptr
-    Message uint32
-    WParam  uintptr
-    LParam  uintptr
-    Time    uint32
-    Pt      struct{ X, Y int32 }
-}
-```
-
-BSD systems use the same GTK4 implementation as Linux — `gui_gtk.go` covers
-FreeBSD, OpenBSD, and NetBSD through its build tags, so no separate
-`gui_bsd.go` file exists.
-
 ### SSH/Mosh Detection
 
 **Remote sessions ALWAYS use TUI or CLI. Never attempt GUI over SSH/mosh.**
@@ -63914,7 +63808,7 @@ When implementing custom domains for a project:
 2. `## Project variables` — `key: value` lines that provide the canonical values AI.md resolves for `project_name`, `project_org`, `internal_name`, etc.
 3. `## Business logic` — features, data models, business rules, endpoints (WHAT, not HOW)
 
-**See PART 0 → "IDEA.md Required Layout" for the authoritative rules: variable-key naming, the immutable `internal_name` rule, the missing-value setup flow, and the migration procedure for legacy free-form IDEA.md files.**
+**See PART 0 → "IDEA.md Required Layout" for the authoritative rules: variable-key naming, the stable `internal_name` rule, the missing-value setup flow, and the migration procedure for legacy free-form IDEA.md files.**
 
 ---
 
@@ -63930,7 +63824,7 @@ Free-form prose, 1–3 paragraphs.}
 
 project_name:    {project_name}
 project_org:     {project_org}
-# FROZEN — equals project_name on first install, never changes
+# STABLE — equals project_name on first install; change only on an explicit rename or fork reset
 internal_name:   {project_name}
 app_name:        {project_name}
 official_site:   {fqdn}
@@ -64329,6 +64223,7 @@ make docker
 - [ ] IDEA.md exists and contains project-specific business logic
 - [ ] If pre-template `CLAUDE.md` or `.claude/CLAUDE.md` existed, its project-specific content was migrated into IDEA.md
 - [ ] Claude loader files are now short loaders only and no longer hold the primary business spec
+- [ ] `AGENTS.md` exists at project root as an exact copy of `CLAUDE.md` (real file, not a symlink)
 - [ ] MIT License in LICENSE.md
 - [ ] All embedded library licenses listed
 - [ ] No proprietary dependencies
