@@ -16459,6 +16459,7 @@ llms.txt tells AI agents (Claude, GPT, etc.) what the application does, what API
 Base URL: {app_url}/api/{api_version}
 Authentication: Bearer token (create via POST /api/{api_version}/users/tokens)
 Rate limit: {rate_limit} requests/minute
+MCP: {app_url}/mcp (Streamable HTTP; same Bearer token as the API)
 
 ## Endpoints
 - GET /server/healthz - Health check (no auth)
@@ -16506,6 +16507,7 @@ web:
 | Admin routes (`/server/{admin_path}/**`) | No | Not for external agents |
 | Internal routes (`/internal/**`) | No | Server-to-server only |
 | Health (`/server/healthz`) | Yes | Useful for monitoring agents |
+| MCP (`/api/{api_version}/server/mcp`) | Yes | Same auth as the API; listed so agents can connect |
 | Metrics (`/server/metrics`) | No | Operational/internal endpoint; never advertised |
 
 **Well-Known Support Matrix Update:**
@@ -16514,6 +16516,59 @@ web:
 |------|---------|---------------|--------|--------------|
 | `/.well-known/llms.txt` | Enabled | All projects | Generated from config + routes | `text/plain; charset=utf-8` |
 | `/llms.txt` | Enabled | All projects | Alias to `/.well-known/llms.txt` | `text/plain; charset=utf-8` |
+
+### MCP Endpoint (Model Context Protocol)
+
+**Every project exposes an MCP endpoint so AI clients (Claude, IDE agents, other MCP clients) can use the API as tools. It is a second front door onto the existing API — it adds no new authentication, no new token type, and no new permissions.**
+
+| Aspect | Rule |
+|--------|------|
+| Default | **On** (`server.mcp.enabled: true`); the admin panel toggle in "Web" settings disables it. When disabled every route below returns `404` |
+| Transport | **Streamable HTTP, remote only** — one endpoint, JSON-RPC 2.0 over HTTP `POST`. No stdio build, no local-process mode, no separate MCP binary or port |
+| Specification | Follow the current MCP specification (https://modelcontextprotocol.io/specification) — the revision, header and error rules come from it, not from this file. Negotiate the version the client asks for; unsupported version → `400` with the spec's `UnsupportedProtocolVersionError` listing the supported versions |
+| Canonical route | `/api/{api_version}/server/mcp` |
+| Aliases | `/api/mcp` and `/mcp` — direct aliases for the current `{api_version}`; the SAME handler mounted at all three paths, never a redirect (see "Unversioned API aliases") |
+| Reserved name | `mcp` is in `reservedNames` so no user, org, or project slug can claim `/mcp` |
+| Methods | `POST` only. `GET` and `DELETE` → `405 Method Not Allowed` (the server keeps no sessions and opens no standalone stream) |
+| Responses | A single `application/json` object per request; an SSE stream only when a tool needs to stream progress. Server-initiated requests are never sent |
+| Sessions | None. An `Mcp-Session-Id` header, if sent by an older client, is ignored — never minted, never echoed |
+| `Origin` | If an `Origin` header is present it MUST be validated against the request's own origin / configured public origins (PART 8 → "Resolution Order"); invalid → `403` (DNS-rebinding protection required by the spec) |
+| Header checks | `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` MUST match the JSON-RPC body; mismatch → `400` with the spec's `HeaderMismatch` error |
+
+#### Authentication — reuse, never new
+
+| Rule | Detail |
+|------|--------|
+| Credential | The existing `Authorization: Bearer ...` header, exactly as for every other API route. **There is no MCP token, no MCP scope, and no MCP-specific setting that grants access** |
+| Validation | Run through the SAME token validation function and middleware as the API — one code path, not a copy |
+| Cookies | Ignored. Like every `/api/...` route, the MCP endpoint accepts the `Authorization` header only — no ambient authority |
+| No token | Anonymous: only what an unauthenticated API call may do (public endpoints, default rate limits). An operation that needs auth returns the API's normal `401` JSON-RPC error |
+| Authorization | Per tool call, with the caller's token, by the same checks as the matching API endpoint. A token that cannot call an endpoint over REST cannot call its tool |
+| Rate limiting, audit | The same limiters and audit events as the API; the audit `source` is `mcp` so MCP traffic is distinguishable |
+| Operator-only endpoints | Exposed as tools only to a caller whose token is already operator/admin-scoped; for any other caller they are absent from `tools/list` AND rejected on `tools/call` |
+
+#### Tools
+
+- **One tool per public API operation** (`{api_version}` routes), generated from the same route definitions that feed Swagger and `llms.txt` — never a hand-maintained second list.
+- Tool `name` = the OpenAPI `operationId`; `description` and `inputSchema` come from the OpenAPI definition; `tools/list` returns only the tools the caller's token may use.
+- A tool call dispatches **in-process into the existing handler** with the caller's `Authorization` header — no second implementation, no loopback HTTP request, no bypass of middleware (validation, rate limits, audit, the project's ownership checks).
+- Handler errors map to the MCP tool result with `isError: true` and the API's normal error body (`ok: false`, `error`, `message`); secrets are never included in a tool result any more than in an API response.
+- Resources and prompts are not exposed unless the project's `IDEA.md` defines them.
+
+#### Config and Admin Panel
+
+```yaml
+server:
+  mcp:
+    # Serve the MCP endpoint (default: true)
+    enabled: true
+```
+
+| Element | Type | Description |
+|---------|------|-------------|
+| MCP endpoint | Toggle | Enables `server.mcp.enabled`; takes effect without restart |
+| Endpoint URL | Read-only | The resolved `/api/{api_version}/server/mcp` URL (per request via the URL-resolution rules) |
+| Auth note | Read-only help text | MCP uses the same Bearer tokens as the API; there is no separate MCP token |
 
 ### Admin Panel (/server/{admin_path}/config/web)
 
@@ -16549,6 +16604,8 @@ web:
 |---------|------|-------------|
 | Root `/healthz` alias | Toggle | Enables `server.healthz.root.enabled` |
 | Behavior note | Read-only help text | `/healthz` maps directly to `/server/healthz` using the same handler; never redirects |
+
+**MCP Settings:** see "MCP Endpoint" (`server.mcp.enabled`).
 
 ## Security Reports — Coordinated Disclosure Pipeline
 
@@ -22323,11 +22380,20 @@ Need additional compatible endpoints?"
 | `/api/autodiscover` | GET | None | Server settings, config schema, and options for CLI/agent (non-versioned) |
 | `/api/swagger` | GET | None | OpenAPI JSON spec — direct alias for current `{api_version}` |
 | `/api/graphql` | POST | None | GraphQL queries — direct alias for current `{api_version}` |
+| `/api/mcp` | POST | Bearer (optional) | MCP endpoint — direct alias for current `{api_version}`; same auth as the API |
+| `/mcp` | POST | Bearer (optional) | MCP endpoint — root alias for current `{api_version}`; same handler, never a redirect |
 | `/api/healthz` | GET | None | Health check JSON — direct alias for current `{api_version}` |
 | `/api/metrics[/{service}]` | GET | Bearer token (per-service) | Metrics — unversioned machine-friendly alias for current `{api_version}` |
 | `/api/{api_version}/server/swagger` | GET | None | OpenAPI JSON spec (versioned) |
 | `/api/{api_version}/server/graphql` | POST | None | GraphQL queries (versioned; schema may differ across versions) |
+| `/api/{api_version}/server/mcp` | POST | Bearer (optional) | MCP endpoint (versioned; Streamable HTTP, same tokens as the API) |
 | `/api/{api_version}/server/healthz` | GET | None | Health check (JSON default; text via API rules) |
+| `/server/preferences` | GET, POST | None (POST: CSRF) | Guest preferences page / save form; `POST` sets cookies, `303` (see "Cross-device preference sync") |
+| `/server/preferences/export` | GET | None | Export block: full URL + short code (content-negotiated) |
+| `/server/preferences/import` | GET | None | Import via `code` or direct params; sets cookies, `303` |
+| `/api/{api_version}/server/preferences` | GET, POST | None | Current preferences / partial update (JSON) |
+| `/api/{api_version}/server/preferences/export` | GET | None | Preferences plus `url` and `code` (JSON) |
+| `/api/{api_version}/server/preferences/import` | GET | None | Import; JSON with `applied` and `ignored` |
 | `/api/{api_version}/server/metrics[/{service}]` | GET | Bearer token (per-service) | Metrics (versioned; same handlers) |
 | `/api/{api_version}/server/{admin_path}/*` | ALL | Bearer | Admin API |
 
@@ -23557,7 +23623,7 @@ var reservedNames = []string{
     "about", "contact", "terms", "privacy", "legal", "security",
 
     // Technical
-    "graphql", "swagger", "rest", "rpc", "ws", "websocket",
+    "graphql", "mcp", "swagger", "rest", "rpc", "ws", "websocket",
     "cdn", "media", "uploads", "files", "images",
     ".well-known", "robots.txt", "sitemap.xml", "favicon.ico",
 
@@ -26171,13 +26237,43 @@ document.cookie = "lang=fr; path=/; max-age=31536000; SameSite=Lax";
 
 Preferences aren't tied to identity — any two guests who set the same `theme`/`lang` produce the same code/URL, because the code/URL *is* the preference values, not a lookup key. This lets a preference be carried to a new browser/device without an account and without the server ever storing anything.
 
-- `theme`, `lang`, and every app-specific `{project_name}_pref_*` cookie are exportable — export/import round-trips the full guest preference set, not just theme/lang. `cookie_consent` and `ccpa_opt_out` are NEVER included — consent is a per-browser legal acknowledgment that must be re-affirmed on each device, not a portable preference. `{project_name}_build` is NEVER included — it is a device-local cache-purge stamp.
+- `theme`, `lang`, and every app-specific `{project_name}_pref_*` cookie are exportable — export/import round-trips the full guest preference set, not just theme/lang. `cookie_consent` and `ccpa_opt_out` are NEVER included — consent is a per-browser legal acknowledgment that must be re-affirmed on each device, not a portable preference. `{project_name}_build` is NEVER included — it is a device-local cache-purge stamp. Credential cookies (session, CSRF, and any owner/linked token cookie) are NEVER exportable — tokens are credentials, not preferences.
 - Guest preferences live at `/server/preferences` (distinct from the authenticated `/server/{admin_path}/{admin_username}/preferences` and PART-34 `/users/settings/preferences` routes), API-mirrored at `/api/{api_version}/server/preferences` — the export/import actions are sub-routes of it, never the standalone `/prefs/*` path, nor bare `/preferences` without the `/server` prefix. `preferences` MUST be added to the `{admin_path}` reserved-word list (see "Route Conflict Detection") so an operator can never set `admin_path=preferences` and collide with it. If an old/non-canonical route (e.g. a bare `/preferences` or `/prefs/*`) exists in already-written code, delete it outright and update all callers to `/server/preferences` — never keep it as a redirect or alias "for backward compatibility" (see "Canonical Terms Only").
-- **Export** (`GET /server/preferences/export`, API-mirrored at `GET /api/{api_version}/server/preferences/export`, or a "Copy preferences" UI action): reads the current `theme`, `lang`, and app-specific `{project_name}_pref_*` cookies and returns two forms of the same state:
-  - **Full URL** — `https://{host}/server/preferences/import?theme=dark&lang=fr`: a plain query string, human-readable, and stable across schema changes (a link made before a new preference key existed just omits it on import).
-  - **Short code** — `base64url(theme=dark&lang=fr)`: the query string alone, for manual retyping on a device without copy/paste; the import form strips a leading `https://.../server/preferences/import?` if pasted with it.
-- **Import** (`GET /server/preferences/import?theme=dark&lang=fr`, API-mirrored at `GET /api/{api_version}/server/preferences/import`, or a paste-a-code field feeding the same route): validates each parameter against its normal enum/BCP-47 allowlist — reject or drop anything unknown or malformed, an imported value is still untrusted input — sets the matching cookies, then `303 See Other` to `/` (or the referring page) so the code never lingers in the visible URL or browser history.
-- No account, no DB row, no user-preferences table required for this guest flow — decode → validate → set cookie → redirect happens in the one request; nothing is written or looked up server-side.
+- **Export** (`GET /server/preferences/export`, API-mirrored at `GET /api/{api_version}/server/preferences/export`, or a "Copy preferences" UI action), **Import** (`GET /server/preferences/import`, API-mirrored at `GET /api/{api_version}/server/preferences/import`, or a paste-a-code field), and **Save** (`POST /server/preferences`, API-mirrored at `POST /api/{api_version}/server/preferences`) follow the exact contract below. Every value, name, status and field in it is fixed — implement it as written; never invent alternative parameter names, JSON fields, routes (`/server/preferences/save`, `/prefs/*`) or formats.
+- No account, no DB row, no user-preferences table is needed for this flow — decode → validate → set cookie → respond happens in the one request; nothing is written or looked up server-side.
+
+**Sync contract (single source of truth — the web routes and the API mirrors share one implementation):**
+
+| No. | Rule | Exact behavior |
+|-----|------|----------------|
+| 1 | **Exportable set** | `theme`, `lang`, and every `{project_name}_pref_{key}` cookie. Nothing else, ever: not `cookie_consent`, `ccpa_opt_out`, `{project_name}_build`, session/CSRF cookies, or any credential cookie. A request parameter outside the set is **ignored** (reported in `ignored`), never applied |
+| 2 | **Canonical query** | `theme` and `lang` always present (effective value: the cookie, else the default), then each app preference only when its cookie is set and valid. Keys sorted ascending (bytewise); encoded as `application/x-www-form-urlencoded`. Example: `lang=fr&{project_name}_pref_sort=name&theme=dark`. The same preferences always produce the same string |
+| 3 | **Full URL** | `{origin}/server/preferences/import?{canonical query}`; `{origin}` is resolved per request by the URL-resolution rules (PART 8 → "Resolution Order"), never a cached value |
+| 4 | **Short code** | `base64url` (RFC 4648 §5 URL-safe alphabet) of the UTF-8 canonical query, **no padding**. Decoders MUST accept padded and unpadded input |
+| 5 | **Import input** | The request's own query parameters AND an optional `code` parameter. Resolve `code` as: trim whitespace → if it contains `?`, discard everything up to and including the FIRST `?` (a pasted full URL) → if the rest contains `=`, it is a plain query string → otherwise base64url-decode it → parse as a query string. Any decode/parse failure yields an empty set, never an error. **Direct request parameters win over `code` values, key by key** |
+| 6 | **Limits** | `code` longer than 2048 characters is ignored; at most 32 parameters are considered (extras dropped); each value at most 64 characters |
+| 7 | **Validation** | `theme`: exactly `dark`, `light` or `auto`. `lang`: case-insensitive match against the supported tags, canonicalized to the supported tag; an unsupported regional tag falls back to its base language (`fr-CA` → `fr`) if that is supported, otherwise dropped. `{project_name}_pref_{key}`: `{key}` matches `^[a-z][a-z0-9_]{0,63}$` and the value is in that key's documented enum; a key without an enum accepts `^[A-Za-z0-9_.\-]{1,64}$`. Anything invalid is dropped (reported in `ignored`) — an imported value is still untrusted input |
+| 8 | **Apply** | Each valid value sets its cookie with `Path=/`, `Max-Age=31536000`, `SameSite=Lax`, not HttpOnly (JS reads them), no `Domain`, and `Secure` whenever the resolved request scheme is `https` (resolved behind reverse proxies exactly as in rule 3, not from the raw socket). Import is **additive**: preferences absent from the input keep their current cookie — import never resets or deletes anything |
+| 9 | **Web response** | `303 See Other` with `Cache-Control: no-store`, no body, for import AND save — including when nothing validated (an untrusted link is never grounds for a `4xx` error page) |
+| 10 | **Redirect target** | First match wins: (a) a `redirect` parameter that is a relative path (starts with a single `/`, not `//` or `/\`, no scheme or host, no CR/LF); (b) the path + query of a same-origin `Referer` under the same rule; (c) `/`. A target under `/server/preferences/import`, `/server/preferences/export` or the save route falls through to the next option. Never an external URL |
+| 11 | **API import / save** | No redirect: `200` with the JSON below. Save (`POST`) accepts `application/json` or form fields (`theme`, `lang`, `{project_name}_pref_{key}`), applies a partial update, and returns `400 VALIDATION_FAILED` only when NO supplied value was valid. Import never returns `4xx` for invalid values (same as rule 9) |
+| 12 | **Auth and CSRF** | None required — guest cookies. `POST` forms carry the normal CSRF token; the API mirror needs none (no ambient authority: it accepts and sets only these UI cookies). Import is a `GET` on purpose so a shared link works; it can set only the exportable set (rule 1), so it can never change credentials or consent. Standard rate limits apply |
+| 13 | **Export response** | Web `GET /server/preferences/export` is content-negotiated like every page: HTML → the preferences page with the export block (full URL and short code as selectable text with copy buttons, readable without JS); `text/plain` → the lines `URL: ...` and `Code: ...`; JSON → the API body below |
+| 14 | **Import form** | A plain `GET` form to `/server/preferences/import` with a single field named `code` (works without JS). JS may enhance (clipboard paste) but never changes the request |
+
+**JSON bodies (envelope `{ "ok": true, "data": ... }`; field names are fixed):**
+
+| Endpoint | `data` |
+|----------|--------|
+| `GET /api/{api_version}/server/preferences` | `{ "theme": "dark", "lang": "en", "prefs": { "sort": "name" } }` |
+| `GET /api/{api_version}/server/preferences/export` | the object above plus `"url": "https://host/server/preferences/import?..."` and `"code": "..."` |
+| `GET /api/{api_version}/server/preferences/import` and `POST /api/{api_version}/server/preferences` | `{ "theme": "dark", "lang": "fr", "prefs": {}, "applied": ["lang"], "ignored": ["cookie_consent"] }` |
+
+`prefs` is keyed by the bare `{key}` (without the `{project_name}_pref_` prefix) and is `{}` when none are set. `theme`, `lang` and `prefs` are the resulting effective state. `applied` and `ignored` list request parameter names (`theme`, `lang`, `{project_name}_pref_{key}`, or the unrecognized name) and are always arrays. The names `url` and `code` are fixed — never `full_url`, `short_code`, `export_url` or `export_code`.
+
+**Tests required** (the preferences sync is easy to get subtly wrong; these are the minimum): round trip export → import yields identical cookies; direct params override `code`; pasted full URL, plain query string, padded and unpadded base64url all import; invalid `theme`/`lang`/pref values are dropped and listed in `ignored`; excluded names (`cookie_consent`, `{project_name}_build`, an owner/session token) are never exported and are ignored on import; import never removes an existing cookie; redirect rejects `//evil.example`, `/\evil`, absolute URLs and CR/LF; cookie attributes match rule 8 behind a TLS-terminating proxy; oversized `code` is ignored.
+
+**Signed-in accounts (PART 34):** this contract covers the guest cookie set only. Import and save never write the `user_preferences` table, and a signed-in user's stored settings are never exported through it.
 
 ### Offline Behavior
 
@@ -30334,6 +30430,7 @@ server:
 | `/api/{api_version}/server/healthz` | GET | Health check (JSON default; text via API rules) |
 | `/api/{api_version}/server/swagger` | GET | OpenAPI JSON spec |
 | `/api/{api_version}/server/graphql` | POST | GraphQL endpoint |
+| `/api/{api_version}/server/mcp` | POST | MCP endpoint (Streamable HTTP) |
 
 **Direct alias endpoints (same handler, no redirect):**
 
@@ -30341,6 +30438,8 @@ server:
 |-------|-----------------|
 | `/api/swagger` | `/api/{api_version}/server/swagger` |
 | `/api/graphql` | `/api/{api_version}/server/graphql` |
+| `/api/mcp` | `/api/{api_version}/server/mcp` |
+| `/mcp` | `/api/{api_version}/server/mcp` |
 | `/api/healthz` | `/api/{api_version}/server/healthz` |
 
 ### /server/ Frontend Routes
@@ -60175,6 +60274,7 @@ PATCH /api/{api_version}/users/settings
 | `/server/docs/swagger`, `/server/docs/graphql` | GET | None | Public API docs (HTML) |
 | `/api/swagger`, `/api/{api_version}/server/swagger` | GET | None | Public OpenAPI JSON spec |
 | `/api/graphql`, `/api/{api_version}/server/graphql` | POST | None for introspection; per-operation otherwise | GraphQL — see PART 14 GraphQL section for resolver-level auth |
+| `/api/mcp`, `/mcp`, `/api/{api_version}/server/mcp` | POST | Same as the API (Bearer optional; per-operation) | MCP endpoint — see "MCP Endpoint"; authentication and authorization are the API's |
 | `/api/autodiscover` | GET | None | Public client/agent auto-config |
 | `/api/{api_version}/server/healthz` | GET | None | Public JSON health |
 | `/api/{api_version}/server/reports/*` | POST | None | Public reports sink (CSP, NEL, deprecation, intervention, crash, error, default). See PART 34 → "Public Reports Scope". Browsers cannot present credentials when emitting these reports. Rate-limited per-IP. |
@@ -60606,9 +60706,12 @@ Organizations - only for projects with multi-user collaboration.
 | `/api/{api_version}/server/healthz` | GET | Health check |
 | `/api/{api_version}/server/swagger` | GET | OpenAPI JSON spec (versioned) |
 | `/api/{api_version}/server/graphql` | POST | GraphQL queries (versioned) |
+| `/api/{api_version}/server/mcp` | POST | MCP endpoint (versioned) |
 | `/api/healthz` | GET | Health check — direct alias for current `{api_version}` |
 | `/api/swagger` | GET | OpenAPI JSON spec — direct alias for current `{api_version}` |
 | `/api/graphql` | POST | GraphQL queries — direct alias for current `{api_version}` |
+| `/api/mcp` | POST | MCP endpoint — direct alias for current `{api_version}` |
+| `/mcp` | POST | MCP endpoint — root alias for current `{api_version}` |
 
 **Note:** Swagger, GraphQL, and health endpoints follow the same `/api/{api_version}/...` versioning rule as the rest of the API. The unversioned `/api/swagger`, `/api/graphql`, and `/api/healthz` paths are direct aliases that resolve to the current `{api_version}` without redirects. The interactive UIs live under `/server/docs/swagger` and `/server/docs/graphql` (see PART 16).
 
