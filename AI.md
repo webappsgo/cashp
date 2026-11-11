@@ -79,7 +79,7 @@ AI reads AI.md for the first time
 │   │   ├─► 3. Create IDEA.md if it doesn't exist
 │   │   │   - If a long-form/project-specific `CLAUDE.md` or `.claude/CLAUDE.md` already exists, MIGRATE its valid project description, project variables, and business logic into IDEA.md first
 │   │   │   - Do NOT copy loader-only instructions, duplicated AI.md rules, or stale implementation text into IDEA.md
-│   │   │   - On creation, write `internal_name: <project_name>` to `## Project variables` and warn the user it is stable
+│   │   │   - On creation, write `internal_name: <project_name>` and `internal_org: <project_org>` to `## Project variables` and warn the user both are stable
 │   │   │
 │   │   └─► 4. Create or update IDEA.md `## Project variables`:
 │   │       - project_name  → actual project name (lowercase)
@@ -15458,6 +15458,22 @@ When `DEBUG=true` is active and an error occurs, the canonical error body (PART 
 **The contract:** an operator who runs the binary with the binary's defaults, sets a domain, and points DNS at it gets a deployment that passes a baseline security audit. No knobs to flip, no config to write. Tightening (nonces, stricter CORS, `csp.mode: enforce`, etc.) is opt-in for operators who want it.
 
 **Interpretation rule:** "easy to use" means the safe deployment is the default deployment. AI must reduce operator burden by making secure configuration automatic and understandable, not by removing protections.
+
+## Operator Token (`server.token`)
+
+**The operator token is the single global credential for `/debug/*`, `--maintenance` actions and operator-only API/admin operations. It is a server setting, not a user account.**
+
+| Aspect | Rule |
+|--------|------|
+| Key | `server.token` in `server.yml` (PART 5) |
+| Format | `tok_` prefix + 32 URL-safe random base62 chars |
+| Generated | First start, when the key is absent or empty; written back to `server.yml` (mode `0600`) and printed once in the startup log banner |
+| Storage | Never stored in the database or in any API token table. Only `SHA-256(server.token)` is cached in memory at startup; inbound tokens are hashed and compared with a constant-time compare |
+| Logging | The raw value is never logged after the first-start banner, never returned by any API response, never included in a backup export or a support bundle |
+| Presented as | `Authorization: Bearer tok_...` |
+| Admin WebUI | Shown masked at `/server/{admin_path}/config/security` with a "Regenerate" action (sensitive operation per PART 5: re-prompt the admin password, log `security.operator_token_regenerated` to `audit.log`). The new value is displayed once on screen; the previous value stops working immediately |
+| Rotation | Regenerate in the admin WebUI, or blank `server.token` in `server.yml` and restart (a new value is generated and printed once). Cluster Mode: the value is part of the synced configuration (PART 5) |
+| Scope | Never implied by `--debug` or development mode: debug only turns endpoints on, it never replaces authentication |
 
 ## Cryptographic Keys
 
@@ -64939,6 +64955,7 @@ project_name:    {project_name}
 project_org:     {project_org}
 # STABLE — equals project_name on first install; change only on an explicit rename or fork reset
 internal_name:   {project_name}
+internal_org:    {project_org}
 app_name:        {project_name}
 official_site:   https://{fqdn}
 # Defaults to project_org if unset
@@ -64991,6 +65008,7 @@ high-quality developer humor with category filtering and search.
 project_name:    jokes-api
 project_org:     casjay
 internal_name:   jokes-api
+internal_org:    casjay
 app_name:        Jokes API
 official_site:   https://jokes.example.com
 maintainer_name: Jane Doe
@@ -65043,6 +65061,7 @@ clicks, and view statistics.
 project_name:    linkshort
 project_org:     casjay
 internal_name:   linkshort
+internal_org:    casjay
 app_name:        LinkShort
 official_site:   https://short.example.com
 maintainer_name: Jane Doe
@@ -65095,6 +65114,7 @@ serves it in a unified format. Provides current conditions, forecasts, and alert
 project_name:    weather-api
 project_org:     casjay
 internal_name:   weather-api
+internal_org:    casjay
 app_name:        Weather API
 official_site:   https://weather.example.com
 maintainer_name: Jane Doe
