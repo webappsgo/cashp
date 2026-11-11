@@ -149,7 +149,7 @@ Free-form prose. This is the human-readable elevator pitch.)
 
 (All project variables in `key: value` form. Values are the canonical source used to
 resolve placeholders referenced in AI.md. Required keys at minimum: `project_name`, `project_org`,
-`internal_name`. Add more as the project needs — `app_name`, `official_site`,
+`internal_name`, `internal_org`. Add more as the project needs — `app_name`, `official_site`,
 `maintainer_name`, `maintainer_email`, etc. Use lower_snake_case for keys.)
 
 Example:
@@ -158,8 +158,15 @@ Example:
     project_org:   casjay
     # STABLE — set at first-time setup; change only on an explicit rename or fork reset
     internal_name: jokes
+    # STABLE — set at first-time setup; change only on an explicit rename or fork reset
+    internal_org:  casjay
     app_name:      jokes
-    official_site: jokes.example.com
+    official_site: https://jokes.example.com
+    # Optional UI labels (defaults: item / items)
+    resource_label: joke
+    resource_label_plural: jokes
+
+**Resource labels (optional):** `resource_label` (singular) and `resource_label_plural` name what the product's users own or create ("paste"/"pastes", "search"/"searches"); defaults `item` / `items`. UI copy that needs the noun uses these (the header's `{{ .ResourceLabel }}` is `resource_label_plural`); a product noun is never hardcoded in the spec's templates.
 
 **`{plist_name}` is NOT stored** — it is derived at substitution time as
 `io.github.{project_org}.{internal_name}`.
@@ -173,6 +180,7 @@ Example:
   it is allowed only on an explicit org/repo rename (with a coordinated migration of
   every directory, service, and plist on every host) or at a fork's first setup.
 - A project rename changes `project_name` only. `internal_name` stays.
+- `internal_org` follows the same freeze rule: initial value MUST equal `project_org`, stable once the project ships, and an org rename changes `project_org` only.
 
 ## Business logic
 
@@ -678,7 +686,7 @@ if cacheSize > 1024*1024*1024 {
 | **Unsafe PR triggers forbidden by default** | Do NOT use `pull_request_target` for untrusted code execution, build, test, or artifact upload paths |
 | **Secrets never exposed to forks** | Fork PR workflows run without repo secrets, write tokens, publish steps, or deployment credentials |
 | **Dependency updates are automated** | Public repos include dependency update automation for every ecosystem in use |
-| **Secret scanning is mandatory** | Public repos run `truffleHog` (`trufflesecurity/trufflehog`, Apache-2.0, no license key) on push/PR via `ci.yml`; findings are blockers. Never use `gitleaks` — requires a commercial license for org repos |
+| **Secret scanning is mandatory** | Public repos run `truffleHog` (`trufflesecurity/trufflehog`, Apache-2.0, no license key) on push/PR via `ci.yml`; blocking statuses: `verified` always; `unknown` (unverified) only in push/PR range scans, never in a full-history scan (scheduled runs and new-branch pushes), where unverified noise is reported but does not fail the run. Every `unknown` finding is reviewed and true false positives are allowlisted. Never use `gitleaks` — requires a commercial license for org repos |
 | **Release outputs are verifiable** | Releases publish checksums, SBOM, release notes, and provenance/attestation when the host platform supports it |
 
 ### Workflow Permissions
@@ -787,7 +795,7 @@ Every project ships workflow files for all five CI/CD providers. Same gates, dif
 
 Go projects never have `build-toolchain.yml` — `casjaysdev/go:latest` is maintained externally and needs no per-project rebuild workflow.
 
-**Toolchain image — `casjaysdev/go:latest`.** All Go CI jobs and containerized builds use this maintained image by default; a build image declared in IDEA.md/AI.md overrides it, and a `docker/Dockerfile.build` is created only for a genuine custom need the image cannot satisfy — then it MUST be `FROM casjaysdev/go:latest` (extend, never replace). This picks the toolchain image only; the runtime image (final stage of `docker/Dockerfile`) is a separate decision. Image defaults: `CGO_ENABLED=0`, `GOFLAGS=-buildvcs=false`, `GOTOOLCHAIN=auto`, `GOTELEMETRY=off`. Pre-installed tools:
+**Toolchain image — `casjaysdev/go:latest`.** All Go CI jobs and containerized builds use this maintained image by default; a build image declared in IDEA.md overrides it, and a `docker/Dockerfile.build` is created only for a genuine custom need the image cannot satisfy — then it MUST be `FROM casjaysdev/go:latest` (extend, never replace). This picks the toolchain image only; the runtime image (final stage of `docker/Dockerfile`) is a separate decision. Image defaults: `CGO_ENABLED=0`, `GOFLAGS=-buildvcs=false`, `GOTOOLCHAIN=auto`, `GOTELEMETRY=off`. Pre-installed tools:
 
 - Latest stable Go toolchain (`go`, `gofmt`, `go vet`)
 - `golangci-lint`, `staticcheck`, `gofumpt`, `goimports` — linting and formatting
@@ -1034,9 +1042,8 @@ src/
 │   │   │   ├── es.json        # Spanish
 │   │   │   ├── fr.json        # French
 │   │   │   ├── de.json        # German
-│   │   │   ├── zh.json        # Chinese
-│   │   │   ├── ar.json        # Arabic
-│   │   │   └── ja.json        # Japanese
+│   │   │   ├── it.json        # Italian
+│   │   │   └── ar.json        # Arabic (RTL)
 │   │   └── i18n_test.go       # Translation tests
 │   ├── display/
 │   │   └── detect.go          # Terminal/display detection
@@ -1282,7 +1289,7 @@ Claude Code creates `.claude/rules/` on first session (see PART 0: Session Initi
 | `testing-rules.md` | 29, 30, 31 | Testing & Development, ReadTheDocs Documentation, I18N & A11Y |
 | `optional-rules.md` | 34-36 | Multi-User, Organizations, Custom Domains (all OPTIONAL) |
 
-**Note:** PART 37 (IDEA.md Reference) and FINAL (Compliance Checklist) are reference-only, not rule files. Only PARTs 34-36 are truly optional (marked "OPTIONAL - NON-NEGOTIABLE WHEN IMPLEMENTED" in spec). PART 32.1 (Tor Hidden Service) is REQUIRED - auto-enabled when Tor binary is found. PART 32.2 (I2P Eepsite) is OPTIONAL and opt-in - disabled by default, enabled only via `features.i2p.enabled`.
+**Note:** PART 37 (IDEA.md Reference) and FINAL (Compliance Checklist) are reference-only, not rule files. Only PARTs 34-36 are truly optional (marked "OPTIONAL - NON-NEGOTIABLE WHEN IMPLEMENTED" in spec). PART 32.1 (Tor Hidden Service) is REQUIRED - auto-enabled when Tor binary is found. PART 32.2 (I2P Eepsite) is OPTIONAL and opt-in - disabled by default, enabled only via `server.i2p.enabled`.
 
 **Rules File Features:**
 - All `.md` files in `rules/` are automatically discovered recursively
@@ -2380,45 +2387,45 @@ server:
 
 | PART | Line | Topic | When to Read |
 |------|------|-------|--------------|
-| 0 | ~2492 | AI Assistant Rules | **AI Behavior Rules**, **Translation Rule** |
-| 1 | ~4393 | Critical Rules | Read before implementing features |
-| 2 | ~5706 | License & Attribution | License requirements |
-| 3 | ~6034 | Project Structure | Setting up new project, **CI/CD badge detection** |
-| 4 | ~7063 | OS-Specific Paths | Path handling |
-| 5 | ~7259 | Configuration | Config file work, **Path Security**, **Privileged Ports**, **Escalation** |
-| 6 | ~9266 | Application Modes | Mode handling, debug endpoints |
-| 7 | ~9904 | Binary Requirements | Binary building, **Display detection**, **TERM=dumb**, **NO_COLOR** |
-| 8 | ~10539 | Server Binary CLI | CLI flags/commands, **NO_COLOR Support**, **--color/--lang flags** |
-| 9 | ~14058 | Error Handling & Caching | Error/cache patterns |
-| 10 | ~14508 | Database & Cluster | Database work |
-| 11 | ~15119 | Security & Logging | Security features, **Scoped Agent Tokens**, **Context Detection** |
-| 12 | ~18185 | Server Configuration | Server settings, **Allowlist**, **Blocklists**, **GeoIP** |
-| 13 | ~19721 | Health & Versioning | Health endpoints |
-| 14 | ~20594 | API Structure | REST/GraphQL/Route Compliance, **Non-Interactive Text Output** |
-| 15 | ~22342 | SSL/TLS & Let's Encrypt | SSL certificates |
-| 16 | ~23333 | Web Frontend | Frontend/UI, **Sitemap**, **Site Verification**, **Branding/SEO** |
-| 17 | ~29856 | Admin Panel | Admin UI, **Server Admin**, **Scoped Agents API**, **Blocklists**, **Allowlist**, **GeoIP** |
-| 18 | ~32343 | Email & Notifications | Email/SMTP, **SMTP Auto-Detection** |
-| 19 | ~33698 | Scheduler | Background tasks, **NO external schedulers**, **Backup tasks** |
-| 20 | ~34201 | GeoIP | GeoIP features, **Country blocking (deny/allow)** |
-| 21 | ~34322 | Metrics | Prometheus metrics, **INTERNAL only** |
-| 22 | ~35864 | Backup & Restore | Backup features, **Compliance encryption**, **Cluster backups** |
-| 23 | ~36639 | Update Command | Update feature |
-| 24 | ~37260 | Privilege Escalation & Service | Service/privilege work |
-| 25 | ~38167 | Service Support | Systemd/runit/rc.d/launchd templates |
-| 26 | ~38480 | Makefile | Local dev/tests/debug only, **NOT used in CI/CD** |
-| 27 | ~39301 | Docker | Docker/containers, **NEVER copy/symlink binaries** |
-| 28 | ~40937 | CI/CD Workflows | GitHub/GitLab/Gitea Actions |
-| 29 | ~45008 | Testing & Development | Testing/dev workflow, **Host Safety in tests**, **AI Docker Compose Rules**, **Content Negotiation Testing** |
-| 30 | ~47052 | ReadTheDocs Documentation | Documentation |
-| 31 | ~47883 | I18N & A11Y | Internationalization, **Translation parity (all binaries)**, **--lang flag** |
-| 32 | ~49893 | Overlay Networks (Tor & I2P) | 32.1 Tor (binary auto-enables), 32.2 I2P eepsite (**opt-in**) |
-| 33 | ~52545 | Client & Agent | Client **REQUIRED**, Agent optional - CLI/TUI/GUI, **Scoped Agent Tokens**, **Smart Context**, **First-Run Wizard** |
-| 34 | ~57235 | Multi-User | **OPTIONAL** - Regular User accounts/registration, vanity URLs |
-| 35 | ~61522 | Organizations | **OPTIONAL** - multi-user orgs, vanity URLs |
-| 36 | ~62214 | Custom Domains | **OPTIONAL** - user/org branded domains |
-| 37 | ~63269 | IDEA.md Reference | **Examples only** - NEVER modify |
-| FINAL | ~63503 | Compliance Checklist | Final verification, **AI Quick Reference Rules**, **Console/Banner Checklist**, **I18N Checklist**, **Host Safety Checklist** |
+| 0 | ~2516 | AI Assistant Rules | **AI Behavior Rules**, **Translation Rule** |
+| 1 | ~4438 | Critical Rules | Read before implementing features |
+| 2 | ~5751 | License & Attribution | License requirements |
+| 3 | ~6080 | Project Structure | Setting up new project, **CI/CD badge detection** |
+| 4 | ~7112 | OS-Specific Paths | Path handling |
+| 5 | ~7308 | Configuration | Config file work, **Path Security**, **Privileged Ports**, **Escalation** |
+| 6 | ~9339 | Application Modes | Mode handling, debug endpoints |
+| 7 | ~9997 | Binary Requirements | Binary building, **Display detection**, **TERM=dumb**, **NO_COLOR** |
+| 8 | ~10645 | Server Binary CLI | CLI flags/commands, **NO_COLOR Support**, **--color/--lang flags** |
+| 9 | ~14185 | Error Handling & Caching | Error/cache patterns |
+| 10 | ~14644 | Database & Cluster | Database work |
+| 11 | ~15255 | Security & Logging | Security features, **Scoped Agent Tokens**, **Context Detection** |
+| 12 | ~18401 | Server Configuration | Server settings, **Allowlist**, **Blocklists**, **GeoIP** |
+| 13 | ~19955 | Health & Versioning | Health endpoints |
+| 14 | ~20840 | API Structure | REST/GraphQL/Route Compliance, **Non-Interactive Text Output** |
+| 15 | ~22628 | SSL/TLS & Let's Encrypt | SSL certificates |
+| 16 | ~23608 | Web Frontend | Frontend/UI, **Sitemap**, **Site Verification**, **Branding/SEO** |
+| 17 | ~30671 | Admin Panel | Admin UI, **Server Admin**, **Scoped Agents API**, **Blocklists**, **Allowlist**, **GeoIP** |
+| 18 | ~33190 | Email & Notifications | Email/SMTP, **SMTP Auto-Detection** |
+| 19 | ~34584 | Scheduler | Background tasks, **NO external schedulers**, **Backup tasks** |
+| 20 | ~35100 | GeoIP | GeoIP features, **Country blocking (deny/allow)** |
+| 21 | ~35253 | Metrics | Prometheus metrics, **INTERNAL only** |
+| 22 | ~36822 | Backup & Restore | Backup features, **Compliance encryption**, **Cluster backups** |
+| 23 | ~37596 | Update Command | Update feature |
+| 24 | ~38229 | Privilege Escalation & Service | Service/privilege work |
+| 25 | ~39136 | Service Support | Systemd/runit/rc.d/launchd templates |
+| 26 | ~39451 | Makefile | Local dev/tests/debug only, **NOT used in CI/CD** |
+| 27 | ~40272 | Docker | Docker/containers, **NEVER copy/symlink binaries** |
+| 28 | ~41910 | CI/CD Workflows | GitHub/GitLab/Gitea Actions |
+| 29 | ~45999 | Testing & Development | Testing/dev workflow, **Host Safety in tests**, **AI Docker Compose Rules**, **Content Negotiation Testing** |
+| 30 | ~48044 | ReadTheDocs Documentation | Documentation |
+| 31 | ~48876 | I18N & A11Y | Internationalization, **Translation parity (all binaries)**, **--lang flag** |
+| 32 | ~50900 | Overlay Networks (Tor & I2P) | 32.1 Tor (binary auto-enables), 32.2 I2P eepsite (**opt-in**) |
+| 33 | ~54028 | Client & Agent | Client **REQUIRED**, Agent optional - CLI/TUI/GUI, **Scoped Agent Tokens**, **Smart Context**, **First-Run Wizard** |
+| 34 | ~58612 | Multi-User | **OPTIONAL** - Regular User accounts/registration, vanity URLs |
+| 35 | ~62931 | Organizations | **OPTIONAL** - multi-user orgs, vanity URLs |
+| 36 | ~63623 | Custom Domains | **OPTIONAL** - user/org branded domains |
+| 37 | ~64678 | IDEA.md Reference | **Examples only** - NEVER modify |
+| FINAL | ~64912 | Compliance Checklist | Final verification, **AI Quick Reference Rules**, **Console/Banner Checklist**, **I18N Checklist**, **Host Safety Checklist** |
 
 **When Implementing OPTIONAL PARTs (34-36, Agent from 33):**
 1. Change PART title from `OPTIONAL` → `NON-NEGOTIABLE` in AI.md
@@ -2933,9 +2940,9 @@ fi
 | Adding JavaScript UI text | Use `translations[key]` from loaded locale |
 | Modifying `<html>` tag | Use `lang="{{.Lang}}" dir="{{.Dir}}"` — never hardcoded `lang="en"` |
 
-**After adding translation keys, AI MUST:**
+**After adding, changing or removing translation keys, AI MUST:**
 1. Add the key to the Spanish (`es.json`) example in PART 31 with proper translation
-2. Note that ALL other language files (`fr`, `de`, `zh`, `ar`, `ja`) need the same key added
+2. Add a best-effort translation of the key to EVERY other locale file (`fr`, `de`, `it`, `ar`, and every translator-added language) in the same change — likewise update the translation when the English text changes, and remove the key from every file when it is removed. The AI translates the strings itself in every language it is fluent in; human translators can fix wording later. Never leave a key changed in `en.json` alone so the files drift apart
 3. Ensure the key exists in the English base file (`en.json`)
 
 **If AI is unsure whether text is user-facing → treat it as user-facing and translate it.**
@@ -2955,12 +2962,12 @@ Exceptions (do NOT translate):
 3. Ask for explicit permission to deviate
 4. Document deviation if approved
 
-### Editing AI.md
+### Reading AI.md (it is read-only)
 
 1. Search first: `grep -n "keyword" AI.md`
 2. Read the PART completely
-3. Update existing content (don't duplicate)
-4. Update PART index line numbers after edits
+3. **Never edit `AI.md` in a project** — it is a read-only copy of the template. Project values go in `IDEA.md ## Project variables`; deviations go in `SPEC.md`
+4. Changes to the spec itself are made only in the template source repository, then re-copied into projects
 
 **See Critical Rules: "Files & Directories Master Rules" for allowed files/directories - nothing else.**
 
@@ -3120,7 +3127,7 @@ Getting code correct on the first try is much harder than iterating with feedbac
 | Configuration / settings | Start the binary with the new config; verify defaults; verify validation rejects bad input with a useful error |
 | Docker / container build | Build the image; run the container; smoke-test at least one endpoint or command to confirm the image actually starts and serves |
 | CI/CD workflow | Run the workflow on a branch (or via `act`/equivalent dry-run); verify each job's exit status, not just YAML validity |
-| Health / observability | Hit `/healthz`, `/readyz`, `/server/metrics`; verify scrape format and that new metrics actually appear |
+| Health / observability | Hit `/server/healthz` (and `/healthz` when `server.healthz.root.enabled` is true), `/server/metrics`; verify scrape format and that new metrics actually appear |
 | Logging / error paths | Trigger the error path; verify the log line/structured event was emitted with expected fields |
 | i18n / translation | Switch each supported locale; verify text renders correctly and no placeholders leak |
 | Security-sensitive change (auth, crypto, input validation) | Test both the success path AND attempted bypass paths; never assume a guard works without exercising it |
@@ -3190,6 +3197,18 @@ Implemented core server functionality and API.
 - Be specific about what changed and why
 
 **This completion ritual applies ONLY to TODO.AI.md.** The human-owned `TODO.md` is never emptied or truncated by AI — AI may only mark individual items done in place. The ✅ commit format is also reserved for TODO.AI.md completion.
+
+## Where Findings Are Tracked
+
+**Every finding lives in exactly one place. Never duplicate it, and never leave it only in conversation.**
+
+| Kind of item | Owner | Rule |
+|--------------|-------|------|
+| Planned implementation backlog (3+ tasks) | `TODO.AI.md` | AI-owned; remove each item once it is resolved and committed |
+| Human-owned tasks | `TODO.md` | Never emptied or deleted by AI; mark items done in place |
+| Defects found while doing other work, including the exploratory pass | Fixed immediately, otherwise `TODO.AI.md` | Never left only in conversation |
+| Findings from an explicit audit (the user said "audit") with more than 5 issues | Temporary `AUDIT.AI.md` | Not `TODO.AI.md`; deleted when every issue is resolved. Five or fewer are fixed directly with no tracking file |
+| Defects or contradictions in `AI.md` itself | `SPEC.md` (the project's tie-break override) for the local decision, plus a report appended as one bullet under `## {project_name} AI.md issues` in the `TODO.{TEMPLATE}.md` of the project's parent directory, where `{TEMPLATE}` is the template the project's `AI.md` was copied from (`API`, `SERVER` or `HYBRID`) — the shared template-maintainers' inbox; for apimgr projects (API template) `~/Projects/github/apimgr/TODO.API.md`, for webappsgo projects (SERVER template) `~/Projects/github/webappsgo/TODO.SERVER.md` | `AI.md` is read-only: never edit it, and never log its defects in `TODO.AI.md`. Maintainers clear the inbox once the template is fixed |
 
 ## Project Audit
 
@@ -3326,7 +3345,7 @@ Read the FINAL CHECKPOINT section and verify ALL items.
 
 ### Step 8: Temporary Tracking in AUDIT.AI.md
 
-**Use `AUDIT.AI.md` only for explicit audits that uncover more than 5 issues. Do NOT use `TODO.AI.md` for audit findings.**
+**Use `AUDIT.AI.md` only for explicit audits that uncover more than 5 issues. Do NOT use `TODO.AI.md` for audit findings (see "Where Findings Are Tracked").**
 
 If an explicit audit finds more than 5 issues to fix:
 1. Create AUDIT.AI.md (audit-specific tracking file)
@@ -3629,7 +3648,7 @@ When the specification is unclear:
 1. **Check if clarified elsewhere** - search the full spec
 2. **Look for similar patterns** - how are similar features handled?
 3. **Ask the user** - don't guess
-4. **Document the decision** - add to AI.md for future reference
+4. **Document the decision** - record it in IDEA.md `## Business logic` for future reference (`AI.md` is read-only)
 
 ## Common Mistakes to Avoid
 
@@ -3672,7 +3691,7 @@ When the specification is unclear:
 | **CLI commands** | `serve`, `migrate`, `--maintenance` - same interface everywhere |
 | **Flag formats** | Short/long flag patterns, output formats |
 | **Makefile structure** | Targets, variables, Docker commands |
-| **Makefile targets** | `build`, `release`, `docker`, `test`, `dev`, `clean` |
+| **Makefile targets** | `dev`, `local`, `build`, `test`, `release`, `docker` (plus the `clean` helper) |
 | **CI/CD workflows** | GitHub/Gitea/Jenkins pipeline structure |
 | **Directory layout** | `src/`, `docker/`, `binaries/`, etc. |
 | **Config file format** | YAML structure, standard keys |
@@ -3807,7 +3826,7 @@ logging:
 | **Project uses different flag** | Change to template flag, update docs |
 | **Project uses different config format** | Migrate to YAML, template structure |
 | **Project uses different directory layout** | Reorganize to template structure |
-| **Project needs different base image** | Allowed - document reason in AI.md |
+| **Project needs different base image** | Allowed - document reason in IDEA.md |
 | **Project needs additional packages** | Allowed - add to Dockerfile |
 
 ### When Template Would Break Functionality
@@ -4482,7 +4501,7 @@ When working on this project, the following roles are assumed based on the task:
 2. **When in doubt, check the spec** - the spec is the source of truth
 3. **Never assume or guess** - ask questions if unclear
 4. **Every NON-NEGOTIABLE section MUST be implemented exactly as specified**
-5. **Keep AI.md in sync with the project** - always update after changes
+5. **Never modify AI.md** - it is read-only; keep IDEA.md in sync with the project (project values and business logic) and record deviations in SPEC.md
 6. **NEVER install Go on local machine** - ALL builds use Docker, testing uses Docker or Incus
 
 ### Container-Only Development
@@ -4621,9 +4640,9 @@ db.Query("SELECT * FROM users WHERE email = '" + email + "'")
 
 | Endpoint class | Default limit | Window | Notes |
 |----------------|---------------|--------|-------|
-| **Read (GET, HEAD)** | **120 req/min** | 60s | Per IP, sliding window |
-| **Write (POST, PUT, PATCH, DELETE)** | **10 req/min** | 60s | Per IP, sliding window |
-| **Health / status** | **120 req/min** | 60s | `/healthz`, `/readyz`, `/livez` |
+| **Read (GET, HEAD)** | **120 req/min** | 60s | Per IP (anonymous) or per token (authenticated), sliding window |
+| **Write (POST, PUT, PATCH, DELETE)** | **10 req/min** | 60s | Per IP (anonymous) or per token (authenticated), sliding window |
+| **Health / status** | **120 req/min** | 60s | `/server/healthz` (and the optional `/healthz` root alias) |
 | **Global burst** | **240 req/min** | 60s | Absolute ceiling across all types |
 
 **Auth endpoint defaults (stricter — applied regardless of general limits above):**
@@ -4710,7 +4729,7 @@ Content-Type: application/json
 | Strong passwords | Prevent weak passwords | Show strength meter, suggest improvements |
 | Session timeout | Limit exposure | Warn before timeout, extend on activity |
 | Rate limiting | Prevent abuse | Clear error message with retry time |
-| CAPTCHA | Prevent bots | Only after failed attempts, not first try |
+| CAPTCHA | Prevent bots | Login and other authenticated forms: only after failed attempts, not first try. Anonymous public submit forms (`/server/contact`, security report): on every submission - there is no failed attempt to wait for and the form is the spam target |
 | 2FA | Account security | Remember device option (30 days) |
 
 **Rule:** solve usability problems by improving workflow, defaults, messaging, and automation - not by weakening protections that guard an internet-facing server.
@@ -4979,7 +4998,7 @@ IDEA.md (project spec - update as needed)
 7. **Configuration** - Key configuration options
 8. **API** - API endpoints summary with full URLs if `{official_site}` is set
 9. **Other** - Additional info (troubleshooting, FAQ, etc.)
-10. **Development** - Development setup (ALWAYS LAST - for contributors only)
+10. **Development** - Development setup (last content section, for contributors only; the closing Disclaimer and License sections follow it)
 11. **Disclaimer** - Clear, readable disclaimer (see template below)
 12. **License** - License info
 
@@ -5121,7 +5140,7 @@ site_url: https://{custom_rtd_address}
 
 #### Disclaimer Section
 
-**Every README.md MUST include a Disclaimer section (typically before or after License).**
+**Every README.md MUST include a Disclaimer section, placed immediately before License.**
 
 **Good Disclaimer - Clear, professional, covers key points:**
 
@@ -5150,7 +5169,7 @@ By using this software, you acknowledge that you have read and understood this d
 | Disclaimer hidden in LICENSE file only | Users don't read LICENSE, README is primary |
 
 **Disclaimer placement:**
-- Add as a section in README.md (after "Other" or before "License")
+- Add as a section in README.md between Development and License (section 11 in the order above)
 - Keep it readable (bullet points, not a wall of text)
 - Optionally also include in LICENSE.md, but README is primary
 
@@ -5246,13 +5265,14 @@ curl -q -LSsf {official_site}/api/autoconfig
 
 **{fqdn} - Embedded Code URLs (Go, JavaScript, templates)**
 
-For code that runs in the application, NEVER use bare `/path`. Always use `{fqdn}/path`.
+For code that runs in the application, NEVER use bare `/path` where an ABSOLUTE URL is needed (emails, notifications, JSON fields, redirects, Swagger, `security.txt`, canonical and `og:*` tags, links shown as text). Always use `{fqdn}/path` there, built per request with `BuildURL(r, ...)`. Same-origin links, form actions and asset URLs inside a rendered HTML page are the one exception: they are ORIGIN-RELATIVE paths produced by the `path` template helper (`{baseurl}` + path, where `{baseurl}` is the detected or configured prefix, empty for `/`), so they stay correct on the clearnet, `.onion` and `.i2p` origins and behind a reverse-proxy prefix. Examples in this spec write `href="/server/x"` as shorthand for `{{ path "/server/x" }}` when `{baseurl}` is `/`.
 
 | Context | ❌ Wrong | ✅ Correct |
 |---------|----------|------------|
 | **Go code** | `"/api/{api_version}/users"` | `fmt.Sprintf("https://%s/api/%s/users", cfg.FQDN, apiVersion)` |
 | **JavaScript** | `fetch('/api/{api_version}/users')` | `fetch(\`${window.location.origin}/api/${apiVersion}/users\`)` |
-| **HTML templates** | `href="/api/docs"` | `href="https://{{.FQDN}}/api/docs"` |
+| **HTML templates (absolute URL needed: canonical/`og:*`, text links, emails)** | `href="/api/docs"` | `href="{{.DocsURL}}"` (handler builds it with `BuildURL(r, ...)`) |
+| **HTML templates (same-origin links, forms, assets)** | `href="https://{{.FQDN}}/api/docs"` (hardcoded host) | `href="{{ path "/api/docs" }}"` (origin-relative, `{baseurl}`-prefixed) |
 | **Config files** | `url: /callback` | `url: https://{fqdn}/callback` |
 | **Email templates** | `<a href="/verify">` | `<a href="https://{fqdn}/verify?token={token}">` (PART 18: `{variable}` syntax, not Go templates) |
 
@@ -5298,7 +5318,7 @@ fetch(`${config.apiBaseUrl}/api/${apiVersion}/users`)
 **HTML template examples:**
 
 ```html
-<!-- ❌ WRONG - Bare path (breaks in emails, notifications) -->
+<!-- ❌ WRONG in emails and notifications - a bare path has no origin -->
 <a href="/verify?token={{.Token}}">Verify Email</a>
 
 <!-- ❌ WRONG — hardcodes https; ignores proxy headers; breaks behind a proxy -->
@@ -5725,7 +5745,7 @@ Not every project needs admin UI extensions - it depends on the project's nature
 
 Before proceeding, confirm you understand:
 - [ ] All NON-NEGOTIABLE sections must be implemented exactly
-- [ ] AI.md must be kept in sync with project state
+- [ ] AI.md is read-only; IDEA.md is kept in sync with project state
 - [ ] TODO.AI.md required for 3+ tasks
 - [ ] Sensitive data handling rules
 - [ ] Target audience includes non-tech-savvy users
@@ -6278,6 +6298,7 @@ PROJECT_ORG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+
 │   ├── security.md         # Security, public endpoints, and reporting
 │   ├── integrations.md     # External identity and protocol integrations
 │   ├── development.md      # Development guide
+│   ├── translating.md      # Translation guide (how translators add or update a language)
 │   ├── stylesheets/        # MkDocs theme customization
 │   │   ├── dark.css        # Dark theme customization for ReadTheDocs
 │   │   └── light.css       # Light theme customization for ReadTheDocs (optional)
@@ -6291,7 +6312,7 @@ PROJECT_ORG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+
 │   └── e2e.sh              # Browser E2E beta testing, headless Chromium (REQUIRED — PART 29)
 ├── docker/                 # Docker files
 │   ├── Dockerfile          # Production Dockerfile
-│   ├── Dockerfile.dev      # devel image — same as release but binary runs in debug mode; tagged :devel (project-specific)
+│   ├── Dockerfile.dev      # devel image — same as release but baked with `MODE=development`; tagged :devel (project-specific)
 │   ├── docker-compose.yml  # Production compose (NO debug)
 │   ├── docker-compose.dev.yml  # Development compose
 │   ├── docker-compose.test.yml # Test compose (:devel image, DEBUG: true, MODE: development, valkey cache included)
@@ -6324,6 +6345,8 @@ PROJECT_ORG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+
 - `binaries/` - All build output (local + all platforms)
 - `releases/` - Release output
 - `volumes/` - Runtime volume data (if created locally)
+
+**Note:** `docker/rootfs/` (build-time container overlay) is COMMITTED, never gitignored.
 
 **Note:** `docker/rootfs/` is COMMITTED — it is the build-time container filesystem overlay (entrypoint.sh, service configs) required by the image build.
 
@@ -6459,12 +6482,17 @@ volumes/
 *.swp
 *.swo
 
-# AI config directories (regenerated from AI.md rules, not committed)
-.claude/
-.cursor/
+# AI config: team config (rules, settings.json, agents, commands, mcp.json) is COMMITTED;
+# only personal and runtime files are ignored
+.claude/settings.local.json
+.claude/*.lock
+.claude/backups/
+.claude/cache/
+.claude/history.jsonl
+.cursor/settings.json
+.windsurf/settings.json
 .aider/
 .ai/
-.windsurf/
 
 # Claude Code personal files (always gitignored)
 CLAUDE.local.md
@@ -6498,6 +6526,8 @@ tests/
 # Documentation (not needed in container)
 docs/
 *.md
+# Builds and embedded tests read the root README, so keep it
+!README.md
 
 # Build files (not needed - build happens inside Docker)
 Makefile
@@ -6525,7 +6555,7 @@ Makefile
 | **Runtime** | `volumes/` | Runtime volumes, not build-time |
 | **Build output** | `binaries/`, `releases/` | Container builds from source |
 | **Tests** | `tests/` | Test scripts not needed in production |
-| **Docs** | `docs/`, `*.md` | Documentation not needed in container |
+| **Docs** | `docs/`, `*.md`, then re-include `!README.md` | Documentation is not needed in the container, but the root README stays: builds and embedded tests may read it |
 | **Build files** | `Makefile` | Build happens inside Docker, not needed |
 | **IDE** | `.idea/`, `.vscode/`, `*.swp` | Editor files |
 | **AI config** | `.claude/`, `.cursor/`, etc. | AI assistant config |
@@ -7125,7 +7155,7 @@ Before proceeding, confirm you understand:
 | Cache | `~/.cache/{internal_org}/{internal_name}/` |
 | Logs | `~/.local/log/{internal_org}/{internal_name}/` |
 | Log File | `~/.local/log/{internal_org}/{internal_name}/server.log` |
-| Backup | `~/.local/share/Backups/{internal_org}/{internal_name}/` |
+| Backup | System backup dir when writable (PART 8 → `GetBackupDir`), else `~/.local/share/Backups/{internal_org}/{internal_name}/` |
 | PID File | `~/.local/share/{internal_org}/{internal_name}/{internal_name}.pid` |
 | SSL | `~/.config/{internal_org}/{internal_name}/ssl/` (letsencrypt/, local/) |
 | Security | `~/.local/share/{internal_org}/{internal_name}/security/` (geoip/, blocklists/, cve/, trivy/) |
@@ -7164,7 +7194,7 @@ Before proceeding, confirm you understand:
 | Cache | `~/Library/Caches/{internal_org}/{internal_name}/` |
 | Logs | `~/Library/Logs/{internal_org}/{internal_name}/` |
 | Log File | `~/Library/Logs/{internal_org}/{internal_name}/server.log` |
-| Backup | `~/Library/Backups/{internal_org}/{internal_name}/` |
+| Backup | System backup dir when writable (PART 8 → `GetBackupDir`), else `~/Library/Backups/{internal_org}/{internal_name}/` |
 | PID File | `~/Library/Application Support/{internal_org}/{internal_name}/{internal_name}.pid` |
 | SSL | `~/Library/Application Support/{internal_org}/{internal_name}/ssl/` (letsencrypt/, local/) |
 | Security | `~/Library/Application Support/{internal_org}/{internal_name}/data/security/` (geoip/, blocklists/, cve/, trivy/) |
@@ -7204,7 +7234,7 @@ Before proceeding, confirm you understand:
 | Cache | `~/.cache/{internal_org}/{internal_name}/` |
 | Logs | `~/.local/log/{internal_org}/{internal_name}/` |
 | Log File | `~/.local/log/{internal_org}/{internal_name}/server.log` |
-| Backup | `~/.local/share/Backups/{internal_org}/{internal_name}/` |
+| Backup | System backup dir when writable (PART 8 → `GetBackupDir`), else `~/.local/share/Backups/{internal_org}/{internal_name}/` |
 | PID File | `~/.local/share/{internal_org}/{internal_name}/{internal_name}.pid` |
 | SSL | `~/.config/{internal_org}/{internal_name}/ssl/` (letsencrypt/, local/) |
 | Security | `~/.local/share/{internal_org}/{internal_name}/security/` (geoip/, blocklists/, cve/, trivy/) |
@@ -7452,13 +7482,32 @@ func (c *Config) SetAdminPath(input string) error {
 }
 ```
 
-**CLI flags:**
+**CLI flags (filesystem directory overrides: `--config`, `--data`, `--cache`, `--log`, `--backup`):** these are real filesystem paths, so `SafePath` (URL and route normalization) is NOT used. It strips the leading slash and enforces the URL segment charset, which would turn `--data /var/lib/app` into the relative path `var/lib/app`. Use `SafeDirPath`: it preserves absolute paths, rejects NUL and control characters and any `..` segment in the raw input, and returns the cleaned path. Relative inputs are accepted and resolved against the working directory at startup.
 ```go
+// SafeDirPath validates a filesystem directory override and preserves absolute paths
+func SafeDirPath(input string) (string, error) {
+    if input == "" {
+        return "", errors.New("empty path")
+    }
+    for _, r := range input {
+        // Any control character (NUL, tab, CR, LF, other C0, DEL, C1) is rejected
+        if unicode.IsControl(r) {
+            return "", errors.New("invalid characters")
+        }
+    }
+    for _, seg := range strings.Split(filepath.ToSlash(input), "/") {
+        if seg == ".." {
+            return "", errors.New("path traversal")
+        }
+    }
+    return filepath.Clean(input), nil
+}
+
 func parseFlags() error {
     dataDir := flag.String("data", "/var/lib/app", "Data directory")
     flag.Parse()
 
-    safe, err := SafePath(*dataDir)
+    safe, err := SafeDirPath(*dataDir)
     if err != nil {
         return fmt.Errorf("invalid --data path: %w", err)
     }
@@ -8103,8 +8152,8 @@ _cache:
 
 | Table | Purpose |
 |-------|---------|
-| `config` / `srv_config` | Configuration key-value pairs |
-| `config_meta` / `srv_config_meta` | Config metadata (defaults, restart flags) |
+| `srv_config` | Configuration key-value pairs (Cluster Mode remote DB only; single-instance has no config table) |
+| `srv_config_meta` | Config version tracking (Cluster Mode remote DB only) |
 | `admin_sessions` / `srv_admin_sessions` | Admin web sessions |
 | `rate_limits` / `srv_rate_limits` | Rate limiting counters |
 | `audit_log` / `srv_audit_log` | Admin actions, config changes |
@@ -8314,6 +8363,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | `TERM` | Terminal type; `TERM=dumb` disables ALL ANSI escapes and forces CLI mode (see PART 7) |
 | `DOMAIN` | FQDN override (highest priority for hostname resolution) |
 | `MODE` | `production` (default; shortcut `prod`) · `development` (shortcuts `dev`, `devel`) · `debug` (explicit opt-in only) |
+| `DEBUG` | Truthy value turns the debug flag on (`--debug` wins; precedence and the `/debug/*` endpoints are defined in PART 6 → Debug Flag). Independent of `MODE`: `MODE=debug` only defaults the flag on |
 | `DATABASE_DRIVER` | `sqlite` (+ `sqlite2`, `sqlite3`), `libsql` (+ `turso`), `postgres` (+ `pgsql`, `postgresql`), `mysql` (+ `mariadb`), `mssql`, `mongodb` (+ `mongo`) |
 | `DATABASE_URL` | Database connection string |
 | `SMTP_HOST` | SMTP server hostname (if set, skips autodetect) |
@@ -8332,21 +8382,28 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 
 **Note:** Loopback addresses avoided; global IPs preferred. See PART 5 for full details.
 
+### Directory Variables (Every Startup)
+
+| Variable | Flag | Description |
+|----------|------|-------------|
+| `CONFIG_DIR` | `--config` | Configuration directory (holds `server.yml`) |
+| `DATA_DIR` | `--data` | Data directory |
+| `LOG_DIR` | `--log` | Log directory |
+| `DATABASE_DIR` | (none) | SQLite database directory (changeable) |
+| `BACKUP_DIR` | `--backup` | Backup directory (changeable) |
+
+**Directory variables are applied on EVERY startup, never "once".** Precedence: flag, then environment variable, then the platform default (PART 4). They locate `server.yml` and the rest of the app's files, so they cannot live inside `server.yml` and are never written to it.
+
 ### Init-Only Variables (First Run Only)
 
 | Variable | Description |
 |----------|-------------|
-| `CONFIG_DIR` | Configuration directory |
-| `DATA_DIR` | Data directory |
-| `LOG_DIR` | Log directory |
-| `DATABASE_DIR` | SQLite database directory (changeable) |
-| `BACKUP_DIR` | Backup directory (changeable) |
 | `PORT` | Server port |
 | `LISTEN` | Listen address |
 | `APPLICATION_NAME` | Application title |
 | `APPLICATION_TAGLINE` | Application description |
 
-**Init-only variables are used ONCE during first run, then ignored.**
+**Init-only variables are used ONCE during first run to seed `server.yml`, then ignored.**
 
 ---
 
@@ -9239,18 +9296,18 @@ server:
   rate_limit:
     enabled: true
     read:
-      # per minute per IP
+      # per minute per IP (per token when authenticated)
       requests: 120
       window: 60
     write:
-      # per minute per IP
+      # per minute per IP (per token when authenticated)
       requests: 10
       window: 60
     health:
-      # per minute per IP (health/status endpoints)
+      # per minute per IP (per token when authenticated) (health/status endpoints)
       requests: 120
       window: 60
-    # per minute per IP (absolute ceiling across all endpoint types)
+    # per minute per IP (per token when authenticated) (absolute ceiling across all endpoint types)
     global_burst: 240
     # Auth endpoints — stricter limits, applied independently of the general limits above
     auth:
@@ -9302,7 +9359,8 @@ Before proceeding, confirm you understand:
 **Mode:**
 1. `--mode` CLI flag (highest priority)
 2. `MODE` environment variable
-3. Default: `production`
+3. `server.mode` in `server.yml` (a supported source, read only when neither of the above is set)
+4. Default: `production`
 
 **Debug:**
 1. `--debug` CLI flag (highest priority)
@@ -9404,7 +9462,7 @@ Before proceeding, confirm you understand:
 
 ## Debug Endpoints (`--debug` / `DEBUG=true` Only)
 
-**Debug endpoints are ONLY available when `--debug` flag or `DEBUG=true` is set. Otherwise returns 404.**
+**Debug endpoints are ONLY available when `--debug` flag or `DEBUG=true` is set. Otherwise returns 404. When enabled, EVERY `/debug/*` endpoint (including pprof and expvar) additionally requires the operator token (`server.token`) as a Bearer credential — `--debug` turns the endpoints on, it never replaces authentication.**
 
 ### pprof Endpoints
 
@@ -9440,15 +9498,18 @@ Before proceeding, confirm you understand:
 package server
 
 import (
+    "crypto/sha256"
+    "crypto/subtle"
     "expvar"
     "net/http"
     "net/http/pprof"
     "runtime"
+    "strings"
 
     "github.com/go-chi/chi/v5"
 )
 
-// registerDebugRoutes registers debug endpoints (--debug/DEBUG=true only)
+// registerDebugRoutes registers debug endpoints (--debug/DEBUG=true only); every endpoint also requires the operator token
 func (s *Server) registerDebugRoutes(r chi.Router) {
     if !s.config.IsDebug() {
         // No debug routes unless --debug or DEBUG=true
@@ -9456,6 +9517,9 @@ func (s *Server) registerDebugRoutes(r chi.Router) {
     }
 
     r.Route("/debug", func(r chi.Router) {
+        // Every debug endpoint (pprof, expvar, custom) requires the operator token (server.token) - never bypassed
+        r.Use(s.requireOperatorToken)
+
         // pprof endpoints
         r.HandleFunc("/pprof/", pprof.Index)
         r.HandleFunc("/pprof/cmdline", pprof.Cmdline)
@@ -9480,6 +9544,19 @@ func (s *Server) registerDebugRoutes(r chi.Router) {
         r.Get("/scheduler", s.handleDebugScheduler)
         r.Get("/memory", s.handleDebugMemory)
         r.Get("/goroutines", s.handleDebugGoroutines)
+    })
+}
+
+// requireOperatorToken rejects every /debug request without the correct server.token Bearer credential:
+// the inbound token is SHA-256 hashed and compared in constant time against the hash cached at startup
+func (s *Server) requireOperatorToken(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        got := sha256.Sum256([]byte(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")))
+        if subtle.ConstantTimeCompare(got[:], s.operatorTokenHash[:]) != 1 {
+            respondError(w, http.StatusUnauthorized, "Operator token required")
+            return
+        }
+        next.ServeHTTP(w, r)
     })
 }
 
@@ -10626,7 +10703,7 @@ $ myapp --help
 Usage: myapp [options]              # Shows actual name
 
 $ myapp --version
-myapp 1.0.0 (abc123)                # Shows actual name
+myapp 1.0.0 (abc123)                # First line shows the actual name; build metadata lines follow
 
 # But internally:
 User-Agent: jokes/1.0.0             # Hardcoded project name
@@ -10779,7 +10856,7 @@ NO_COLOR=1 {project_name} --status | cat -v
 NO_COLOR=1 {project_name} --status | grep -E '✅|❌|⚠️|🚀'
 ```
 
-**THESE SERVER COMMANDS CANNOT BE CHANGED. This is the complete command set.**
+**THESE TOP-LEVEL SERVER COMMANDS CANNOT BE CHANGED. This is the complete top-level set:** a project never adds, renames or removes a top-level flag, and an unlisted flag (for example `--header`) is not allowed. **Modifiers** belong to the command they modify and do not extend the top-level set: `--include-ssl` and `--include-data` modify `--maintenance backup` (PART 22), and `--maintenance`, `--service` and `--update` take the subcommands and options shown in their own `--help`.
 
 ## Server Binary Commands
 
@@ -10819,6 +10896,8 @@ NO_COLOR=1 {project_name} --status | grep -E '✅|❌|⚠️|🚀'
 --daemon
 # Enable debug mode (verbose logging, debug endpoints)
 --debug
+# Enable the I2P eepsite (opt-in, PART 32.2)
+--i2p
 # Color output (default: auto, respects NO_COLOR)
 --color {auto|yes|no}
 # Language for output (default: auto, from LANG env)
@@ -10847,7 +10926,7 @@ Information:
 Shell Integration:
 --shell completions [SHELL]            - Print shell completions
 --shell init [SHELL]                   - Print shell init command
---shell help                           - Show shell help
+--shell --help                         - Show shell help
 
 Server Configuration:
 --mode {production|development|debug}  - Application mode (default: production)
@@ -10862,15 +10941,16 @@ Server Configuration:
 --baseurl PATH                         - URL path prefix (default: /)
 --daemon                               - Run as daemon (detach from terminal)
 --debug                                - Enable debug mode
+--i2p                                  - Enable the I2P eepsite (opt-in)
 --color {auto|yes|no}                  - Color output (default: auto)
 --lang CODE                            - Language for output (default: auto)
 
 Service Management:
---service CMD                          - Service management (run --service help for details)
---maintenance CMD                      - Maintenance operations (run --maintenance help for details)
---update [CMD]                         - Check/perform updates (run --update help for details)
+--service CMD                          - Service management (run --service --help for details)
+--maintenance CMD                      - Maintenance operations (run --maintenance --help for details)
+--update [CMD]                         - Check/perform updates (run --update --help for details)
 
-Run '{project_name} <command> help' for detailed help on any command.
+Run '{project_name} <flag> --help' (for example `--service --help`) for detailed help on any command flag.
 ```
 
 ## Directory Flags
@@ -10883,7 +10963,7 @@ Run '{project_name} <command> help' for detailed help on any command.
 | `--data` | Directory | `/var/lib/{internal_org}/{internal_name}/` | `~/.local/share/{internal_org}/{internal_name}/` |
 | `--cache` | Directory | `/var/cache/{internal_org}/{internal_name}/` | `~/.cache/{internal_org}/{internal_name}/` |
 | `--log` | Directory | `/var/log/{internal_org}/{internal_name}/` | `~/.local/log/{internal_org}/{internal_name}/` |
-| `--backup` | Directory | `/mnt/Backups/{internal_org}/{internal_name}/` (if writable, else `{data_dir}/backup/`) | `~/.local/share/Backups/{internal_org}/{internal_name}/` |
+| `--backup` | Directory | `/mnt/Backups/{internal_org}/{internal_name}/` (if writable, else `{data_dir}/backup/`) | `/mnt/Backups/{internal_org}/{internal_name}/` if writable, else `~/.local/share/Backups/{internal_org}/{internal_name}/` |
 | `--pid` | File | `/var/run/{internal_org}/{internal_name}.pid` | `~/.local/share/{internal_org}/{internal_name}/{internal_name}.pid` |
 
 **Note:** `--backup` prefers the system backup dir if writable. Fallback is mode-aware: system mode (started as root) falls back to `{data_dir}/backup/` — never a `$HOME`-derived path; user mode falls back to the user dir. See `GetBackupDir()` in PART 8.
@@ -11105,7 +11185,13 @@ func RemovePIDFile(pidPath string) error {
 
 ```
 1. Receive SIGTERM/SIGINT
-2. Graceful shutdown (close connections, flush logs)
+2. Graceful shutdown, in this order:
+   a. Stop accepting new connections; readiness reports not-ready
+   b. Close long-lived connections (SSE, WebSocket, long-poll) with a clean close
+      (SSE: send `event: shutdown` then end the stream); clients reconnect with
+      backoff + jitter (SSE sends `retry: 3000`), they never wait on a dead socket
+   c. Drain in-flight requests (bounded by the shutdown timeout)
+   d. Flush logs, close the database
 3. Remove PID file
 4. Exit
 ```
@@ -11198,7 +11284,7 @@ PHASE 5: Server startup (actual server start)
       ├─ Format 2: --port {http},{https} (dual port)
       │   ├─ First port = HTTP
       │   └─ Second port = HTTPS
-      ├─ No --port? → check {PROJECT_NAME}_PORT env var (same format)
+      ├─ No --port? → check PORT env var (same format)
       ├─ No env var? → read from config file (server.port)
       └─ No config? → random port in 64000-64999 range (single, HTTP)
    f. Bind ALL privileged ports (< 1024) NOW while still root:
@@ -11217,7 +11303,7 @@ PHASE 5: Server startup (actual server start)
    ├─ Create {data_dir} (~/.local/share/{internal_org}/{internal_name}/)
    ├─ Create {cache_dir} (~/.cache/{internal_org}/{internal_name}/)
    ├─ Create {log_dir} (~/.local/log/{internal_org}/{internal_name}/)
-   ├─ Create {backup_dir} (~/.local/share/Backups/{internal_org}/{internal_name}/)
+   ├─ Create {backup_dir} (system backup dir if writable, else ~/.local/share/Backups/{internal_org}/{internal_name}/ — PART 8 GetBackupDir)
    ├─ Set permissions: 0700 on all dirs (user-only access)
    └─ Note: port must be >1024 (user mode cannot bind privileged ports)
 
@@ -11292,11 +11378,11 @@ PHASE 5: Server startup (actual server start)
     │   ├─ Create hidden service, log .onion address
     │   └─ Error → log WARN, continue without Tor (non-fatal)
 
-    17b. Start I2P (OPT-IN; only if features.i2p.enabled) - see PART 32.2:
-    ├─ features.i2p.enabled false (default) → skip entirely (no port, no config)
+    17b. Start I2P (OPT-IN; only if server.i2p.enabled) - see PART 32.2:
+    ├─ server.i2p.enabled false (default) → skip entirely (no port, no config)
     ├─ enabled, resolve provider:
     │   ├─ i2pd binary found → Model A: create {config_dir}/i2p/, {data_dir}/i2p/site/;
-    │   │   allocate backend port; regenerate {config_dir}/i2p/tunnels.conf; start i2pd
+    │   │   allocate backend port; regenerate {config_dir}/i2p/i2pd.conf; start i2pd; SAM session + forward
     │   ├─ else SAM (127.0.0.1:7656) reachable → Model B: SAM SESSION CREATE + STREAM FORWARD
     │   └─ neither → log WARN "no I2P provider", continue without I2P (non-fatal)
     └─ Wait for destination, log .b32.i2p address
@@ -11429,6 +11515,8 @@ PHASE 5: Server startup (actual server start)
 | cgroup | `/proc/1/cgroup` contains `docker`, `kubepods`, `lxc` |
 | Self wrapper | Parent process is `{project_name}` (entrypoint wrapper) |
 
+**Systemd system containers (Incus/LXC/LXD/systemd-nspawn):** these run a full init, so the table above does not make them "container" for service-manager purposes. When systemd launched the process (`INVOCATION_ID` set), the service manager is `systemd` and service install/start/stop/status work normally; "container" applies to application containers (Docker, Podman, Kubernetes) and to Incus/LXC containers without systemd. The systemd check runs before generic container detection.
+
 **Manual Start Priority Order:**
 1. `--daemon` CLI flag (highest)
 2. `server.daemonize` config setting
@@ -11494,7 +11582,12 @@ func isContainer() bool {
 
 // detectServiceManager returns the active service manager
 func detectServiceManager() string {
-    // Check for container environment first
+    // systemd as init (incl. Incus/LXC/nspawn system containers) wins over generic container detection
+    if os.Getenv("INVOCATION_ID") != "" {
+        return "systemd"
+    }
+
+    // Check for container environment
     if isContainer() {
         return "container"
     }
@@ -12035,10 +12128,12 @@ The app automatically watches config files and hot-reloads what it can. Settings
 **Implementation:**
 
 ```go
-// ConfigManager manages config from both file AND database (admin WebUI)
+// ConfigManager manages config from the file and, in Cluster Mode only, the remote database (admin WebUI)
 // Changes from either source trigger hot-reload or restart notification
 type ConfigManager struct {
     configPath      string
+    // Cluster Mode: the remote DB is the config source of truth (PART 5); false for single-instance (server.yml only)
+    clusterMode     bool
     db              *sql.DB
     lastFileModTime time.Time
     // Config version in database
@@ -12055,7 +12150,9 @@ func (m *ConfigManager) Start() {
         ticker := time.NewTicker(5 * time.Second)
         for range ticker.C {
             m.checkFileChanges()
-            m.checkDBChanges()
+            if m.clusterMode {
+                m.checkDBChanges()
+            }
         }
     }()
 }
@@ -12076,14 +12173,16 @@ func (m *ConfigManager) checkFileChanges() {
 
     m.applyConfigChanges(newConfig, "file")
 
-    // Sync file changes to database so admin UI sees them
-    m.syncToDatabase(newConfig)
+    // Cluster Mode only: sync file changes to the remote database so every node and the admin UI see them
+    if m.clusterMode {
+        m.syncToDatabase(newConfig)
+    }
 }
 
 // checkDBChanges watches database for admin WebUI changes
 func (m *ConfigManager) checkDBChanges() {
     var version int64
-    err := m.db.QueryRow("SELECT version FROM config_meta WHERE id = 1").Scan(&version)
+    err := m.db.QueryRow("SELECT version FROM srv_config_meta WHERE id = 1").Scan(&version)
     if err != nil || version == m.lastDBVersion {
         return
     }
@@ -12128,13 +12227,13 @@ func (m *ConfigManager) applyConfigChanges(newConfig *Config, source string) {
 
 // syncToDatabase writes file config to database
 func (m *ConfigManager) syncToDatabase(cfg *Config) {
-    // Update config table, bump version
+    // Cluster Mode only: update the srv_config table, bump version
     _, err := m.db.Exec(`
-        UPDATE config SET value = ? WHERE key = ?
+        UPDATE srv_config SET value = ? WHERE key = ?
         -- ... for each setting
     `)
     if err == nil {
-        m.db.Exec("UPDATE config_meta SET version = version + 1 WHERE id = 1")
+        m.db.Exec("UPDATE srv_config_meta SET version = version + 1 WHERE id = 1")
     }
 }
 
@@ -12151,13 +12250,11 @@ func (m *ConfigManager) syncToFile(cfg *Config) {
 **Database Schema :**
 
 All projects use SQLite with two database files:
-- `server.db` - Server state (config, sessions, rate limits, audit, scheduler)
+- `server.db` - Server state (sessions, rate limits, audit, scheduler)
 - `users.db` - User data (admins, users, API tokens) - separate for easy backup/restore
 
 | Database | Table | Purpose |
 |----------|-------|---------|
-| `server.db` | `config` | Key-value config storage |
-| `server.db` | `config_meta` | Config version tracking |
 | `server.db` | `admin_sessions` | Admin WebUI login sessions |
 | `server.db` | `rate_limits` | Sliding window rate limit counters |
 | `server.db` | `audit_log` | Admin actions, config changes, security events |
@@ -12380,41 +12477,18 @@ func OpenDatabase(cfg *Config) (*Database, error) {
 -- SERVER.DB - Server state and operations
 -- ============================================================================
 
--- Config key-value storage (mirrors YAML structure as flat keys)
-CREATE TABLE IF NOT EXISTS config (
-    -- Dot notation: "server.port", "ssl.enabled"
-    key         TEXT PRIMARY KEY,
-    -- JSON-encoded value (string, number, bool, array)
-    value       TEXT NOT NULL,
-    -- string, number, bool, array, object
-    type        TEXT NOT NULL DEFAULT 'string',
-    updated_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+-- Single-instance SQLite server.db has NO config table: configuration lives only in server.yml (PART 5).
+-- Cluster Mode ONLY (remote PostgreSQL/MySQL): the remote database is the configuration source of truth (PART 5), so these two tables exist there (srv_ prefix) and server.yml is a synced cache.
+CREATE TABLE IF NOT EXISTS srv_config (
+    key        VARCHAR(255) PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-
--- Config metadata for change detection
-CREATE TABLE IF NOT EXISTS config_meta (
-    -- Single row
-    id          INTEGER PRIMARY KEY CHECK (id = 1),
-    -- Incremented on any change
-    version     INTEGER NOT NULL DEFAULT 1,
-    updated_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+CREATE TABLE IF NOT EXISTS srv_config_meta (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    version    BIGINT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-
--- Initialize metadata row
-INSERT OR IGNORE INTO config_meta (id, version) VALUES (1, 1);
-
--- Trigger to auto-increment version on config change
-CREATE TRIGGER IF NOT EXISTS config_version_bump
-AFTER INSERT OR UPDATE OR DELETE ON config
-BEGIN
-    UPDATE config_meta SET
-        version = version + 1,
-        updated_at = strftime('%s', 'now')
-    WHERE id = 1;
-END;
-
--- Index for fast lookups by prefix (e.g., all "ssl.*" settings)
-CREATE INDEX IF NOT EXISTS idx_config_key_prefix ON config(key);
 
 -- ----------------------------------------------------------------------------
 -- Admin Sessions (admin WebUI login sessions)
@@ -12984,7 +13058,7 @@ INSERT INTO config (key, value, type) VALUES
     ('ssl.key', '""', 'string'),
     ('ssl.min_version', '"TLS1.2"', 'string'),
     ('cors.allowed_origins', '["https://example.com","https://api.example.com"]', 'array'),
-    -- per minute per IP (see server.rate_limit.*)
+    -- per minute per IP (per token when authenticated) (see server.rate_limit.*)
     ('rate_limit.read.requests', '120', 'number'),
     ('branding.site_name', '"My App"', 'string');
 ```
@@ -13210,8 +13284,8 @@ func buildHealthResponse() *HealthResponse {
                 Hostname: torManager.Hostname(),
             },
             I2P: I2PInfo{
-                // OPT-IN: false unless features.i2p.enabled
-                Enabled:  cfg.Features.I2P.Enabled,
+                // OPT-IN: false unless server.i2p.enabled
+                Enabled:  cfg.Server.I2P.Enabled,
                 Running:  i2pManager.IsRunning(),
                 // "healthy", "disabled", "error:..."
                 Status:   i2pManager.Status(),
@@ -13333,6 +13407,7 @@ $ kill -TERM $(cat /var/run/myapp.pid)
 | `--port` | `{PROJECT_NAME}_PORT` | Listen port |
 | `--address` | `LISTEN` | Listen address |
 | `--mode` | `MODE` | Application mode (production/development/debug) |
+| `--i2p` | `I2P_ENABLED` | Enable the opt-in I2P eepsite (config key: `server.i2p.enabled`) |
 | (none) | `DATABASE_DIR` | SQLite database directory (Docker: `/data/db/sqlite`, Native: `{data_dir}/db/`) |
 | (none) | `BACKUP_DIR` | Backup directory (defaults to `{data_dir}/backup/`, changeable) |
 
@@ -13811,7 +13886,7 @@ func GetWildcardDomain() string
 
 | Component | Base URL Source |
 |-----------|-----------------|
-| HTML templates | `BuildURL(r, "/path")` |
+| HTML templates (absolute URLs only) | `BuildURL(r, "/path")`; same-origin links and forms use `{{ path "/path" }}` |
 | Swagger/OpenAPI | `servers[0].url` = `BuildURL(r, "")` |
 | GraphQL | `BuildURL(r, "/api/{api_version}/server/graphql")` (or `/api/graphql` alias for the latest version) |
 | Email links | `BuildURL(r, "/verify")` |
@@ -14078,38 +14153,23 @@ func RequestIDMiddleware(next http.Handler) http.Handler {
 }
 ```
 
-### Auth Token Headers (All Headers Supported)
+### Auth Token Presentation (Authorization Header Only)
 
-**Standard Authorization:**
-- `Authorization` - Standard: `Bearer {token}`, `Basic {base64}`, `Digest {credentials}`
+**Tokens are presented one way on every native route: `Authorization: Bearer {token}`.**
 
-**API Key Headers:**
-- `X-API-Key` - Common API key header
-- `X-Api-Key` - Case variant (treat as same)
-- `API-Key` - Alternative without X- prefix
-- `ApiKey` - No hyphen variant
+| Rule | Detail |
+|------|--------|
+| Native routes | `/api/{api_version}/**`, the MCP endpoint, and web management actions that accept a bearer credential: `Authorization: Bearer {token}` is the ONLY accepted form |
+| Other headers | `X-API-Key`, `API-Key`, `X-Auth-Token`, `X-Access-Token`, `X-Token`, `Token`, Basic and Digest are NOT credentials on native routes — they are ignored, so the request is anonymous |
+| Query string | A `?token=` parameter is never read as a credential: tokens in URLs leak through server logs, browser history and `Referer`. It is ignored and never logged (the one exception is the one-shot link token in the next row) |
+| One-shot link tokens | The one exception to the rule above: a one-shot token carried in an emailed link (security-report status, password reset, email verification, invite, and similar flows the project defines) is not a credential. It identifies one resource or action and cannot call the API. It is single-use or time-limited, stored only as `SHA-256(token)`, compared in constant time, and never accepted in `Authorization`. Pages reached by such a link send `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, and the token value is redacted (`[redacted]`) from access and application logs. A project adds no other token in a URL |
+| Compatibility-layer routes | Accept exactly the credential form the emulated protocol defines (for example an API-key header), on that layer's routes only |
+| Priority | There is no priority list: no `Authorization` header means anonymous |
+| `401` | A missing, invalid, expired or revoked token returns `401` with `WWW-Authenticate: Bearer realm="{project_name}"` (RFC 6750 §3); an invalid, expired or revoked token adds `error="invalid_token"` |
+| `403` | A valid token without the needed scope or ownership returns `403`; when the route is bearer-protected the response adds `WWW-Authenticate: Bearer error="insufficient_scope"` |
+| Logging | The `Authorization` value is never logged and never echoed in an error body |
 
-**Custom Token Headers:**
-- `X-Auth-Token` - Custom auth token
-- `X-Access-Token` - Access token header
-- `X-Token` - Short form
-- `Token` - Minimal form
-
-**Session/CSRF Headers:**
-- `X-CSRF-Token` - CSRF protection token
-- `X-XSRF-Token` - Angular variant
-- `X-Session-ID` - Session identifier
-
-**Service-to-Service:**
-- `X-Service-Token` - Internal service auth
-- `X-Internal-Token` - Internal API calls
-
-**Priority Order (first found wins):**
-1. `Authorization` header (standard, preferred)
-2. `X-API-Key` / `API-Key`
-3. `X-Auth-Token` / `X-Access-Token`
-4. `X-Token` / `Token`
-5. Query parameter `?token=` (least preferred, avoid in production)
+`X-CSRF-Token` and `X-XSRF-Token` carry the CSRF token on web forms; they are not credentials. Service-to-service calls use the same Bearer token — there is no separate internal-token header.
 
 ### Implementation Requirements
 
@@ -14512,6 +14572,15 @@ func versionPurge(w http.ResponseWriter, r *http.Request) {
 ```
 
 Called from the HTML middleware only — never on static, API, or `/sw.js` responses.
+
+**The purge MUST NOT be able to hang a page load** (`"storage"` waits on IndexedDB connections held by other open tabs, `"cache"` holds the navigation until the HTTP cache is cleared):
+
+| Rule | Detail |
+|------|--------|
+| **Top-level documents only** | Emit the header only when `Sec-Fetch-Dest: document` and `Sec-Fetch-Mode: navigate` (or those headers are absent on an old browser) - never for iframes, prefetch, XHR/fetch, `HEAD`, redirects (3xx) or error responses (4xx/5xx) |
+| **No IndexedDB dependency** | The app MUST NOT hold long-lived IndexedDB connections open (the `storage` wipe blocks on them); open, use and close per operation |
+| **Client watchdog** | `app.js` starts a 10 s boot timer (cleared when the first render completes). On expiry, and at most once per tab (`sessionStorage` flag `{project_name}_recovered`), it unregisters every service worker, deletes every Cache API cache and reloads. A second expiry shows the static error page instead of looping |
+| **Never a dependency** | The page works with the purge header ignored: HTML is `no-store`, assets are stamped, so a missed purge costs one revalidation, never a stuck page |
 
 ### Cache Warming
 
@@ -15296,7 +15365,7 @@ When `DEBUG=true` is active and an error occurs, the canonical error body (PART 
 | Credential stuffing | Rate limit per IP + per username + global | Argon2id on every login attempt (no "fast path" for unknown users) | Generic "invalid credentials" message | Account lockout after N failures |
 | Path traversal | Validate paths, reject `..` / null bytes | `filepath.Clean()` + base-dir confinement | n/a | OS-level read perms restrict reachable files |
 | Token / credential leakage | n/a | Never `slog.Info("token=", t)` — log token ID hash only | Sanitization layer strips known sensitive query params from URL fields in reports / logs / error contexts (see PART 34 → "Public Reports Scope") | TLS in transit (PART 15) |
-| CSRF | Validate Origin + same-origin check | n/a | CSRF token on cookie-authenticated state-changing requests (PART 16 → CSRF) | `SameSite=Strict` cookies (browser-level enforcement) |
+| CSRF | Validate Origin + same-origin check | n/a | CSRF token on cookie-authenticated state-changing frontend requests only — never `/api/**` or compatibility layers (PART 16 → CSRF) | `SameSite=Strict` cookies (browser-level enforcement) |
 
 **Rule:** when implementing a feature, walk every layer. Don't assume "the input validator caught it" or "the output template will escape it" — write the code as if every other layer is broken.
 
@@ -15375,7 +15444,7 @@ When `DEBUG=true` is active and an error occurs, the canonical error body (PART 
 | Default | Why |
 |---------|-----|
 | HTTPS preferred everywhere — `http://` upgrade on first visit | One config (cert) and TLS just works (PART 15 → Let's Encrypt) |
-| CSRF on by default with `SameSite=Strict` cookies | No knobs to flip. Bypasses for Bearer/public/exempt paths are automatic (PART 16 → CSRF) |
+| CSRF on by default with `SameSite=Strict` cookies | No knobs to flip. Backend (`/api/**`), compatibility-layer, Bearer, public, and exempt paths are never checked (PART 16 → CSRF) |
 | CSP on by default with sensible per-directive allow-list | "Just works" for typical apps; auto-detects own domain (PART 11 → CSP) |
 | CORS on by default, credential-aware | "Just works" for public APIs and authenticated apps (PART 16 → CORS) |
 | Rate limit on by default | Per-IP + per-identifier on auth endpoints; configurable but non-zero by default |
@@ -15583,7 +15652,7 @@ web:
     honor_sec_gpc: true
     # DNT is dead in modern browsers — off by default
     honor_dnt: false
-    # reject cross-site state-changers (CSRF defense layer)
+    # reject cross-site state-changers on frontend routes only (CSRF defense layer; never /api/** or compat)
     sec_fetch_validation: true
     # never emit Server-Timing in production
     server_timing_in_debug_only: true
@@ -15634,12 +15703,11 @@ web:
 
 ## Sec-Fetch-* Request Validation
 
-**The spec uses the `Sec-Fetch-*` family as a defense-in-depth layer against CSRF and clickjacking. These are browser-set request headers (not response headers) — the binary validates them on state-changing requests.**
+**The spec uses the `Sec-Fetch-*` family as a defense-in-depth layer against CSRF and clickjacking. These are browser-set request headers (not response headers) — the binary validates them on state-changing FRONTEND requests only (never `/api/**` or compatibility-layer routes).**
 
 | Header | Validated on | Reject if |
 |--------|--------------|-----------|
-| `Sec-Fetch-Site` | POST/PUT/PATCH/DELETE | `cross-site` AND no Bearer token AND path is not in CSRF `exempt_paths` |
-| `Sec-Fetch-Mode` | POST/PUT/PATCH/DELETE | `navigate` on JSON API endpoints (`/api/*`) — blocks form-based navigation CSRF. GET/HEAD navigation is ALLOWED: opening an API URL in a browser returns the JSON normally (GETs are side-effect-free and responses carry `nosniff`; matches the standard Fetch Metadata resource-isolation policy, which permits top-level GET navigations) |
+| `Sec-Fetch-Site` | POST/PUT/PATCH/DELETE | `cross-site` AND frontend route (never `/api/**` or a compatibility-layer route) AND no Bearer token AND path is not in CSRF `exempt_paths` |
 | `Sec-Fetch-Dest` | media/document endpoints | `iframe` for endpoints not in `frame-ancestors` allow-list |
 | `Sec-Fetch-User` | authenticated state-changers | absent on a navigation that should be user-initiated (sensitive admin flows only) |
 
@@ -16343,8 +16411,7 @@ Allow: /api
 Disallow: /server/{admin_path}
 Sitemap: {app_url}/sitemap.xml
 
-# AI crawlers - default: no additional restrictions (inherit User-agent: * above)
-# Per-bot stanzas are only rendered when that bot is explicitly denied below
+# AI crawlers get no special treatment: they follow the User-agent: * rules above like any other client
 ```
 
 **Configuration:**
@@ -16356,38 +16423,12 @@ web:
       - /api
     deny:
       - /server/{admin_path}
-    # Per-AI-crawler access control (default: allow all - no AI blocking)
-    ai_bots:
-      # Applies to any recognized AI bot not listed individually below
-      default: allow
-      # Per-bot overrides: allow | deny
-      bots:
-        GPTBot: allow
-        ChatGPT-User: allow
-        ClaudeBot: allow
-        anthropic-ai: allow
-        Claude-Web: allow
-        CCBot: allow
-        Google-Extended: allow
-        Bytespider: allow
-        PerplexityBot: allow
-        Applebot-Extended: allow
-        Amazonbot: allow
-        Diffbot: allow
-        FacebookBot: allow
-        cohere-ai: allow
 ```
 
 **AI Crawler Rules:**
-- Default posture is **allow** - no AI bot is blocked unless the user explicitly sets it (or `ai_bots.default`) to `deny`.
-- `ai_bots.default: deny` flips the default for any bot not explicitly listed; explicit per-bot entries always take precedence over `default`.
-- Bots set to `allow` are covered by the existing `User-agent: *` block and get no separate stanza.
-- Bots set to `deny` render their own stanza:
-  ```
-  User-agent: {bot_name}
-  Disallow: /
-  ```
-- When `ai_bots.default: deny`, every recognized bot not explicitly set to `allow` also renders its own `Disallow: /` stanza, since a bot's own `User-agent` block overrides the wildcard `Allow: /` for that bot only.
+- AI bots are ordinary crawlers: there is no AI-specific blocking, no `ai_bots` setting and no per-bot stanzas in `robots.txt`, and the server never refuses a request because the caller is an AI.
+- **Unauthenticated:** an AI client gets exactly what any other crawler gets — the `User-agent: *` rules above (`Allow` and `Disallow` paths, advisory like every `robots.txt`) and the public endpoints. Anonymous MCP calls see only the public API operations, the same as an unauthenticated REST call.
+- **Authenticated (Bearer token, including MCP):** `robots.txt` does not apply. The caller can use everything its token allows, auth-only routes and tools included, and nothing more; access is decided by the token's permissions and scope alone, never by the caller being an AI.
 
 ### security.txt (RFC 9116)
 
@@ -16445,7 +16486,7 @@ web:
 
 ### llms.txt (AI Discovery)
 
-**ALL projects MUST serve an llms.txt file for AI agent discovery.**
+**ALL projects serve an llms.txt file for AI agent discovery (enabled by default; `web.llms.enabled: false` turns it off).**
 
 llms.txt tells AI agents (Claude, GPT, etc.) what the application does, what API endpoints are available, and how to interact with it programmatically. This is the AI equivalent of robots.txt.
 
@@ -16528,11 +16569,13 @@ web:
 | Specification | Follow the current MCP specification (https://modelcontextprotocol.io/specification) — the revision, header and error rules come from it, not from this file. Negotiate the version the client asks for; unsupported version → `400` with the spec's `UnsupportedProtocolVersionError` listing the supported versions |
 | Canonical route | `/api/{api_version}/server/mcp` |
 | Aliases | `/api/mcp` and `/mcp` — direct aliases for the current `{api_version}`; the SAME handler mounted at all three paths, never a redirect (see "Unversioned API aliases") |
+| Route class | All three paths, including the root `/mcp` alias, are API-class: never content-negotiated, no User-Agent detection, never HTML or plain text. Every response, including `400`, `403`, `404` and `405`, is JSON (a JSON-RPC error object when the request parsed, otherwise the canonical error body); success is `application/json` or `text/event-stream` according to the client's `Accept` |
 | Reserved name | `mcp` is in `reservedNames` so no user, org, or project slug can claim `/mcp` |
+| Help page | `/server/help/mcp` documents how to connect a client (see "/server/help/mcp"); `/server/help` links to it. Both return `404` when MCP is disabled |
 | Methods | `POST` only. `GET` and `DELETE` → `405 Method Not Allowed` (the server keeps no sessions and opens no standalone stream) |
 | Responses | A single `application/json` object per request; an SSE stream only when a tool needs to stream progress. Server-initiated requests are never sent |
 | Sessions | None. An `Mcp-Session-Id` header, if sent by an older client, is ignored — never minted, never echoed |
-| `Origin` | If an `Origin` header is present it MUST be validated against the request's own origin / configured public origins (PART 8 → "Resolution Order"); invalid → `403` (DNS-rebinding protection required by the spec) |
+| `Origin` | If an `Origin` header is present it MUST be the request's own origin, a configured public origin (PART 8 → "Resolution Order"), or an explicit entry of the resolved CORS allow-list (PART 16 → "CORS Allow-list Resolution Order"); the `*` default of that list does NOT authorize MCP origins; anything else → `403` (DNS-rebinding protection required by the spec). Requests without an `Origin` header (non-browser clients) are unaffected |
 | Header checks | `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` MUST match the JSON-RPC body; mismatch → `400` with the spec's `HeaderMismatch` error |
 
 #### Authentication — reuse, never new
@@ -16542,10 +16585,12 @@ web:
 | Credential | The existing `Authorization: Bearer ...` header, exactly as for every other API route. **There is no MCP token, no MCP scope, and no MCP-specific setting that grants access** |
 | Validation | Run through the SAME token validation function and middleware as the API — one code path, not a copy |
 | Cookies | Ignored. Like every `/api/...` route, the MCP endpoint accepts the `Authorization` header only — no ambient authority |
-| No token | Anonymous: only what an unauthenticated API call may do (public endpoints, default rate limits). An operation that needs auth returns the API's normal `401` JSON-RPC error |
+| No token | Anonymous: only what an unauthenticated API call may do (public endpoints, default rate limits). An operation that needs auth returns the API's normal `401` (with `WWW-Authenticate: Bearer`, PART 8 → "Auth Token Presentation") JSON-RPC error |
 | Authorization | Per tool call, with the caller's token, by the same checks as the matching API endpoint. A token that cannot call an endpoint over REST cannot call its tool |
 | Rate limiting, audit | The same limiters and audit events as the API; the audit `source` is `mcp` so MCP traffic is distinguishable |
 | Operator-only endpoints | Exposed as tools only to a caller whose token is already operator/admin-scoped; for any other caller they are absent from `tools/list` AND rejected on `tools/call` |
+| Token types and scope | `adm_`, `usr_`, `org_` tokens (and agent variants) work as Bearer with exactly the access they have over REST. The token's `scope` is enforced per tool in `tools/list` AND `tools/call`: `read` → read tools only; `read-write` → no delete or admin tools; `global` → everything the token's owner can do |
+| MCP clients | Create one dedicated named token per client (name, scope `read` or `read-write`, expiry) in the user's or org's token settings so it can be revoked alone. Use `adm_` only for a server-admin tool, never for a general MCP client |
 
 #### Tools
 
@@ -16620,8 +16665,8 @@ Repo-level (source-code) vulnerabilities are reported primarily via GitHub priva
 | Algorithm | `HMAC-SHA256(installation_secret, floor(unix_seconds / 172800))` → hex-encode → first 16 chars |
 | Rotation | Every 48 hours (172800 seconds) |
 | Validation window | Server accepts the **current** AND **previous** 48h window's id — prevents boundary failures for researchers who load the security.txt at second 47:59:59 |
-| Where it appears | Only in `/.well-known/security.txt` `Contact:` line. NEVER logged, NEVER returned in any other response. |
-| Failure mode | Invalid / expired id → form silently falls back to normal contact mode. Log to `security.log` as `security.security_id_invalid` (IP, user-agent, supplied id) — useful for catching scrape attempts. |
+| Where it appears | In the `/.well-known/security.txt` `Contact:` line and its human-readable renderings (`/server/security` and its JSON mirror `GET /api/{api_version}/server/security`), and echoed back only to a requester who supplied a currently valid id (the hidden form field of `/server/contact?security_id={id}`, needed to re-validate the POST). The raw id is NEVER logged and NEVER appears in any other response, error, notification or API body. |
+| Failure mode | Invalid / expired id → form silently falls back to normal contact mode. Log to `security.log` as `security.security_id_invalid` (IP, user-agent, and the first 8 hex chars of `SHA-256(supplied id)` — never the supplied value itself) — useful for catching scrape attempts. |
 | Why HMAC, not random | Determinism — each replica of the cluster computes the same id without coordinating state. The `installation_secret` (cluster-wide, persisted) is the only secret required. |
 
 ### `/server/contact?security_id={id}` — Mode Switch
@@ -16655,7 +16700,7 @@ Repo-level (source-code) vulnerabilities are reported primarily via GitHub priva
 2. Allocates a `tracking_id` — `sec_` prefix + 16 random hex chars. Stored in the security-reports table.
 3. **Encryption at rest:** the report body is encrypted with the project's PGP key if one exists; otherwise AES-256-GCM with `server.security.encryption_key` (the spec's canonical at-rest AES key — see PART 11 → "Cryptographic Keys"). Plaintext is NEVER persisted to disk.
 4. **Maintainer notification:** PGP-encrypted email to every Server Admin who has registered a personal pubkey (admin profile setting); falls back to AES-encrypted attachment + warning if no admin has a pubkey.
-5. **Researcher acknowledgment:** PGP-encrypted email to researcher's submitted email (using their submitted pubkey if any), containing the `tracking_id` and the URL `/server/security/report/{tracking_id}` (with a one-shot token only the researcher can use).
+5. **Researcher acknowledgment:** email to the researcher's submitted address, containing only the `tracking_id` and the URL `/server/security/report/{tracking_id}` (with a one-shot token only the researcher can use) — never any report content. If the researcher submitted a pubkey, the email is PGP-encrypted to it. If not, it is sent unencrypted: it carries no vulnerability details, and the status page it links to shows only the triage state. A pubkey is never required, and the project key is never used for this email (the researcher cannot decrypt it). Without working SMTP the acknowledgment is skipped and the `tracking_id` appears only in the form response.
 6. **Response to the form POST:** canonical success body — `{"ok": true, "data": {"tracking_id": "sec_..."}}` — with a clear "we received your report; check your email for confirmation" message rendered server-side.
 7. **Logging:** one entry to `security.log` as `security.report_received` — `tracking_id`, severity, sanitized affected-component, NO researcher PII, NO vulnerability content. Maintainers see full content only via the encrypted email or the admin tracker (after auth).
 
@@ -16668,7 +16713,7 @@ Repo-level (source-code) vulnerabilities are reported primarily via GitHub priva
 | `/server/security` | GET | None | Security overview page (HTML). Human-readable rendering of everything in `/.well-known/security.txt` — contact channels in RFC 9116 preference order (GitHub private vulnerability reporting, `/server/contact?security_id={id}`, `mailto:` CC address), `Expires`, and the `Encryption` key when a keypair exists — plus plain-language instructions for reporting a vulnerability. Links to `/server/security/policy`, `/server/security/thanks`, `/.well-known/pgp-key.asc`, and the machine-readable `/.well-known/security.txt`. Rendered from live config — nothing to edit. |
 | `/server/security/policy` | GET | None | Disclosure policy page (HTML). Default content provided; editable from admin panel. Lists the coordinated-disclosure window, in-scope domains, out-of-scope behaviors, safe-harbor language. |
 | `/server/security/thanks` | GET | None | Acknowledgments page. Lists researchers who opted in (real name, handle, or anonymized "Anonymous Researcher #n") with the year and short credit. |
-| `/server/security/report/{tracking_id}` | GET | One-shot token in URL | Researcher status page — shows triage state (Received / Triaged / Confirmed / Patching / Disclosed / Won't Fix), maintainer comments visible to researcher, expected disclosure date. Token is single-use-per-day; expires after the report is closed for 30 days. |
+| `/server/security/report/{tracking_id}` | GET | One-shot token in URL (no API mirror: explicit exception to the API-for-every-page rule, because the one-shot emailed link must not be duplicated onto the API surface) | Researcher status page — shows triage state (Received / Triaged / Confirmed / Patching / Disclosed / Won't Fix), maintainer comments visible to researcher, expected disclosure date. Token is single-use-per-day; expires after the report is closed for 30 days. |
 
 ### Admin Panel — `/server/{admin_path}/config/security/`
 
@@ -17143,7 +17188,7 @@ server:
 | `security.ip_allowlisted` | IP/CIDR added to allowlist | CIDR, description, added_by |
 | `security.ip_allowlist_removed` | IP/CIDR removed from allowlist | CIDR, removed_by |
 | `security.csp_violation` | CSP violation report received | IP, blocked-uri, violated-directive |
-| `security.security_id_invalid` | Invalid/expired security.txt id used | IP, user-agent, supplied id |
+| `security.security_id_invalid` | Invalid/expired security.txt id used | IP, user-agent, SHA-256 prefix of the supplied id (never the raw id) |
 | `security.report_received` | Security vulnerability report received | tracking_id, severity, sanitized affected-component |
 | `security.private_key_exported` | PGP private key exported | Admin, IP, reason |
 
@@ -17653,6 +17698,8 @@ When GDPR/CCPA (right to erasure) conflicts with HIPAA/SOC2 (retention requireme
 | `/users/consents` | PATCH | Update consent preferences |
 | `/server/privacy` | GET | Privacy policy |
 | `/server/dpo` | GET | Data Protection Officer contact (GDPR) |
+
+**DPO contact source:** `server.contact.dpo.email` (with optional `server.contact.dpo.name`), part of the Contact Configuration tree (PART 12). When `dpo.email` is empty the page shows `server.contact.general.email`; when that is empty too it renders only a link to the contact form (`/server/contact`). It never invents an address and never shows the admin address. The JSON mirror is `GET /api/{api_version}/server/dpo` (`name`, `email`, `privacy_url`) and follows the same fallback chain for `email`; when no address resolves it still answers `200` with `email` = `""` (and `name` = `""` when unset), never `404`; `privacy_url` is always present and is an absolute URL: the request's resolved base URL (PART 8 → "Resolution Order", never a cached value) + `/server/privacy`, so on an onion or I2P request it carries that address; the HTML page itself links with the root-relative path `/server/privacy`. The HTML page shows the DPO name when set, the address as a `mailto:` link when one resolves, and always links to `/server/privacy` and `/server/contact`.
 | `/server/{admin_path}/config/compliance` | GET | Compliance dashboard |
 | `/server/{admin_path}/config/compliance/report` | POST | Generate compliance report |
 | `/server/{admin_path}/config/compliance/breach` | POST | Report data breach |
@@ -18646,7 +18693,7 @@ Expires: {expiry_date}
 
 > **Full Tor implementation:** The above covers request detection, `BuildURL` integration, and privacy rules only. For Tor binary lifecycle, hidden service setup, outbound routing, and `github.com/cretz/bine` integration, see **PART 32.1 → "Tor Hidden Service"**.
 >
-> **Full I2P implementation:** the same overlay HTTP semantics apply to `.b32.i2p` (always `http://`, no cert, no HSTS, no upgrade). For the opt-in eepsite provider lifecycle (i2pd process or SAM bridge), `tunnels.conf` generation, and destination-key persistence, see **PART 32.2 → "I2P Eepsite"**.
+> **Full I2P implementation:** the same overlay HTTP semantics apply to `.b32.i2p` (always `http://`, no cert, no HSTS, no upgrade). For the opt-in eepsite provider lifecycle (i2pd process or SAM bridge), `i2pd.conf` generation, and destination-key persistence, see **PART 32.2 → "I2P Eepsite"**.
 
 ## Session Configuration
 
@@ -18686,25 +18733,25 @@ server:
 
 ## Rate Limiting
 
-Rate limiting is the primary abuse defense. All limits are per-IP using a sliding window counter stored in `server.db`.
+Rate limiting is the primary abuse defense. Anonymous requests are limited per IP; requests carrying a valid Bearer token (REST and MCP alike) are limited per token, so clients that share an egress IP (hosted assistants, NAT) never throttle one another, and failed authentication is always counted per IP. Counters use a sliding window stored in `server.db`.
 
 ```yaml
 server:
   rate_limit:
     enabled: true
     read:
-      # per minute per IP
+      # per minute per IP (per token when authenticated)
       requests: 120
       window: 60
     write:
-      # per minute per IP
+      # per minute per IP (per token when authenticated)
       requests: 10
       window: 60
     health:
-      # per minute per IP (health/status endpoints)
+      # per minute per IP (per token when authenticated) (health/status endpoints)
       requests: 120
       window: 60
-    # per minute per IP (absolute ceiling across all endpoint types)
+    # per minute per IP (per token when authenticated) (absolute ceiling across all endpoint types)
     global_burst: 240
     # Auth endpoints — stricter limits, applied independently of the general limits above
     auth:
@@ -18724,9 +18771,9 @@ server:
 
 | Endpoint class | Default limit | Window | Notes |
 |----------------|---------------|--------|-------|
-| Read (GET, HEAD) | 120 req/min | 60s | Per IP, sliding window |
-| Write (POST, PUT, PATCH, DELETE) | 10 req/min | 60s | Per IP, sliding window |
-| Health / status | 120 req/min | 60s | `/healthz`, `/readyz`, `/livez` |
+| Read (GET, HEAD) | 120 req/min | 60s | Per IP (anonymous) or per token (authenticated), sliding window |
+| Write (POST, PUT, PATCH, DELETE) | 10 req/min | 60s | Per IP (anonymous) or per token (authenticated), sliding window |
+| Health / status | 120 req/min | 60s | `/server/healthz` (and the optional `/healthz` root alias) |
 | Global burst | 240 req/min | 60s | Absolute ceiling across all types |
 | Login | 5 req / 15 min | 900s | Per IP + per identifier |
 | Password reset | 3 req / 1 hr | 3600s | Per IP, no email hint on exceed |
@@ -18742,7 +18789,7 @@ server:
 server:
   i18n:
     default_language: en
-    supported: [en]
+    available_languages: [en, es, fr, de, it, ar]
 ```
 
 ## Contact Configuration (Server Notification Recipients)
@@ -18810,6 +18857,15 @@ server:
         discord: ""
         slack: ""
         generic: ""
+
+    # ---- DPO (data protection officer, GDPR) ----
+    # Contact shown on the public /server/dpo page. Default is "" (the server
+    # never invents a DPO address). If email is empty the page shows
+    # server.contact.general.email; if that is empty too it shows only a
+    # link to the contact form. The admin address is NEVER shown here.
+    dpo:
+      name: ""
+      email: ""
 
     # ---- General (public contact form) ----
     # Recipient for /server/contact submissions (non-security). Public
@@ -18927,7 +18983,8 @@ server:
     # Tracking/Site ID (format depends on type)
     id: ""
     # Self-hosted URL (required for: matomo, piwik, owa, umami)
-    # Not used for: google, fathom, plausible, simple, cloudflare
+    # Optional for: fathom (Fathom Lite), plausible (self-hosted)
+    # Not used for: google, simple, cloudflare
     url: ""
 ```
 
@@ -19069,102 +19126,134 @@ server:
 
 ### Tracking Script Generation
 
-```go
-// TrackingScript returns the appropriate tracking code based on config
-func TrackingScript() template.HTML {
-    cfg := config.Get().Server.Tracking
-    if cfg.Type == "" || cfg.Type == "none" {
-        return ""
-    }
+#### Tracking and CSP (required)
 
+**Tracking MUST NOT weaken the CSP (`script-src 'self'`, no `'unsafe-inline'`).** The snippets below are shown in HTML form for readability, but they are never written inline into pages:
+
+- Every inline `<script>` body is served as same-origin JavaScript from `GET /server/tracking.js`, generated from the `server.tracking` config. It sends `Cache-Control: no-cache` and returns `404` when tracking is disabled or consent has not been given.
+- The page includes only external tags: the provider's `<script async src="...">` line and `<script async src="/server/tracking.js"></script>`, and only when tracking is configured AND consent is given.
+- The CSP builder adds only the configured provider's host to `script-src` and `connect-src` (for example `https://www.googletagmanager.com`, `https://www.google-analytics.com`, or the Matomo, Piwik or OWA host). No `'unsafe-inline'`, nonce or hash is ever added for tracking.
+- **Tor and I2P:** tracking is never rendered for requests served through the onion or I2P address — provider scripts are clearnet endpoints and calling them leaks the request off Tor — and `/server/tracking.js` returns `404` there.
+
+```go
+// tracker is what one provider contributes: external tags for the page and an
+// optional JavaScript body that is served from /server/tracking.js - a body is
+// NEVER written inline into HTML (see "Tracking and CSP").
+type tracker struct {
+    tags string
+    body string
+}
+
+// jsString quotes a config value as a JavaScript string literal; config text is
+// never concatenated raw into JavaScript.
+func jsString(v string) string {
+    b, _ := json.Marshal(v)
+    return string(b)
+}
+
+// trackerFor maps the server.tracking config to its tags and script body.
+func trackerFor(cfg TrackingConfig) (tracker, bool) {
+    id := html.EscapeString(cfg.ID)
+    base := strings.TrimSuffix(cfg.URL, "/")
     switch cfg.Type {
     case "google":
         if strings.HasPrefix(cfg.ID, "G-") {
             // GA4
-            return template.HTML(fmt.Sprintf(`
-<script async src="https://www.googletagmanager.com/gtag/js?id=%s"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', '%s');
-</script>`, cfg.ID, cfg.ID))
+            return tracker{
+                tags: `<script async src="https://www.googletagmanager.com/gtag/js?id=` + url.QueryEscape(cfg.ID) + `"></script>`,
+                body: "window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}" +
+                    "gtag('js',new Date());gtag('config'," + jsString(cfg.ID) + ");",
+            }, true
         }
         // Universal Analytics (legacy)
-        return template.HTML(fmt.Sprintf(`
-<script async src="https://www.google-analytics.com/analytics.js"></script>
-<script>
-  window.ga=window.ga||function(){(ga.q=ga.q||[]).push(arguments)};ga.l=+new Date;
-  ga('create', '%s', 'auto');
-  ga('send', 'pageview');
-</script>`, cfg.ID))
+        return tracker{
+            tags: `<script async src="https://www.google-analytics.com/analytics.js"></script>`,
+            body: "window.ga=window.ga||function(){(ga.q=ga.q||[]).push(arguments)};ga.l=+new Date;" +
+                "ga('create'," + jsString(cfg.ID) + ",'auto');ga('send','pageview');",
+        }, true
 
     case "matomo", "piwik":
-        return template.HTML(fmt.Sprintf(`
-<script>
-  var _paq = window._paq = window._paq || [];
-  _paq.push(['trackPageView']);
-  _paq.push(['enableLinkTracking']);
-  (function() {
-    var u="%s/";
-    _paq.push(['setTrackerUrl', u+'matomo.php']);
-    _paq.push(['setSiteId', '%s']);
-    var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
-    g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
-  })();
-</script>`, strings.TrimSuffix(cfg.URL, "/"), cfg.ID))
+        return tracker{body: "var _paq=window._paq=window._paq||[];_paq.push(['trackPageView']);" +
+            "_paq.push(['enableLinkTracking']);_paq.push(['setTrackerUrl'," + jsString(base+"/matomo.php") + "]);" +
+            "_paq.push(['setSiteId'," + jsString(cfg.ID) + "]);var g=document.createElement('script');" +
+            "g.async=true;g.src=" + jsString(base+"/matomo.js") + ";document.head.appendChild(g);"}, true
 
     case "owa":
-        return template.HTML(fmt.Sprintf(`
-<script>
-  var owa_baseUrl = '%s/';
-  var owa_cmds = owa_cmds || [];
-  owa_cmds.push(['setSiteId', '%s']);
-  owa_cmds.push(['trackPageView']);
-  owa_cmds.push(['trackClicks']);
-  (function() {
-    var _owa = document.createElement('script'); _owa.type = 'text/javascript'; _owa.async = true;
-    _owa.src = owa_baseUrl + 'modules/base/js/owa.tracker-combined-min.js';
-    var _owa_s = document.getElementsByTagName('script')[0]; _owa_s.parentNode.insertBefore(_owa, _owa_s);
-  })();
-</script>`, strings.TrimSuffix(cfg.URL, "/"), cfg.ID))
+        return tracker{body: "var owa_baseUrl=" + jsString(base+"/") + ";var owa_cmds=window.owa_cmds=window.owa_cmds||[];" +
+            "owa_cmds.push(['setSiteId'," + jsString(cfg.ID) + "]);owa_cmds.push(['trackPageView']);owa_cmds.push(['trackClicks']);" +
+            "var o=document.createElement('script');o.async=true;" +
+            "o.src=owa_baseUrl+'modules/base/js/owa.tracker-combined-min.js';document.head.appendChild(o);"}, true
 
     case "fathom":
-        scriptURL := "https://cdn.usefathom.com/script.js"
+        src := "https://cdn.usefathom.com/script.js"
         if cfg.URL != "" {
             // Self-hosted Fathom Lite
-            scriptURL = strings.TrimSuffix(cfg.URL, "/") + "/tracker.js"
+            src = base + "/tracker.js"
         }
-        return template.HTML(fmt.Sprintf(`
-<script src="%s" data-site="%s" defer></script>`, scriptURL, cfg.ID))
+        return tracker{tags: `<script src="` + html.EscapeString(src) + `" data-site="` + id + `" defer></script>`}, true
 
     case "plausible":
-        domain := cfg.ID
-        scriptURL := "https://plausible.io/js/script.js"
+        src := "https://plausible.io/js/script.js"
         if cfg.URL != "" {
-            scriptURL = strings.TrimSuffix(cfg.URL, "/") + "/js/script.js"
+            src = base + "/js/script.js"
         }
-        return template.HTML(fmt.Sprintf(`
-<script defer data-domain="%s" src="%s"></script>`, domain, scriptURL))
+        return tracker{tags: `<script defer data-domain="` + id + `" src="` + html.EscapeString(src) + `"></script>`}, true
 
     case "umami":
-        return template.HTML(fmt.Sprintf(`
-<script defer src="%s/script.js" data-website-id="%s"></script>`,
-            strings.TrimSuffix(cfg.URL, "/"), cfg.ID))
+        return tracker{tags: `<script defer src="` + html.EscapeString(base) + `/script.js" data-website-id="` + id + `"></script>`}, true
 
     case "simple":
-        return template.HTML(`
-<script async defer src="https://scripts.simpleanalyticscdn.com/latest.js"></script>
-<noscript><img src="https://queue.simpleanalyticscdn.com/noscript.gif" alt="" referrerpolicy="no-referrer-when-downgrade" /></noscript>`)
+        // Needs scripts.simpleanalyticscdn.com in script-src and queue.simpleanalyticscdn.com in img-src
+        // (the <noscript> pixel is TrackingNoscript(), rendered in <body>)
+        return tracker{tags: `<script async defer src="https://scripts.simpleanalyticscdn.com/latest.js"></script>`}, true
 
     case "cloudflare":
-        return template.HTML(fmt.Sprintf(`
-<script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "%s"}'></script>`, cfg.ID))
+        return tracker{tags: `<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "` + id + `"}'></script>`}, true
 
+    case "", "none":
+        return tracker{}, false
     default:
         log.Warnf("unknown tracking type: %s", cfg.Type)
+        return tracker{}, false
+    }
+}
+
+// TrackingScript returns the page markup: external tags only, plus the
+// same-origin /server/tracking.js tag when the provider has a script body.
+// The caller renders it only when tracking is configured AND consent is given.
+func TrackingScript() template.HTML {
+    t, ok := trackerFor(config.Get().Server.Tracking)
+    if !ok {
         return ""
     }
+    out := t.tags
+    if t.body != "" {
+        out += `<script async src="/server/tracking.js"></script>`
+    }
+    return template.HTML(out)
+}
+
+// TrackingScriptBody is what GET /server/tracking.js serves (Content-Type
+// application/javascript, Cache-Control: no-cache). The handler answers 404 when
+// this is empty, tracking is disabled, consent is missing, or the request came
+// through the onion or I2P address.
+func TrackingScriptBody() string {
+    t, ok := trackerFor(config.Get().Server.Tracking)
+    if !ok {
+        return ""
+    }
+    return t.body
+}
+
+// TrackingNoscript returns the <noscript> pixel for providers that have one
+// (only "simple"). It is NOT valid <head> content: render it as the first child
+// of <body>, under the same consent / non-overlay conditions as TrackingScript().
+func TrackingNoscript() template.HTML {
+    cfg := config.Get().Server.Tracking
+    if cfg.Type != "simple" {
+        return ""
+    }
+    return template.HTML(`<noscript><img src="https://queue.simpleanalyticscdn.com/noscript.gif" alt="" referrerpolicy="no-referrer-when-downgrade" /></noscript>`)
 }
 ```
 
@@ -19173,6 +19262,9 @@ func TrackingScript() template.HTML {
 ```html
 <!-- In base template <head> section -->
 {{ trackingScript }}
+
+<!-- First child of <body> (the simple provider's <noscript> pixel is invalid in <head>) -->
+{{ trackingNoscript }}
 ```
 
 ### Admin Panel (/server/{admin_path}/config/tracking)
@@ -19336,9 +19428,8 @@ server:
       # Show banner on ALL frontend pages until user acknowledges
       show_until_acknowledged: true
 
-      # Default state: cookies/tracking ENABLED (opt-out model)
-      # User must click Decline to disable non-essential cookies
-      default_enabled: true
+      # Non-essential cookies and tracking are OPT-IN: nothing non-essential runs until the visitor accepts
+      # (there is no opt-out mode and no setting to change that)
 
       # Banner message when data.sold = false (DEFAULT)
       message: "In accordance with the EU GDPR law this message is being displayed. We use cookies for essential site functionality and, with your consent, for preferences and analytics. Your data is stored on our servers and is never sold."
@@ -19514,7 +19605,6 @@ type SharingCondition struct {
 // ConsentConfig for cookie consent banner
 type ConsentConfig struct {
     ShowUntilAcknowledged bool   `yaml:"show_until_acknowledged"`
-    DefaultEnabled        bool   `yaml:"default_enabled"`
     // Used when data.sold = false
     Message               string `yaml:"message"`
     // Used when data.sold = true
@@ -19682,6 +19772,8 @@ type ConsentState struct {
 │                              [Save Preferences]                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+The same consent categories are also editable inline on `/server/preferences` as part of its single form (no separate Save there; see "Client-Side Preferences (cookies)" in PART 16, rule 17). The dialog above is the banner's own surface.
 
 ### Admin Panel (/server/{admin_path}/config/privacy)
 
@@ -20073,7 +20165,9 @@ type I2PInfo struct {
     Provider string `json:"provider"`
 }
 
-// ChecksInfo - component health (ok/error only - no details)
+// ChecksInfo - component health (ok/degraded/error - no details)
+// Dataset/dependency checks (GeoIP, blocklists, data files) are registered dynamically
+// and emitted as sibling keys after the core checks - see "Dataset & Dependency Checks"
 type ChecksInfo struct {
     // PART 10: "ok" or "error"
     Database  string `json:"database"`
@@ -20133,7 +20227,33 @@ type StatsInfo struct {
 | `checks.scheduler` | `checkScheduler()` | 19 |
 | `checks.cluster` | `checkCluster()` | 10 |
 | `checks.tor` | `checkTor()` | 32 |
+| `checks.geoip_*`, `checks.blocklist_*`, `checks.data_*` | health registry (dataset checks) | see "Dataset & Dependency Checks" |
 | `stats.*` | `statsCollector.*` | - |
+
+### Dataset & Dependency Checks
+
+**Every data set or external dependency the app loads, downloads, or reads at runtime is a health check.** A feature that silently runs on a missing, empty, or stale data set is a broken feature that reports "healthy" — health MUST say so.
+
+| Kind | Check key | Covers |
+|------|-----------|--------|
+| **GeoIP** | `geoip_{database}` (e.g. `geoip_country`, `geoip_city`, `geoip_asn`) | One check per GeoIP database file the app loads |
+| **Blocklists** | `blocklist_{id}` | One check per blocklist (IP, domain, user-agent, ...) the app loads or fetches |
+| **Data files** | `data_{id}` | One check per JSON (or other structured) data file — both embedded files (`src/data`, loaded via `embed`) and external files (downloaded, updated, or operator-supplied) |
+| **Other dependencies** | `{kind}_{id}` | Anything else the app loads and cannot run correctly without (certificates, lookup tables, rule sets, templates fetched at runtime) |
+
+| Rule | Detail |
+|------|--------|
+| **Registry, not hand-coding** | Each data set registers itself once at load time: `health.Register(key, critical, fn)`. `buildHealthResponse()` iterates the registry — adding a data set MUST NOT require editing the health handler |
+| **Values** | `ok` = loaded, parsed, non-empty, and within its maximum age · `degraded` = loaded but stale (update failing, past its max age) or running on the last known good copy · `error` = missing, empty, or unparseable with no usable copy |
+| **Disabled features** | A data set whose feature is disabled is OMITTED from `checks` (never reported as `ok` or `error`) |
+| **Aggregation** | `error` on `database` or `disk` → `unhealthy`. A dataset check at `degraded` or `error` → `degraded`, unless it was registered `critical` (the app cannot do its core job without it) → `unhealthy` |
+| **Stable keys** | `{kind}_{id}` is a stable snake_case identifier — NEVER a file path, URL, or filename (public-safe; see Security) |
+| **Order** | Core checks first (`database`, `cache`, `disk`, `scheduler`), then `tor`, `i2p`, then dataset checks in registration order. JSON emits keys in exactly this order (custom marshaller — never an unordered map) |
+| **Cost** | `/server/healthz` reads CACHED results. The scheduler re-runs dataset checks at most every 60 seconds and after every data-set reload/update; a request NEVER triggers a disk scan, parse, or network fetch |
+| **Freshness** | Each data set declares a `max_age` (e.g. 7 days for GeoIP, per-list for blocklists); the check compares last successful load/update against it |
+| **Public-safe** | `ok` / `degraded` / `error` only — no paths, URLs, sizes, record counts, versions, or error text |
+
+**Frontend labels:** the Component Status table shows one row per check. Labels come from i18n keys `health.check.{key}`; a key with no translation falls back to a humanized form of the key (`blocklist_ads` → `Blocklist: ads`). Dataset rows follow the core rows, grouped under their kind.
 
 #### Frontend Display Order
 
@@ -20161,20 +20281,32 @@ type StatsInfo struct {
 | Version | `<code>` | No | `<code>1.0.0</code>` |
 | Go version | `<code>` | No | `<code>{{.GoVersion}}</code>` |
 | Build commit | `<code>` | Optional | `<code>abc1234</code>` |
-| Build date | `<time>` | No | `<time datetime="2024-01-10">Jan 10, 2024</time>` |
-| Uptime | plain text | No | `2 days 5 hours` |
+| Build date | `<time>` | No | `<time datetime="2024-01-10">January 10, 2024</time>` |
+| Uptime | plain text | No | `2 days 5 hours` (via `format.Duration()`) |
 | Mode | `.badge` | No | `<span class="badge badge-production">Production</span>` (class is `badge-{mode}`: `badge-production` / `badge-development` / `badge-debug`) |
-| Timestamp | `<time>` | No | `<time datetime="...">Jan 15, 2024 10:30 AM</time>` |
+| Timestamp | `<time>` | No | `<time datetime="...">January 15, 2024 at 10:30:00 UTC</time>` |
 | Cluster status | `.status` | No | `<span class="status status-ok">✅ Connected</span>` |
 | Cluster node_count | plain text | No | `3 nodes` |
 | Node URLs | `.code-block` | **Yes** | With copy button, horizontal scroll (56 char onion) |
 | Primary URL | `.code-block` | **Yes** | With copy button, horizontal scroll |
 | Tor address | `.code-block` | **Yes** | 56-char v3 onion, copy button, horizontal scroll |
-| Feature enabled | `.feature-enabled` | No | `<li class="feature-enabled">🌍 GeoIP</li>` |
+| Feature enabled (one per line) | `.feature-enabled` | No | `<li class="feature-enabled">🌍 GeoIP</li>` |
 | Feature disabled | `.feature-disabled` | No | Muted, strikethrough |
 | Check ok | `.status.status-ok` | No | `<span class="status status-ok">✅ OK</span>` |
 | Check error | `.status.status-error` | No | `<span class="status status-error">❌ Error</span>` |
 | Stat number | large text | No | Formatted with commas: `1,234,567` |
+
+#### Frontend Human-Readable Rules
+
+| Rule | Detail |
+|------|--------|
+| **Applies to** | `/server/healthz` and `/healthz` in HTML AND text (curl). The API routes (`/api/**`) and JSON keep machine values |
+| **Uptime** | `format.Duration()` → `3 days 10 hours` (never `3d 10h 37m`) |
+| **Timestamps** | `timestamp` and `build.date` render as `%B %d, %Y at %H:%M:%S %Z` (`November 10, 2026 at 22:24:04 UTC`); HTML keeps the ISO value in `<time datetime="...">` |
+| **Build commit** | the short hash is shown as-is (it is an identifier, not a value to format) |
+| **Counts** | thousands separators (`22,087`) |
+| **Features** | ONE per line / one `<li>` each; address on the same entry (HTML: nested copy block) |
+| **Checks & stats** | check status words and stat labels are translated; `ok` renders as `✅ OK` / `ok` per format |
 
 ### Security: Public Info Only
 
@@ -20350,6 +20482,10 @@ type StatsInfo struct {
             <tr><td>💾 Cache</td><td><span class="status status-ok">✅ OK</span></td></tr>
             <tr><td>💿 Disk</td><td><span class="status status-ok">✅ OK</span></td></tr>
             <tr><td>⏰ Scheduler</td><td><span class="status status-ok">✅ OK</span></td></tr>
+            <!-- Dataset & dependency rows (see "Dataset & Dependency Checks"): one row per registered check, grouped after the core rows -->
+            <tr><td>🌍 GeoIP country</td><td><span class="status status-ok">✅ OK</span></td></tr>
+            <tr><td>🛡️ Blocklist: ads</td><td><span class="status status-ok">✅ OK</span></td></tr>
+            <tr><td>📄 Data: countries</td><td><span class="status status-warning">⚠️ Degraded</span></td></tr>
             <tr><td>🔗 Cluster</td><td><span class="status status-ok">✅ OK</span></td></tr>
           </tbody>
         </table>
@@ -20375,7 +20511,7 @@ type StatsInfo struct {
 
     <!-- Last Updated -->
     <footer class="health-footer">
-      <p>Last checked: <time datetime="2024-01-15T10:30:00Z">Jan 15, 2024 10:30 AM</time></p>
+      <p>Last checked: <time datetime="2024-01-15T10:30:00Z">January 15, 2024 at 10:30:00 UTC</time></p>
       <p class="auto-refresh">Auto-refreshing in <span id="countdown">30</span>s</p>
     </footer>
   </main>
@@ -20539,7 +20675,56 @@ These rules apply to the health payload in every format and on every health rout
 - NOT OK to include internal-only, secret, private-network, filesystem, credential, or admin-only detail
 - If in doubt, leave it out
 
-#### Plain Text (Accept: text/plain)
+#### Plain Text — Frontend (`/server/healthz`, `/healthz`)
+
+**Frontend text is a user-facing surface: every value is human-readable (see "Human-Readable Values (Frontend)") and every feature is ONE line.** curl and other CLI clients hitting the frontend route get this layout.
+
+```
+My Application - The best app ever
+
+Status:    Healthy
+Version:   1.0.0
+Build:     abc1234 (January 10, 2024 at 10:00:00 UTC)
+Go:       go1.xx.x
+Uptime:    2 days 5 hours
+Mode:      production
+Checked:   January 15, 2024 at 10:30:00 UTC
+
+Cluster:   connected, 3 nodes (member)
+
+Features
+  Tor:     healthy - abc123xyz456abcdef789xyz456abcdef789xyz456abcdef789xyz.onion
+  I2P:     disabled
+  GeoIP:   enabled
+
+Checks
+  Database:           ok
+  Cache:              ok
+  Disk:               ok
+  Scheduler:          ok
+  Tor:                ok
+  GeoIP country:      ok
+  Blocklist: ads:     ok
+  Data: countries:    degraded
+
+Statistics
+  Total requests:      1,234,567
+  Requests (24 hours): 45,678
+  Active connections:  42
+```
+
+| Rule | Detail |
+|------|--------|
+| **One feature per line** | `{Label}: {status}` plus ` - {hostname}` when the feature has an address. Never one line per sub-field (`enabled`/`running`/`status`/`hostname` are NOT separate lines) |
+| **Status words** | `healthy`, `starting`, `disabled`, `error: {short message}` (from `features.*.status`); a boolean feature shows `enabled` / `disabled` |
+| **Durations** | `format.Duration()` — `2 days 5 hours`, never `2d 5h 30m` or raw seconds |
+| **Timestamps** | `%B %d, %Y at %H:%M:%S %Z` — never ISO 8601, never `Z`-suffixed machine form |
+| **Counts** | thousands separators (`1,234,567`) |
+| **Labels** | translated (i18n keys), aligned in columns |
+
+#### Plain Text — API (`/api/{api_version}/server/healthz`, `.txt`, `Accept: text/plain` on API routes)
+
+**Machine surface: raw values (ISO 8601 timestamps, compact uptime), dot notation, ONE feature per line.** Feature lines are `features.{name}: {status}` followed by an optional hostname and optional `key=value` pairs (`provider=i2pd state=running`); a boolean feature is `enabled` / `disabled`.
 
 **Fields in canonical order, flattened with dot notation. References template PARTS.**
 
@@ -20571,17 +20756,10 @@ cluster.nodes: https://node1.example.com, https://node2.example.com, https://nod
 cluster.node_count: 3
 cluster.role: member
 
-# 6. Features - NON-NEGOTIABLE only (show actual status)
-features.tor.enabled: true
-features.tor.running: true
-features.tor.status: healthy
-features.tor.hostname: abc123xyz456abcdef789xyz456abcdef789xyz456abcdef789xyz.onion
-features.i2p.enabled: false
-features.i2p.running: false
-features.i2p.status: disabled
-features.i2p.hostname:
-features.i2p.provider: none
-features.geoip: true
+# 6. Features - NON-NEGOTIABLE only (show actual status), ONE line per feature
+features.tor: healthy abc123xyz456abcdef789xyz456abcdef789xyz456abcdef789xyz.onion
+features.i2p: healthy abc123def456ghi789jkl012mno345pqr678stu901vwx234yz.b32.i2p provider=i2pd state=running
+features.geoip: enabled
 # PROJECT-SPECIFIC: If using optional PARTS, show actual status
 # features.multi_user: true       (or false if admin disabled)
 # features.organizations: false   (disabled by admin)
@@ -20593,6 +20771,9 @@ checks.disk: ok
 checks.scheduler: ok
 checks.cluster: ok
 checks.tor: ok
+checks.geoip_country: ok
+checks.blocklist_ads: ok
+checks.data_countries: degraded
 
 # 8. Stats
 stats.requests_total: 1234567
@@ -20695,10 +20876,11 @@ When not in cluster mode:
 | `features.tor.hostname` | Onion address (if running) |
 | `features.i2p.enabled` | I2P eepsite enabled (OPT-IN; false by default) |
 | `features.i2p.running` | I2P provider currently running |
-| `features.i2p.status` | disabled, healthy, error:{short message} |
+| `features.i2p.status` | Normalized: `disabled`, `starting`, `healthy`, `error:{short message}` (mapped from `features.i2p.state`: `disabled` and `no_provider` -> `disabled`; `starting` and `building` -> `starting`; `running` -> `healthy`; `error` -> `error:{short message}`) |
+| `features.i2p.state` | Full lifecycle: `disabled`, `no_provider`, `starting`, `building`, `running`, `error` (the same values as CLI `--status`, PART 32.2) |
 | `features.i2p.hostname` | `.b32.i2p` address (if running) |
 | `features.i2p.provider` | i2pd, sam, or none |
-| `checks.*` | Component health (ok, error — no details) |
+| `checks.*` | Component health (ok, degraded, error — no details), including dataset checks (`geoip_*`, `blocklist_*`, `data_*`) |
 | `stats.requests_total` | Total requests served |
 | `stats.requests_24h` | Requests in last 24 hours |
 | `stats.active_connections` | Current active connections |
@@ -20761,11 +20943,13 @@ When not in cluster mode:
 ### --version Output
 
 ```
-{project_name} {project_version}
+{project_name} {project_version} ({short_commit})
 Built: {build_date}
 Go: {go_version}
 OS/Arch: {GOOS}/{GOARCH}
 ```
+
+Plain text, no color. The first line is always `{project_name} {project_version} ({short_commit})` so scripts can parse it; the build metadata lines follow it.
 
 ---
 
@@ -20779,7 +20963,7 @@ OS/Arch: {GOOS}/{GOARCH}
 
 ## Authentication & CORS (Cross-References)
 
-- **Auth token extraction:** every auth-protected API endpoint MUST accept a valid token from ANY header in PART 8 → "Auth Token Headers (All Headers Supported)", plus the `?token=` query param, following the PART 8 priority order (first found wins). A valid token grants access regardless of which header carried it.
+- **Auth token extraction:** every auth-protected native API endpoint MUST read the token from `Authorization: Bearer {token}` only (PART 8 → "Auth Token Presentation"); any other header and any `?token=` query parameter is ignored, never logged and never treated as a credential. Compatibility-layer routes accept only the credential form their emulated protocol defines.
 - **CORS policy:** browser cross-origin rules for these endpoints — headers table, allow-list resolution order, and preflight caveats — are defined in PART 16 → "CORS".
 
 ## Legacy vs Compatibility Endpoints
@@ -21403,7 +21587,7 @@ func getAPIResponseFormat(r *http.Request) string {
 | **4** | Non-interactive client (`isNonInteractiveClient`) | curl/wget/httpie UA, empty UA | Plain text |
 | **5** | Default | `/api/{api_version}/joke` | JSON |
 
-**For frontend routes (`/**`), response format is determined in this order:**
+**For frontend routes (`/**`), response format is determined in this order (the MCP aliases are API-class and never use it — see "MCP Endpoint"):**
 
 | Priority | Method | Example | Returns |
 |----------|--------|---------|---------|
@@ -22232,9 +22416,11 @@ Result:
 | **1:1 parity = features** | "1:1 parity" / "1:1+ parity" means feature parity, not automatic route parity |
 | **Routes only when asked** | Add external routes only when the user explicitly requests route/API/client compatibility |
 | **Match response format** | Field names, structure, content-type must match target exactly |
+| **No CSRF** | CSRF would break compatibility clients, so compatibility-layer routes never get the CSRF middleware, token, or `CSRF_FAILED` rejection — unless the emulated protocol itself defines a CSRF token and expects clients to send it, in which case enforce exactly what that protocol specifies on that layer's routes only (PART 16 → "CSRF Protection" → "Scope") |
+| **Envelope exemption** | Compatibility-layer routes return the target service's native success body (bare JSON, plain text, XML, etc.) and native error shape — they are exempt from the `{ "ok": true, "data": ... }` success envelope and the canonical error body. Every non-compat route keeps the envelope |
 | **Standard routes for rest** | Use our `/api/{api_version}/*` patterns for all other operations |
 | **Avoid complexity** | Do NOT add hundreds of redundant routes |
-| **Document compatibility** | List what IS and ISN'T compatible in AI.md |
+| **Document compatibility** | List what IS and ISN'T compatible in IDEA.md (`### Product scope & non-goals`) |
 
 **What to implement:**
 - ✓ Feature/behavior compatibility
@@ -22277,7 +22463,7 @@ This is NOT optional. This is NOT about "adding compatibility." If you're buildi
 2. **Implement ALL required behavior** per specifications
 3. **Follow exact message formats, response codes, headers, etc.**
 4. **Handle edge cases and error conditions** as specified
-5. **Document which RFCs are implemented** in AI.md
+5. **Document which RFCs are implemented** in IDEA.md (`### Product scope & non-goals`)
 
 **Example:**
 ```
@@ -22489,7 +22675,7 @@ Need additional compatible endpoints?"
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `ok` | Yes | Always `true` for success. Exception: health endpoints return the bare health object (see PART 13). |
+| `ok` | Yes | Always `true` for success. Exceptions: health endpoints return the bare health object (see PART 13); compatibility-layer routes return the target service's native body (see PART 14 → "External API Compatibility"). |
 | `data` | Yes | Response payload |
 | `data.id` | If created | ID of created/affected resource |
 | `data.message` | No | Human-readable status message |
@@ -24122,7 +24308,7 @@ Apply `.copy-value` to any other long-string element (setup token, API token, se
 body {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 main {
@@ -24146,6 +24332,37 @@ footer p {
   }
 }
 ```
+
+### Layout Integrity & Polish Contract (REQUIRED)
+
+**Every page must look finished — polished, professional, intuitive — on phones, tablets and desktops, in both themes and both text directions. "It renders" is not the bar.**
+
+| Rule | Detail |
+|------|--------|
+| **No horizontal overflow, ever** | At every viewport from 320 px up, `document.documentElement.scrollWidth <= window.innerWidth` with NO `overflow-x` backstop applied. A page wider than the screen makes mobile browsers shrink the whole layout (content at ~60% width with a dead strip beside it). Typical causes, all banned: negative-offset off-canvas boxes, fixed pixel widths, `100vw` widths (use `100%`), images without `max-width: 100%`, tables outside a scroll wrapper, unwrapped long strings (see "Long Strings"). `body { overflow-x: clip }` may exist as a last-resort backstop only |
+| **Content fills the viewport width correctly** | The `.container` rules above apply on every page: phones use the full width minus `1rem` padding; a content column is centered, never stuck left with dead space on the right |
+| **Fixed/overlay containment** | See "Drawer containment" in the header / navigation section ("Mobile Menu Behavior"). Overlays are direct children of `<body>`; no `transform`, `filter`, `backdrop-filter`, `contain` or `will-change` on an ancestor of a `position: fixed` element |
+| **Dynamic viewport** | `100dvh` / `min-height: 100dvh`, never bare `100vh` (mobile browser bars); `env(safe-area-inset-*)` padding on anything touching a screen edge (drawer, toast, banner, bottom actions) |
+| **Spacing scale** | Only the `--space-*` tokens from "CSS Variable Reference" (`--space-1` 4 px, `--space-2` 8 px, `--space-3` 12 px, `--space-4` 16 px, `--space-6` 24 px, `--space-8` 32 px, `--space-12` 48 px). Label to control `--space-1`, control to control `--space-4`, card to card `--space-6` (24 px). A page is never a bare stream of headings, text and controls: group content in `.section-card` blocks |
+| **Page header pattern** | Exactly one `<h1>` per page (the page title); an optional back link above it written `← {parent title}` (arrow icon + one full translated string); one `<h2>` per card. A heading is never repeated at a lower level (an "Owner tokens" `<h1>` followed by an "Owner tokens" `<h2>` is a defect) |
+| **No UI string concatenation** | Every visible label is ONE translation key holding the whole phrase (`nav.back_to_preferences` = "Back to Preferences"). Never join fragments ("Back" + "Preferences" rendered "Back Preferences"; this also breaks RTL and other languages) |
+| **No empty or unlabeled controls** | A `<select>` always has options and a visible selected default; an input always has a visible `<label>`; a button always has visible text or an `aria-label` plus tooltip. Two controls never share a label (a duplicated "Expiry" with a blank select is a defect) |
+| **Readable measure** | Prose max `72ch`; single-purpose form and card columns max `40rem` on desktop, centered |
+| **Typography** | Base 16 px, line-height 1.5, a heading scale via CSS variables, `0.875rem` monospace for tokens and code, `font-size >= 16px` on inputs (iOS zoom) |
+| **Contrast and focus** | Text 4.5:1 and UI parts 3:1 in BOTH themes; visible `:focus-visible` ring; `prefers-reduced-motion` honored |
+| **Opaque surfaces** | Modals, drawers, dropdowns and popovers have solid backgrounds; page content never shows through |
+
+**Review matrix (REQUIRED for every new or changed page, and automated where possible):**
+
+| Axis | Values |
+|------|--------|
+| **Viewports (CSS px)** | 320x640, 375x812, 390x844, 768x1024 (tablet portrait), 820x1180, 1024x768 (tablet landscape), 1280x800, 1440x900, 1920x1080 |
+| **Themes / direction** | dark, light, auto; LTR and RTL (Arabic) |
+| **Stress content** | 200% text zoom, the longest realistic values (62-char `.onion`, 64-char token, 64-char name, long translations), 0 / 1 / 25 list items |
+| **States** | empty, loading, error, success flash, disabled, JavaScript off |
+| **Pass criteria** | No horizontal scroll; nothing clipped or overlapping; every target >= 44x44 px; no empty or unlabeled control; no heading repeated; screenshot looks intentional at every viewport |
+
+Automated layout tests (headless browser at the viewports above) assert: `scrollWidth <= innerWidth`; no element's bounding box extends past the viewport; every `<select>` has options; every form control has a label; the open nav drawer covers the full viewport height and lists every nav link.
 
 ---
 
@@ -24903,6 +25120,21 @@ fetch('/api/save', { method: 'POST', body: data })
   });
 ```
 
+### Form Layout & Action Rows
+
+**Forms are laid out the same way everywhere, so every screen feels familiar and none feels cramped.**
+
+| Rule | Detail |
+|------|--------|
+| **One field, one label, one control** | The `<label>` sits ABOVE its control, always visible (a placeholder is never the label). Help text goes below in muted style; an error goes below with an icon and `aria-describedby` |
+| **Phone layout** | Single column; every control `width: 100%`, `min-height: 2.75rem`, `font-size >= 16px` |
+| **Tablet and desktop** | Short related fields pair on one row (Name + Expiry) using `grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr))`; never more than two columns inside a card; long fields (text areas, tokens) span the full row |
+| **Optional extras** | A rarely used extra (for example a custom date) is a second, clearly labeled input revealed in a `<details>` or via `:has()` — never a second `<select>` and never a blank control |
+| **Action row** | `.actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }`. Phones: the primary button is full width on top, secondary actions full width below. >= 768 px: inline, in `inline-end` order Cancel (secondary) then the primary button last |
+| **Hierarchy** | Exactly ONE primary button per form or card. Secondary is outlined; ghost for low emphasis; destructive actions use `.btn-danger`, are separated from other buttons by at least `--space-4` (own row, a "Danger zone" block, or the item's own footer), and confirm through a native popover |
+| **Per-item actions** | A list item's actions live in the card footer toolbar: at most three visible buttons with text labels, any more inside a `<details class="menu">`. Icon-only is allowed only for universally understood icons (copy, close) and always has an `aria-label` and tooltip |
+| **Feedback** | Success and failure use the toast/flash patterns below; after a POST the redirect lands on the same card (`#anchor`) so the page does not jump to the top |
+
 ### Toggle Switches
 
 **CSS-only toggle using hidden checkbox:**
@@ -25119,11 +25351,11 @@ function changePassword() {
   position: fixed;
   top: 1rem;
   right: 1rem;
-  z-index: 9999;
+  z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
   overflow: hidden;
 }
 
@@ -25260,6 +25492,7 @@ Toasts require JavaScript. For standard (non-AJAX) form POSTs, the server MUST u
 ```html
 <div class="header-actions">
   <form action="/server/preferences" method="POST" class="theme-toggle-inline">
+    <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
     <button type="submit" name="theme" value="dark" aria-label="Dark theme">🌙</button>
     <button type="submit" name="theme" value="light" aria-label="Light theme">☀️</button>
     <button type="submit" name="theme" value="auto" aria-label="Auto theme">🔄</button>
@@ -25318,6 +25551,7 @@ No JS required — each button is a real form submit that sets the `theme` cooki
     <a href="/server/preferences" class="dropdown-item" role="menuitem">Preferences</a>
     <div class="dropdown-divider" role="separator"></div>
     <form action="/server/preferences" method="POST" class="dropdown-item theme-toggle">
+      <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
       Theme:
       <button type="submit" name="theme" value="dark">Dark</button> |
       <button type="submit" name="theme" value="light">Light</button> |
@@ -25608,6 +25842,17 @@ if ('serviceWorker' in navigator) {
 }
 ```
 
+### Update and Restart Behavior (Frontend)
+
+**After `--update` / a restart the open page must recover without a manual reload and never hang.**
+
+| Rule | Detail |
+|------|--------|
+| **Reconnect with backoff** | Every long-lived client connection (EventSource, WebSocket, polling loop) reconnects with exponential backoff (1 s -> 30 s) + jitter; every `fetch` has an `AbortController` timeout (30 s) |
+| **Restart window** | While the server is down or starting, the client shows a non-blocking "reconnecting" banner (not a frozen page) and retries; `503` + `Retry-After` is honored |
+| **New build detected** | Every API/SSE response carries the build stamp in `X-Build` (public value). When it differs from the stamp the page was rendered with, the client finishes the current action, then does ONE `location.reload()` (guarded by the `{project_name}_recovered` flag) - never mid-form-edit: if a form is dirty, show an "Update available - reload" button instead |
+| **Service worker handover** | New worker: `skipWaiting()` + `clients.claim()` (already above); the page listens for `controllerchange` and reloads once, not repeatedly |
+
 ### Service Worker Lifecycle
 
 > **Service worker safety — every response MUST resolve to a real `Response` (NON-NEGOTIABLE).**
@@ -25629,16 +25874,19 @@ if ('serviceWorker' in navigator) {
 ```javascript
 // /sw.js - Service Worker
 // Cache name MUST embed the running version - activate deletes all other-version caches
-const CACHE_VERSION = '{project_version}';
+// The server renders /sw.js with the full build stamp ({project_version}-{short_commit}),
+// so a rebuild with the same version but a new commit still gets a new cache name
+const CACHE_VERSION = '{asset_stamp}';
 const CACHE_NAME = `{app_name}-cache-${CACHE_VERSION}`;
 
 // Assets to pre-cache on install
+// URLs MUST carry the same ?v= stamp the asset() helper puts in pages, or page requests
+// never match these entries. HTML ('/') is never precached - it is always network-first.
 const PRECACHE_ASSETS = [
-  '/',
-  '/static/css/app.css',
-  '/static/js/app.js',
-  '/static/icons/icon-192.png',
-  '/static/icons/icon-512.png',
+  '/static/css/app.css?v={asset_stamp}',
+  '/static/js/app.js?v={asset_stamp}',
+  '/static/icons/icon-192.png?v={asset_stamp}',
+  '/static/icons/icon-512.png?v={asset_stamp}',
   '/offline.html'
 ];
 
@@ -26215,9 +26463,9 @@ async function clearClientData() {
 | `ccpa_opt_out` | `true` | unset |
 | `{project_name}_build` | running build stamp `{project_version}-{short_commit}` | set on first HTML response — drives the PART 9 version-change purge |
 
-**This page must be editable, not read-only:** every cookie above needs a control on `/server/preferences` that the visitor can act on directly — a theme selector, a language selector, cookie-consent category toggles (reachable here, not only from the first-visit banner), a CCPA opt-out toggle, and a control for every app-specific `{project_name}_pref_*` setting below. Rendering the current values as plain text with no way to change them turns a preferences page into a status page — the entire point of this page is letting the guest change these settings in place.
+**This page must be editable, not read-only:** every cookie above except `{project_name}_build` needs a control on `/server/preferences` that the visitor can act on directly — a theme selector, a language selector, cookie-consent category toggles (reachable here, not only from the first-visit banner), a CCPA opt-out toggle, and a control for every app-specific `{project_name}_pref_*` setting below. Rendering the current values as plain text with no way to change them turns a preferences page into a status page — the entire point of this page is letting the guest change these settings in place. The page layout, buttons and save behavior are fixed by rules 13–17 of the sync contract below. `{project_name}_build` is the one exemption from the control requirement: it is an automatic, device-local cache-purge stamp set by the server on the first HTML response — it has no control, is never exported or imported, and is removed only by Reset.
 
-**App-specific guest preferences:** the table above is the base set every project needs — add project-specific guest-scoped preferences to it too: settings a visitor can adjust without an account (default view mode, results-per-page, sort order, syntax-highlighting theme, unit system, etc.). Name them `{project_name}_pref_{key}`, document each one in this project's own AI.md preferences table, and hold them to the same rules as `theme`/`lang`: cookie-only, read per request, never persisted server-side. They belong in this guest-scoped cookie set precisely because no login is involved — once a setting must be tied to an identity (available cross-device without an export code, or gated per-user), it belongs in PART 34's `user_preferences` table instead, never here.
+**App-specific guest preferences:** the table above is the base set every project needs; a project adds its own guest-scoped preferences as further cookies of the same kind, recorded in IDEA.md `## Business logic` → `### Product scope & non-goals` and never as new rows in this `AI.md` table (a project whose table lacks its `{project_name}_pref_*` cookies is correct, not incomplete): settings a visitor can adjust without an account (default view mode, results-per-page, sort order, syntax-highlighting theme, unit system, etc.). Name them `{project_name}_pref_{key}`, document each one (exact name, allowed values, default, export/import behavior) in IDEA.md `## Business logic` → `### Product scope & non-goals` — `AI.md` is read-only, so the base table above is never edited, and hold them to the same rules as `theme`/`lang`: cookie-only, read per request, never persisted server-side. They belong in this guest-scoped cookie set precisely because no login is involved — once a setting must be tied to an identity (available cross-device without an export code, or gated per-user), it belongs in PART 34's `user_preferences` table instead, never here.
 
 **Preference writes (JS enhancement — the server sets the same cookies on its POST endpoints):**
 ```javascript
@@ -26239,27 +26487,64 @@ Preferences aren't tied to identity — any two guests who set the same `theme`/
 
 - `theme`, `lang`, and every app-specific `{project_name}_pref_*` cookie are exportable — export/import round-trips the full guest preference set, not just theme/lang. `cookie_consent` and `ccpa_opt_out` are NEVER included — consent is a per-browser legal acknowledgment that must be re-affirmed on each device, not a portable preference. `{project_name}_build` is NEVER included — it is a device-local cache-purge stamp. Credential cookies (session, CSRF, and any owner/linked token cookie) are NEVER exportable — tokens are credentials, not preferences.
 - Guest preferences live at `/server/preferences` (distinct from the authenticated `/server/{admin_path}/{admin_username}/preferences` and PART-34 `/users/settings/preferences` routes), API-mirrored at `/api/{api_version}/server/preferences` — the export/import actions are sub-routes of it, never the standalone `/prefs/*` path, nor bare `/preferences` without the `/server` prefix. `preferences` MUST be added to the `{admin_path}` reserved-word list (see "Route Conflict Detection") so an operator can never set `admin_path=preferences` and collide with it. If an old/non-canonical route (e.g. a bare `/preferences` or `/prefs/*`) exists in already-written code, delete it outright and update all callers to `/server/preferences` — never keep it as a redirect or alias "for backward compatibility" (see "Canonical Terms Only").
-- **Export** (`GET /server/preferences/export`, API-mirrored at `GET /api/{api_version}/server/preferences/export`, or a "Copy preferences" UI action), **Import** (`GET /server/preferences/import`, API-mirrored at `GET /api/{api_version}/server/preferences/import`, or a paste-a-code field), and **Save** (`POST /server/preferences`, API-mirrored at `POST /api/{api_version}/server/preferences`) follow the exact contract below. Every value, name, status and field in it is fixed — implement it as written; never invent alternative parameter names, JSON fields, routes (`/server/preferences/save`, `/prefs/*`) or formats.
+- **Export** (`GET /server/preferences/export`, API-mirrored at `GET /api/{api_version}/server/preferences/export`, rendered inline on the page per rule 13), **Import** (`GET /server/preferences/import`, API-mirrored at `GET /api/{api_version}/server/preferences/import`, via the inline `code` field per rule 14), and **Save** (`POST /server/preferences`, API-mirrored at `POST /api/{api_version}/server/preferences`) follow the exact contract below. Every value, name, status and field in it is fixed — implement it as written; never invent alternative parameter names, JSON fields, routes (`/server/preferences/save`, `/prefs/*`) or formats.
 - No account, no DB row, no user-preferences table is needed for this flow — decode → validate → set cookie → respond happens in the one request; nothing is written or looked up server-side.
 
 **Sync contract (single source of truth — the web routes and the API mirrors share one implementation):**
 
 | No. | Rule | Exact behavior |
 |-----|------|----------------|
-| 1 | **Exportable set** | `theme`, `lang`, and every `{project_name}_pref_{key}` cookie. Nothing else, ever: not `cookie_consent`, `ccpa_opt_out`, `{project_name}_build`, session/CSRF cookies, or any credential cookie. A request parameter outside the set is **ignored** (reported in `ignored`), never applied |
+| 1 | **Exportable set** | `theme`, `lang`, and every `{project_name}_pref_{key}` cookie. Nothing else, ever: not `cookie_consent`, `ccpa_opt_out`, `{project_name}_build`, session/CSRF cookies, or any credential cookie. A request parameter outside the set is **ignored** (reported in `ignored`), never applied. Control fields (the CSRF token, `code`, `redirect`, `action`, `consent_form`, `consent_preferences`, `consent_analytics`, `ccpa_opt_out`) are not preferences and never appear in `ignored`; the consent and CCPA fields are writable only through rule 17 and are never exported or imported |
 | 2 | **Canonical query** | `theme` and `lang` always present (effective value: the cookie, else the default), then each app preference only when its cookie is set and valid. Keys sorted ascending (bytewise); encoded as `application/x-www-form-urlencoded`. Example: `lang=fr&{project_name}_pref_sort=name&theme=dark`. The same preferences always produce the same string |
 | 3 | **Full URL** | `{origin}/server/preferences/import?{canonical query}`; `{origin}` is resolved per request by the URL-resolution rules (PART 8 → "Resolution Order"), never a cached value |
 | 4 | **Short code** | `base64url` (RFC 4648 §5 URL-safe alphabet) of the UTF-8 canonical query, **no padding**. Decoders MUST accept padded and unpadded input |
 | 5 | **Import input** | The request's own query parameters AND an optional `code` parameter. Resolve `code` as: trim whitespace → if it contains `?`, discard everything up to and including the FIRST `?` (a pasted full URL) → if the rest contains `=`, it is a plain query string → otherwise base64url-decode it → parse as a query string. Any decode/parse failure yields an empty set, never an error. **Direct request parameters win over `code` values, key by key** |
-| 6 | **Limits** | `code` longer than 2048 characters is ignored; at most 32 parameters are considered (extras dropped); each value at most 64 characters |
+| 6 | **Limits** | `code` longer than 2048 characters is discarded whole before decoding, exactly like a decode failure (rule 5: empty set, no error, `303`/`200` as usual); because `code` is a control field (rule 1) it is NEVER reported in `ignored`, and the visitor's other submitted values still apply. At most 32 parameters are considered (extras dropped); each value at most 64 characters |
 | 7 | **Validation** | `theme`: exactly `dark`, `light` or `auto`. `lang`: case-insensitive match against the supported tags, canonicalized to the supported tag; an unsupported regional tag falls back to its base language (`fr-CA` → `fr`) if that is supported, otherwise dropped. `{project_name}_pref_{key}`: `{key}` matches `^[a-z][a-z0-9_]{0,63}$` and the value is in that key's documented enum; a key without an enum accepts `^[A-Za-z0-9_.\-]{1,64}$`. Anything invalid is dropped (reported in `ignored`) — an imported value is still untrusted input |
 | 8 | **Apply** | Each valid value sets its cookie with `Path=/`, `Max-Age=31536000`, `SameSite=Lax`, not HttpOnly (JS reads them), no `Domain`, and `Secure` whenever the resolved request scheme is `https` (resolved behind reverse proxies exactly as in rule 3, not from the raw socket). Import is **additive**: preferences absent from the input keep their current cookie — import never resets or deletes anything |
 | 9 | **Web response** | `303 See Other` with `Cache-Control: no-store`, no body, for import AND save — including when nothing validated (an untrusted link is never grounds for a `4xx` error page) |
 | 10 | **Redirect target** | First match wins: (a) a `redirect` parameter that is a relative path (starts with a single `/`, not `//` or `/\`, no scheme or host, no CR/LF); (b) the path + query of a same-origin `Referer` under the same rule; (c) `/`. A target under `/server/preferences/import`, `/server/preferences/export` or the save route falls through to the next option. Never an external URL |
-| 11 | **API import / save** | No redirect: `200` with the JSON below. Save (`POST`) accepts `application/json` or form fields (`theme`, `lang`, `{project_name}_pref_{key}`), applies a partial update, and returns `400 VALIDATION_FAILED` only when NO supplied value was valid. Import never returns `4xx` for invalid values (same as rule 9) |
+| 11 | **API import / save** | No redirect: `200` with the JSON below. Save (`POST`) accepts `application/json` or form fields (`theme`, `lang`, `{project_name}_pref_{key}`; the web-only control fields of rules 14, 15 and 17 are not accepted by the API mirror), applies a partial update, and returns `400 VALIDATION_FAILED` only when NO supplied value was valid. Import never returns `4xx` for invalid values (same as rule 9) |
 | 12 | **Auth and CSRF** | None required — guest cookies. `POST` forms carry the normal CSRF token; the API mirror needs none (no ambient authority: it accepts and sets only these UI cookies). Import is a `GET` on purpose so a shared link works; it can set only the exportable set (rule 1), so it can never change credentials or consent. Standard rate limits apply |
-| 13 | **Export response** | Web `GET /server/preferences/export` is content-negotiated like every page: HTML → the preferences page with the export block (full URL and short code as selectable text with copy buttons, readable without JS); `text/plain` → the lines `URL: ...` and `Code: ...`; JSON → the API body below |
-| 14 | **Import form** | A plain `GET` form to `/server/preferences/import` with a single field named `code` (works without JS). JS may enhance (clipboard paste) but never changes the request |
+| 13 | **Export response** | The export block (full URL and short code as read-only selectable text, each with one Copy control) is rendered inline on `/server/preferences` on every load — never behind a button, toggle, accordion or separate step. Web `GET /server/preferences/export` is content-negotiated like every page: HTML → the same preferences page; `text/plain` → the lines `URL: ...` and `Code: ...`; JSON → the API body below. Copy is a client-side action (clipboard) and never submits the form; the export link and code use CSS `user-select: all` so one click selects the whole value for a manual copy, and the Copy control is an optional JS enhancement over that baseline — the page is fully usable without JS |
+| 14 | **Import field** | An always-visible field named `code` (textarea or text input, accepts a pasted full URL, query string or short code) inside the single preferences form (rule 15) — no separate Import form or button. On save, a non-empty `code` is resolved per rule 5 and its valid values override the form's submitted values key by key (the visitor pasted it on purpose); an empty `code` is ignored. `GET /server/preferences/import` stays for shared links and API parity (rule 5 unchanged). JS may enhance (clipboard paste) but never changes the request |
+| 15 | **Page layout and buttons** | `/server/preferences` is ONE `<form method="POST" action="/server/preferences">` carrying the CSRF token and every section: appearance (`theme`), language (`lang`), cookie-consent and CCPA controls, every `{project_name}_pref_{key}` control, and a Data Management section (export block, rule 13; import field, rule 14) — all sections always visible, none collapsed or revealed by a button. The form has exactly three action buttons (the header theme toggle is a separate mini-form on other pages and is not part of this page's form): **Save** (submit; applies every changed field plus `code`, then `303` per rules 9–10), **Cancel** (a link to the rule 10 redirect target; discards unsaved edits, sends no write) and **Reset** (a `type="button"` with `popovertarget` that opens a native HTML `popover` — no JS; the popover holds the warning, an **Erase everything** submit with `action=reset`, and a dismiss control using `popovertargetaction="hide"`; those two belong to Reset, not to the page's button set; forgets the visitor completely: every noncredential cookie this app set — `theme`, `lang`, `{project_name}_pref_*`, `cookie_consent`, `ccpa_opt_out`, `{project_name}_build`, plus any other noncredential cookie the project defines (announcement dismissals, flash messages, age-verification or content-acknowledgment cookies, forwarding preferences) — is deleted (`Max-Age=0`, same `Path`/attributes as rule 8), and the `303` carries `Clear-Site-Data: "storage"` to wipe localStorage/sessionStorage/IndexedDB without JS. Defaults apply and the consent banner returns on the next page. Never deletes session, CSRF or other credential cookies — signing out is a separate action. The popover warning states exactly what is erased. Only Reset confirms — Save and Cancel never ask for confirmation. The popover is styled with CSS, and a direct `POST action=reset` behaves identically on the server). No per-section save buttons, no "Sync", "Export", "Import" or "Show" buttons; Copy controls (rule 13) are the only other controls. Owner-token management (PART 12) is NOT part of this form: it lives on its own page, `GET /server/preferences/tokens`, reached from a plain link on this page (rendered only when the project defines owner tokens), and that page's per-action mini-forms are exempt from this button limit. Reset never deletes credential cookies: session, CSRF and, when the project defines owner tokens, the owner-token cookie |
+| 16 | **Web save never `400`** | `400 VALIDATION_FAILED` (rule 11) is API-only. A web `POST /server/preferences` always answers `303` (rule 9) — including empty submits, unchecked checkboxes (absent fields), invalid values (dropped) and a bad `code`. The only `4xx` is a missing/invalid CSRF token (`403`), so the page form MUST always render the token and post only to the canonical route, never to the `/api/{api_version}/…` mirror |
+| 17 | **Consent and CCPA controls** | The page form's cookie-consent toggles (`consent_preferences`, `consent_analytics`; `essential` is always on and not a field) and CCPA opt-out toggle (`ccpa_opt_out`) are web-form-only controls handled by `POST /server/preferences`, with a hidden `consent_form=1` marker rendered inside the form. They are applied only when `consent_form=1` is present — an unchecked checkbox then means off, while a POST without the marker (the header theme toggle) never touches consent or CCPA. Applying writes `cookie_consent` (JSON per PART 16 consent state, with a fresh timestamp in Unix seconds) and `ccpa_opt_out` with the rule 8 attributes. Import and the API mirror never write them, Reset deletes them (rule 15), and they are never exported (rule 1) |
+
+**Page layout (`/server/preferences`) — one form, one Save, always visible:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Preferences                                                │
+├─────────────────────────────────────────────────────────────┤
+│  Appearance                                                 │
+│    Theme      ( ) Dark  ( ) Light  ( ) Auto                 │
+│  Language                                                   │
+│    Language   [ English ▼ ]                                 │
+│  Privacy                                                    │
+│    [✓] Essential cookies (always on)                        │
+│    [✓] Preference cookies                                   │
+│    [ ] Analytics cookies                                    │
+│    [ ] Do not sell or share my information (CCPA)          │
+│  Application                                                │
+│    {app-specific {project_name}_pref_* controls}            │
+│  Data Management                                            │
+│    Export link  https://host/server/preferences/import?... │
+│                                                  [Copy]     │
+│    Export code  bGFuZz1lbiZ0aGVtZT1kYXJr             [Copy] │
+│    Import       [ paste a link, query or code          ]    │
+├─────────────────────────────────────────────────────────────┤
+│                      [Cancel]  [Reset]  [Save]              │
+└─────────────────────────────────────────────────────────────┘
+
+Reset opens a native popover (no JS):
+┌───────────────────────────────────────────┐
+│  Forget me?                               │
+│  This erases all site data except your sign-in   │
+│  for this site. It cannot be undone.      │
+│              [Keep]  [Erase everything]   │
+└───────────────────────────────────────────┘
+```
 
 **JSON bodies (envelope `{ "ok": true, "data": ... }`; field names are fixed):**
 
@@ -26271,7 +26556,7 @@ Preferences aren't tied to identity — any two guests who set the same `theme`/
 
 `prefs` is keyed by the bare `{key}` (without the `{project_name}_pref_` prefix) and is `{}` when none are set. `theme`, `lang` and `prefs` are the resulting effective state. `applied` and `ignored` list request parameter names (`theme`, `lang`, `{project_name}_pref_{key}`, or the unrecognized name) and are always arrays. The names `url` and `code` are fixed — never `full_url`, `short_code`, `export_url` or `export_code`.
 
-**Tests required** (the preferences sync is easy to get subtly wrong; these are the minimum): round trip export → import yields identical cookies; direct params override `code`; pasted full URL, plain query string, padded and unpadded base64url all import; invalid `theme`/`lang`/pref values are dropped and listed in `ignored`; excluded names (`cookie_consent`, `{project_name}_build`, an owner/session token) are never exported and are ignored on import; import never removes an existing cookie; redirect rejects `//evil.example`, `/\evil`, absolute URLs and CR/LF; cookie attributes match rule 8 behind a TLS-terminating proxy; oversized `code` is ignored.
+**Tests required** (the preferences sync is easy to get subtly wrong; these are the minimum): round trip export → import yields identical cookies; direct params override `code`; pasted full URL, plain query string, padded and unpadded base64url all import; invalid `theme`/`lang`/pref values are dropped and listed in `ignored`; excluded names (`cookie_consent`, `{project_name}_build`, an owner/session token) are never exported and are ignored on import; import never removes an existing cookie; redirect rejects `//evil.example`, `/\evil`, absolute URLs and CR/LF; cookie attributes match rule 8 behind a TLS-terminating proxy; oversized `code` is ignored; the web page renders the export block, import field and exactly Save/Cancel/Reset with no other buttons, and Save/Cancel without any confirmation; a web `POST` with no valid values, with an empty body or with only a bad `code` returns `303`, not `400`; Reset deletes every noncredential app-set cookie (including `cookie_consent`, `ccpa_opt_out`, `{project_name}_build`, dismissal and flash cookies) and sends `Clear-Site-Data: "storage"` but leaves session/CSRF/credential cookies, and the Reset popover opens without JS, shows the warning and only its confirm submits; a non-empty `code` on save overrides the form's values.
 
 **Signed-in accounts (PART 34):** this contract covers the guest cookie set only. Import and save never write the `user_preferences` table, and a signed-in user's stored settings are never exported through it.
 
@@ -27730,12 +28015,13 @@ Mobile:
 ```
 
 ```html
+<!-- Menu state checkbox, drawer panel and scrim are children of <body>, NOT of <header>
+     (a fixed panel inside a header with transform/backdrop-filter is clipped to the header). -->
+<input type="checkbox" id="nav-toggle" class="nav-checkbox" hidden>
+
 <!-- Header bar: single row — brand | centered links | profile/preferences | theme toggle -->
 <header class="header">
   <a href="/" class="site-brand">{project_name}</a>
-
-  <!-- Hidden checkbox controls mobile menu state - NO JavaScript -->
-  <input type="checkbox" id="nav-toggle" class="nav-checkbox" hidden>
 
   <!-- Desktop: inline links, centered | Mobile: hamburger only -->
   <nav class="nav-links">
@@ -27745,14 +28031,6 @@ Mobile:
 
   <!-- Mobile: hamburger toggle (checkbox label) -->
   <label for="nav-toggle" class="nav-toggle" aria-label="Toggle navigation">☰</label>
-
-  <!-- Slide-in panel for mobile (links only — actions below stay in header) -->
-  <div class="nav-panel">
-    <label for="nav-toggle" class="nav-close" aria-label="Close menu">✕</label>
-    <a href="/">Home</a>
-    <!-- App-specific sections (project-defined) -->
-  </div>
-  <label for="nav-toggle" class="nav-overlay"></label>
 
   <!-- Actions: profile/preferences zone, then theme toggle (always visible, far right) -->
   <div class="header-actions">
@@ -27785,6 +28063,7 @@ Mobile:
          single resolved value (cookie for guests, DB preference for
          logged-in users - see "Theme preference source" above). -->
     <form action="/server/preferences" method="POST" class="theme-toggle-form">
+      <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
       <input type="hidden" name="theme" value="{{ nextTheme .Theme }}">
       <button type="submit" class="theme-button" aria-label="Switch theme (currently {{ .Theme }})" title="Switch theme">
         <svg class="icon-theme"><!-- reflects .Theme: moon/sun/circle-half --></svg>
@@ -27792,6 +28071,14 @@ Mobile:
     </form>
   </div>
 </header>
+
+<!-- Slide-in panel for mobile: SAME links as .nav-links, solid background, after </header> -->
+<div class="nav-panel" id="nav-panel">
+  <label for="nav-toggle" class="nav-close" aria-label="Close menu">✕</label>
+  <a href="/" aria-current="page">Home</a>
+  <!-- App-specific sections (project-defined) -->
+</div>
+<label for="nav-toggle" class="nav-overlay"></label>
 ```
 
 ```css
@@ -27821,19 +28108,37 @@ Mobile:
 ```
 
 **Mobile Menu Behavior:**
-- Menu slides in from RIGHT edge
-- Slides LEFT to open (right-to-left)
-- Slides RIGHT to close (left-to-right)
+- Menu slides in from the inline-end edge (right in LTR, left in RTL)
+- Slides in to open, back out to close
 - Overlay dims background, click to close
 - Profile/preferences and theme toggle stay in header (NOT in menu) - keeps menu clean
 
 **Smart Menu :**
 - If all nav links fit on screen → show inline links, NO hamburger
 - If nav links overflow → show hamburger menu
-- Detect dynamically on load and resize
+- Detection is the `app.js` enhancement described below; the CSS baseline uses the 768px breakpoint and works without JavaScript
 - Don't show hamburger if not needed
 
-**CSS-Only Mobile Menu (NO JavaScript) - Mobile-First:**
+**No-JS first; a small script is an enhancement only:** the CSS below is the complete baseline and MUST work with JavaScript disabled — hamburger below 768px, inline links from 768px, open and close through the checkbox, the scrim label and the ✕ label. A small script in `app.js` MAY enhance it, and nothing may depend on it:
+
+| Enhancement | Behavior |
+|-------------|----------|
+| **Overflow detection ("Smart Menu")** | On load and resize, if the inline `.nav-links` do not fit at >= 768px, add `nav-collapsed` to `<html>` so the hamburger is used instead. Without the script the 768px breakpoint decides |
+| **Keyboard** | Esc unchecks the checkbox; focus moves into the panel on open, stays inside while open and returns to the toggle on close |
+
+```css
+/* Overflow fallback: only when app.js added .nav-collapsed on a wide viewport */
+@media (min-width: 768px) {
+  .nav-collapsed .nav-toggle { display: block; }
+  .nav-collapsed .nav-links { display: none; }
+  .nav-collapsed .nav-panel { display: block; }
+  .nav-collapsed .nav-checkbox:checked ~ .nav-overlay { display: block; }
+}
+```
+
+Without the script: Esc and overflow detection are unavailable, but the scrim, the ✕ and the toggle still open and close the menu.
+
+**CSS-Only Baseline (works with NO JavaScript) - Mobile-First:**
 ```css
 /* Base: Mobile styles (no media query) */
 .nav-toggle { display: block; cursor: pointer; }
@@ -27842,15 +28147,21 @@ Mobile:
 /* Slide-in panel (mobile) */
 .nav-panel {
   position: fixed;
-  top: 0;
-  /* Hidden off-screen right */
-  right: -280px;
-  width: 280px;
-  height: 100vh;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: min(280px, 85vw);
+  height: 100dvh;
+  overflow-y: auto;
+  padding-bottom: env(safe-area-inset-bottom);
+  /* Opaque - page content must never show through */
   background: var(--color-bg);
-  transition: right 0.3s ease;
-  z-index: 1001;
+  /* Hidden with transform + visibility, NEVER a negative offset (it widens the page) */
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform 0.3s ease, visibility 0s linear 0.3s;
+  z-index: var(--z-drawer);
 }
+[dir="rtl"] .nav-panel { transform: translateX(-100%); }
 
 /* Overlay (hidden by default) */
 .nav-overlay {
@@ -27858,14 +28169,15 @@ Mobile:
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
-  z-index: 1000;
+  z-index: var(--z-overlay);
   cursor: pointer;
 }
 
 /* When checkbox is checked: show menu and overlay */
 .nav-checkbox:checked ~ .nav-panel {
-  /* Slide in from right */
-  right: 0;
+  transform: none;
+  visibility: visible;
+  transition: transform 0.3s ease;
 }
 
 .nav-checkbox:checked ~ .nav-overlay {
@@ -27879,10 +28191,23 @@ Mobile:
 }
 ```
 
+**Drawer containment (NON-NEGOTIABLE — a phone screenshot of a shipped site showed every one of these failures):**
+
+| Rule | Why / how |
+|------|-----------|
+| **Never hide off-canvas with a negative offset** (`right: -280px`, `left: -100%`) | The box still extends the scrollable width, so the page becomes wider than the screen and mobile browsers shrink the whole layout (content at ~60% width, dead space on the right). Hide with `transform: translateX(100%)` + `visibility: hidden` (and `inert` when JS is present), never with a negative position |
+| **The drawer and its scrim are children of `<body>`**, siblings after `<main>`, not descendants of `<header>` | A `position: fixed` element inside an ancestor that has `transform`, `filter`, `backdrop-filter`, `perspective`, `contain` or `will-change` is positioned against that ancestor, not the viewport: the drawer collapses to header size, clips ("Cairnb…") and renders under page content. The header MUST NOT use those properties on any ancestor of the panel; apply a frosted-glass effect to a `::before` pseudo-element of the header instead |
+| **Opaque panel** | The drawer background is a solid theme color. Hero text or pills showing through the menu is a bug |
+| **Every link, in order** | The panel lists the same links as the desktop nav (the screenshot showed one link). Active page marked with `aria-current="page"` |
+| **Stacking** | Define the z-index tokens once in `:root` and use only them: `--z-raised` 10 (header), `--z-dropdown` 100, `--z-overlay` 300 (scrim), `--z-drawer` 350, `--z-modal` 400, `--z-banner` 450, `--z-toast` 500; no magic numbers such as `9999`. Scrim and drawer must sit above `<main>` and the hero in the same stacking context |
+| **Dimensions** | `height: 100dvh`, `width: min(280px, 85vw)`, `overflow-y: auto`, `padding-bottom: env(safe-area-inset-bottom)`. RTL: slides from the left (`[dir="rtl"]`) |
+| **While open** | Page behind does not scroll (`body:has(.nav-checkbox:checked) { overflow: hidden }`); the scrim dims the whole viewport; a scrim tap closes it (no JavaScript needed) and Esc closes it when the `app.js` enhancement is present |
+| **Fixed elements** | The drawer, scrim, modal, toast, banner and popover are the ONLY `position: fixed` elements; header, nav and footer scroll with the page |
+
 **Mobile Responsive Rules:**
 - Links live in the single header row: inline links (desktop) or hamburger (mobile) — no separate nav row
 - Profile/preferences and theme toggle ALWAYS in header actions (never in the mobile slide-in menu)
-- Menu slides from right edge
+- Menu slides from the inline-end edge (right in LTR, left in RTL)
 - Touch-friendly: minimum 44x44px tap targets
 - Overlay closes menu on tap (CSS label toggles checkbox - no JS)
 
@@ -27904,7 +28229,7 @@ Mobile:
 body {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 main {
@@ -28943,13 +29268,13 @@ web:
 |--------|-------|
 | `Access-Control-Allow-Origin` | Configured origin(s) or `*` |
 | `Access-Control-Allow-Methods` | `GET, POST, PUT, PATCH, DELETE, OPTIONS` |
-| `Access-Control-Allow-Headers` | `Content-Type, Accept, X-Requested-With, Authorization, X-API-Key, X-Api-Key, API-Key, ApiKey, X-Auth-Token, X-Access-Token, X-Token, Token, X-CSRF-Token, X-XSRF-Token, X-Session-ID, X-Service-Token, X-Internal-Token` |
+| `Access-Control-Allow-Headers` | `Content-Type, Accept, X-Requested-With, Authorization, X-CSRF-Token, X-XSRF-Token, MCP-Protocol-Version, Mcp-Method, Mcp-Name` |
 | `Access-Control-Allow-Credentials` | `true` (only when specific origin, not `*`) |
 | `Access-Control-Max-Age` | `86400` (24 hours) |
 
-**Never `*` here:** the Fetch spec's `Access-Control-Allow-Headers: *` wildcard does NOT cover `Authorization`, and wildcards are invalid when credentials are allowed. Every supported auth header is listed by name — keep in sync with PART 8 → "Auth Token Headers (All Headers Supported)".
+**Never `*` here:** the Fetch spec's `Access-Control-Allow-Headers: *` wildcard does NOT cover `Authorization`, and wildcards are invalid when credentials are allowed. Every header a browser client may send is listed by name — keep in sync with PART 8 → "Auth Token Presentation".
 
-**Query param bypass:** `?token=` auth (last in the PART 8 priority order) travels in the URL, not a header — it never triggers a CORS preflight and works from any origin regardless of the Allow-Headers list.
+**No query-param auth:** credentials are never accepted in a URL (they leak into logs, history and `Referer`); a `?token=` parameter is ignored. One-shot link tokens (PART 8 → "Auth Token Presentation") are not credentials and are exempt.
 
 ### Behavior
 
@@ -28992,6 +29317,23 @@ Credentials (`Access-Control-Allow-Credentials: true`) are sent only when the re
 
 **CSRF protects cookie-authenticated browser forms from cross-site forgery. It does NOT apply to Bearer/API-token requests, public endpoints, read-only methods, or callers that don't carry browser cookies — applying it there breaks legitimate clients (CLI tools, agents, webhooks, OAuth callbacks) without adding security value.**
 
+### Scope — Frontend Only (Never Backend)
+
+**CSRF applies ONLY to the frontend: server-rendered HTML pages and forms (web UI, admin panel) that authenticate with a browser cookie. It NEVER applies to the backend.**
+
+| Surface | CSRF |
+|---------|------|
+| Frontend HTML routes and forms (cookie-authenticated) | Per "When CSRF Validation Runs" below |
+| Backend: every `/api/**` route, regardless of auth method | **Never** — no token issued, required, or checked |
+| Compatibility layers (PART 14 → "External API Compatibility" — external-service routes/APIs) | **Never** — unless the emulated protocol itself defines a CSRF token and expects clients to send it; then enforce exactly what that protocol specifies, on that layer's routes only |
+
+**Rules:**
+
+- The CSRF middleware is mounted on the frontend route group only — never on `/api/**` or on a compatibility-layer route group
+- Backend and compatibility clients (CLI tools, agents, SDKs, webhooks, third-party clients of an emulated service) never receive or send `csrf_token` / `X-CSRF-Token` and are never rejected with `CSRF_FAILED`
+- The `Sec-Fetch-*` validation layer (PART 11) follows the same scope — frontend routes only
+- `exempt_paths` is for frontend paths only; backend routes are outside CSRF scope and need no entry
+
 ### When CSRF Validation Runs
 
 **Validate the CSRF token if and only if ALL of these are true:**
@@ -28999,19 +29341,21 @@ Credentials (`Access-Control-Allow-Credentials: true`) are sent only when the re
 | Condition | Reason |
 |-----------|--------|
 | Method is `POST`, `PUT`, `PATCH`, or `DELETE` | Read-only methods (`GET`, `HEAD`, `OPTIONS`) cannot change state |
-| The request authenticates via session cookie (no `Authorization` / `X-API-Token` / similar bearer header) | Bearer credentials are not auto-attached by browsers, so cross-site forgery has no vector |
+| Request targets a frontend route (HTML page/form) — NOT `/api/**` and NOT a compatibility-layer route | CSRF is frontend-only; the backend never validates it (see "Scope") |
+| The request authenticates via session cookie (no `Authorization` header) | Bearer credentials are not auto-attached by browsers, so cross-site forgery has no vector |
 | `Origin` (or `Referer` if `Origin` absent) indicates a cross-site or unknown source | Same-origin requests are inherently CSRF-safe under the browser's same-origin policy |
 
 **Bypass the CSRF check (no validation, no token needed) if ANY of these are true:**
 
 | Bypass | Reason |
 |--------|--------|
-| `Authorization: Bearer …` or `X-API-Token: …` header present | Bearer auth — caller proves possession of a credential the browser cannot auto-attach. CSRF protects against forgery of *cookie* auth; this is a different auth model. |
+| Request targets the backend: any `/api/**` route, or any compatibility-layer route (unless that layer's protocol expects CSRF — see "Scope") | CSRF is frontend-only; backend clients (CLI, agents, SDKs, webhooks, compat clients) never carry or need a token |
+| `Authorization: Bearer …` header present | Bearer auth — caller proves possession of a credential the browser cannot auto-attach. CSRF protects against forgery of *cookie* auth; this is a different auth model. |
 | Endpoint is public (no auth required) | Nothing to forge — the endpoint is open to anyone with no session to abuse. |
 | Method is `GET`, `HEAD`, or `OPTIONS` | Safe per RFC 9110. Must remain side-effect-free; if a `GET` mutates, that is a separate spec violation, not a CSRF problem. |
 | `Origin` matches the app's own host AND session cookie is `SameSite=Strict` | The browser already blocked cross-site cookie attachment; the token is redundant. (Same-origin + Lax SameSite cookie still gets the token check on cross-site POST forms.) |
 | WebSocket upgrade request (`Upgrade: websocket`) | Auth happens at the connection level, then per-message; CSRF tokens don't fit the WS lifecycle. |
-| Endpoint is in the explicit `web.csrf.exempt_paths` allow-list | Operator-declared exception. Used for OAuth callbacks, webhook receivers, and other endpoints that are POST'd to from origins the operator has whitelisted but cannot supply a token. |
+| Endpoint is in the explicit `web.csrf.exempt_paths` allow-list | Operator-declared exception for FRONTEND endpoints only (e.g. a cross-site POST to a frontend callback). Backend routes are never subject to CSRF and need no entry. |
 
 **Why these bypasses are safe:** CSRF is a defense against *the browser auto-attaching cookies to a cross-site request*. If cookies aren't the auth (Bearer), or the browser already blocked the attachment (SameSite=Strict + same-origin), or there is no auth at all (public endpoint), there is no auto-attached credential to forge. Adding CSRF on top of those situations breaks legitimate non-browser clients without adding any defense.
 
@@ -29038,11 +29382,9 @@ web:
     header_name: X-CSRF-Token
     # auto | true | false. "auto" sets Secure when proto is https.
     secure: auto
-    # Endpoints exempt from CSRF (operator-declared). Glob patterns supported.
-    # Common exemptions: OAuth callbacks, webhook receivers.
-    exempt_paths:
-      - /api/{api_version}/server/auth/oidc/*/callback
-      - /api/{api_version}/webhooks/*
+    # Frontend (non-/api) endpoints exempt from CSRF (operator-declared). Glob patterns supported.
+    # Backend (/api/**, compatibility layers) is never subject to CSRF and needs no entry.
+    exempt_paths: []
 ```
 
 ### Implementation Rules
@@ -29051,7 +29393,7 @@ web:
 |------|--------|
 | Token in cookie + matching value in form/header | Double-submit cookie pattern. Token cookie is `SameSite=Strict`, `HttpOnly=false` (the form needs to read it), `Secure` per `csrf.secure`. |
 | Forms include hidden `<input name="csrf_token" value="…">` | Server-rendered HTML inserts the token automatically — no manual work in templates. |
-| Non-GET requests under cookie-session auth check the token | Per the "When CSRF Validation Runs" table above — Bearer/public/read-only paths skip the check. |
+| Non-GET frontend requests under cookie-session auth check the token | Per the "When CSRF Validation Runs" table above — Bearer/public/read-only paths skip the check. |
 | Token regenerated on login, logout, and privilege change | Prevents fixation. |
 | Validation failure → `403 FORBIDDEN` with canonical error body | `{"ok": false, "error": "CSRF_FAILED", "message": "CSRF token validation failed"}` (PART 14 → "Error Response"). |
 | Reject if cookie present and header/form missing, or if values mismatch | No silent fallback. |
@@ -29062,7 +29404,7 @@ web:
 | Attack | Stops it? |
 |--------|-----------|
 | Attacker page POSTs a form to our domain using the victim's cookie session | ✓ Yes (token mismatch / Origin mismatch / SameSite=Strict drops the cookie) |
-| Attacker page calls our JSON API with `fetch()` from another origin, no Bearer | ✓ Yes (Origin mismatch + SameSite=Strict; CORS preflight also blocks) |
+| Attacker page calls our JSON API with `fetch()` from another origin, no Bearer | n/a — backend is outside CSRF scope (no token required or checked); CORS preflight and `SameSite=Strict` cookies still block it |
 | Attacker steals a CSRF token via XSS and submits a forged request | ✗ No (XSS bypasses CSRF — the attacker is now running in our origin). XSS defense is CSP + escaping. |
 | Attacker steals the session cookie via XSS | ✗ No (CSRF can't help — session theft is its own problem). Defense is `HttpOnly` cookie + CSP. |
 | Attacker submits a request with a stolen Bearer token | ✗ No (Bearer auth bypasses CSRF by design). Defense is token rotation, scoping, and rate limiting. |
@@ -29714,7 +30056,7 @@ func trackingScript(r *http.Request) template.HTML {
         // Return nothing - no tracking
         return ""
     }
-    return generateTrackingScript()
+    return TrackingScript()
 }
 ```
 
@@ -29762,7 +30104,7 @@ func trackingScript(r *http.Request) template.HTML {
 | Application name | `IDEA.md` → Project Name | "JokeAPI" |
 | Tagline | `IDEA.md` → Tagline | "A free API for random jokes" |
 | Description | `IDEA.md` → Description section | Actual project description |
-| Features | `IDEA.md` → Features section | List actual features from IDEA.md |
+| Features | `IDEA.md ## Business logic` (features and user flows) | List actual features from IDEA.md |
 | Links | `IDEA.md` → Links/URLs or infer from projectorg/projectname | GitHub, docs URLs |
 
 **DO NOT use:**
@@ -30165,7 +30507,7 @@ func trackingScript(r *http.Request) template.HTML {
 | Email | Email | Yes | Sender's email (for reply) |
 | Subject | Text | Yes | Message subject |
 | Message | Textarea | Yes | Message body |
-| Captcha | Captcha | Yes | Spam prevention |
+| Captcha | Captcha | Yes | Spam prevention - rendered on the initial form and required on EVERY submission (anonymous form: no failed-attempt state exists). Single-use; a new challenge is issued after each submit, failed or not |
 
 **Submission sends to `server.contact.general.email` (or falls back to `server.contact.admin.email` if general is empty).**
 
@@ -30176,6 +30518,19 @@ func trackingScript(r *http.Request) template.HTML {
 | Security Issues | "To report a security vulnerability, consult our security policy at `/server/security`." — rendered as a link to `/server/security`. Never point users at the raw `/.well-known/security.txt` file from this page. |
 | Abuse Reports | "To report abusive content or policy violations, use this contact form." — append " or email {abuse_email}" where `{abuse_email}` resolves to `server.contact.abuse.email` if set, else `server.contact.general.email` if set; omit the email clause entirely when neither is set. NEVER render `server.contact.admin.email` here (it is never public). |
 
+#### Captcha providers (`pages.contact.captcha`)
+
+| Value | Behavior |
+|-------|----------|
+| `simple` (default) | Built-in, self-hosted challenge: no third party, no keys, works over Tor and with JavaScript disabled. The server generates a question and stores only the hashed answer; each challenge is single-use, expires after 10 minutes and is rate-limited |
+| `recaptcha` | Google reCAPTCHA v2 checkbox. Needs `pages.contact.captcha_site_key` (public, rendered in the page) and `pages.contact.captcha_secret_key` (server-side only, kept in `server.yml` like other secrets, never returned in a response or written to a log). The server verifies by POSTing `secret`, `response` and `remoteip` to `https://www.google.com/recaptcha/api/siteverify` and accepts only `"success": true` |
+| `hcaptcha` | hCaptcha. Same two keys; verified by POSTing `secret` and `response` to `https://api.hcaptcha.com/siteverify` and accepting only `"success": true` |
+
+- **Validation:** `recaptcha` or `hcaptcha` with an empty site key or secret key fails config validation with a clear error; the keys are ignored for `simple`
+- **Fail closed:** if the provider cannot be reached, the submission is rejected with a retryable error — never accepted unverified
+- **CSP:** only the selected provider's hosts are added to `script-src`, `frame-src` and `connect-src` (for example `https://www.google.com/recaptcha/` and `https://www.gstatic.com/recaptcha/`, or `https://hcaptcha.com` and `https://*.hcaptcha.com`)
+- **Tor and I2P:** requests served through the onion or I2P address always use `simple`, whatever `captcha` is set to — clearnet providers are never called from there (PART 16 → Tor). The same challenge protects the security-report form
+
 ### /server/help
 
 **Help page - documentation and usage instructions for the application.**
@@ -30184,6 +30539,7 @@ func trackingScript(r *http.Request) template.HTML {
 |---------|-------------|
 | Getting started | Quick start guide |
 | Features | How to use key features |
+| MCP | Link to `/server/help/mcp` (only shown if `server.mcp.enabled`) |
 | API Documentation | Links to Swagger (`/server/docs/swagger`) and GraphQL (`/server/docs/graphql`) — UIs fetch from `/api/swagger` and `/api/graphql` aliases |
 | Tor Access | How to access via Tor (only shown if Tor enabled) |
 | I2P Access | How to access via I2P (only shown if I2P enabled and running) |
@@ -30195,7 +30551,7 @@ func trackingScript(r *http.Request) template.HTML {
 | Section | Source | What to include |
 |---------|--------|-----------------|
 | Getting started | `IDEA.md` + actual endpoints | Real curl examples using actual API endpoints |
-| Features | `IDEA.md` → Features | How to USE each feature (not just list them) |
+| Features | `IDEA.md ## Business logic` (features and user flows) | How to USE each feature (not just list them) |
 | FAQ | Common questions for THIS project type | Real questions users would ask |
 | Troubleshooting | Actual error scenarios | Real errors and solutions |
 
@@ -30275,6 +30631,7 @@ curl -H "Accept: application/xml" https://jokes.example.com/api/v1/joke</code></
   <ul>
     <li><a href="/server/docs/swagger">Swagger UI</a> - Interactive REST API explorer</li>
     <li><a href="/server/docs/graphql">GraphiQL</a> - Interactive GraphQL explorer</li>
+    {{ if .MCPEnabled }}<li><a href="/server/help/mcp">MCP server</a> - Use this application from an AI assistant</li>{{ end }}
   </ul>
 </div>
 ```
@@ -30337,6 +30694,43 @@ curl -H "Accept: application/xml" https://jokes.example.com/api/v1/joke</code></
 
 **⚠️ REMINDER: All content sections MUST be populated from IDEA.md - see sourcing rules above.**
 
+### /server/help/mcp
+
+**MCP help page — how to connect an AI assistant to this application. The base content below is defined here and rendered by every project; a project expands it and never removes or contradicts it.**
+
+| Route | Description |
+|-------|-------------|
+| `GET /server/help/mcp` | MCP help page (HTML) |
+| `GET /api/{api_version}/server/help/mcp` | Same content as JSON |
+
+When `server.mcp.enabled` is `false`, both routes return `404` and no link to the page is rendered anywhere (the same rule as every MCP route). `/server/help` links to this page (see "/server/help"); the link is shown only when MCP is enabled.
+
+**Base sections (always rendered, in this order, each with its anchor id):**
+
+| Anchor | Section | Content |
+|--------|---------|---------|
+| `#overview` | What this is | One short paragraph: this application is an MCP server over Streamable HTTP (remote only); every public API operation is available to an assistant as a tool |
+| `#endpoint` | Endpoint | The full MCP URL resolved for this request (PART 8 → "Resolution Order", never hardcoded) with the two aliases (`/api/mcp`, `/mcp`) and a copy control; the URL text uses CSS `user-select: all` so it works without JS |
+| `#authentication` | Authentication | Requests authenticate with `Authorization: Bearer {token}` — the same tokens as the REST API, no MCP-specific token. Anonymous access works for public tools. Create a dedicated named token for the client in the account's token settings (`/users/tokens`, multi-user projects) with scope `read` or `read-write` and an expiry, so it can be revoked alone. Use an `adm_` token only for a server-admin tool, never for a general MCP client. |
+| `#connect` | Connect a client | Copy-paste snippets using the resolved URL and the project name: a Claude Code command (`claude mcp add --transport http {project_name} {url} --header "Authorization: Bearer $MCP_TOKEN"`), a generic JSON client config (`mcpServers` with `type`, `url`, `headers`), and a `curl` `initialize` request that verifies the connection. The token is the only value the page cannot know, so it appears as the shell variable `$MCP_TOKEN` — no other placeholders |
+| `#tools` | Tools | The live tool list for an anonymous caller (name and description from the same registry that backs `tools/list`) — never hand-written. When authenticated callers see more tools, say so |
+| `#limits` | Behavior and limits | `POST` only; no sessions; the same rate limits and audit as the API; `Origin` validated; the supported MCP protocol versions |
+| `#troubleshooting` | Troubleshooting | A table of `400` (protocol-version or header mismatch), `401` (missing, invalid or expired token — `WWW-Authenticate: Bearer`), `403` (bad `Origin` or insufficient scope), `404` (MCP disabled), `405` (GET or DELETE; the endpoint is POST-only) with the fix for each |
+
+**Project expansion (required content):** the project appends its own section, `#project`, after the base sections. The text comes from IDEA.md `## Business logic` and is stored as Markdown in `pages.help.mcp` (canonical storage is `server.yml` `pages.help.mcp`, edited there by the operator and applied on config reload; a project that has an admin panel also exposes it in Pages → Help. API projects have no admin panel or web editor, so `server.yml` is the only editing path). It MUST use the project's real tool names and real data — example prompts a user can paste into an assistant, per-tool tips and limits, and documentation of any MCP resources or prompts the project exposes. It never repeats or contradicts the base sections, and generic placeholder text is forbidden (same rule as `/server/help`).
+
+**JSON body (`GET /api/{api_version}/server/help/mcp`, envelope `{ "ok": true, "data": ... }`; field names are fixed):**
+```json
+{
+  "enabled": true,
+  "url": "https://host/api/v1/server/mcp",
+  "aliases": ["https://host/api/mcp", "https://host/mcp"],
+  "auth": { "scheme": "Bearer" },
+  "tools": [ { "name": "operationId", "description": "..." } ],
+  "project": "Markdown from pages.help.mcp, or an empty string"
+}
+```
+
 ### /server/terms
 
 **Terms of Service - legal terms for using the application.**
@@ -30377,8 +30771,11 @@ server:
     contact:
       # Enable contact form
       enabled: true
-      # Captcha type: recaptcha, hcaptcha, simple (built-in)
+      # Captcha type: simple (built-in, default), recaptcha, hcaptcha
       captcha: simple
+      # Provider keys, required only for recaptcha and hcaptcha (ignored for simple)
+      captcha_site_key: ""
+      captcha_secret_key: ""
       # Success message after form submission
       success_message: "Thank you for your message. We'll respond soon."
 
@@ -30426,7 +30823,12 @@ server:
 | `/api/{api_version}/server/privacy` | GET | Privacy policy (JSON) |
 | `/api/{api_version}/server/contact` | POST | Submit contact form |
 | `/api/{api_version}/server/help` | GET | Help content (JSON) |
+| `/api/{api_version}/server/help/mcp` | GET | MCP help content (JSON); `404` when MCP is disabled |
 | `/api/{api_version}/server/terms` | GET | Terms of service (JSON) |
+| `/api/{api_version}/server/dpo` | GET | DPO contact (JSON): `name`, `email`, `privacy_url` |
+| `/api/{api_version}/server/security` | GET | Security overview (JSON, no auth): `contacts` (ordered list of `{type, url or address}`), `expires`, `pgp` (`{available, url, fingerprint}`), `policy_url`, `thanks_url` |
+| `/api/{api_version}/server/security/policy` | GET | Disclosure policy (JSON, no auth): `policy` (Markdown) |
+| `/api/{api_version}/server/security/thanks` | GET | Hall of fame (JSON, no auth): `entries` (list of `{credit, date, severity}`; `credit` honors each researcher's credit preference) |
 | `/api/{api_version}/server/healthz` | GET | Health check (JSON default; text via API rules) |
 | `/api/{api_version}/server/swagger` | GET | OpenAPI JSON spec |
 | `/api/{api_version}/server/graphql` | POST | GraphQL endpoint |
@@ -30451,7 +30853,9 @@ server:
 | `/server/privacy` | Privacy policy page (HTML) |
 | `/server/contact` | Contact form page (HTML) |
 | `/server/help` | Help page (HTML) |
+| `/server/help/mcp` | MCP help page (HTML); `404` when MCP is disabled |
 | `/server/terms` | Terms of service page (HTML) |
+| `/server/dpo` | Data Protection Officer contact page (HTML) |
 | `/server/healthz` | Health page (HTML) |
 | `/healthz` | Optional direct alias to `/server/healthz` when `server.healthz.root.enabled` is `true` |
 | `/server/docs/swagger` | Swagger UI (HTML) |
@@ -33078,6 +33482,43 @@ server:
 | `SMTP_FROM_NAME` | `from.name` | (app title) |
 | `SMTP_FROM_EMAIL` | `from.email` | no-reply@{fqdn} |
 
+### SMTP TLS Verification
+
+**Encryption is always negotiated per `smtp.tls`; certificate verification is skipped only when the configured `smtp.host` is an IP literal in a private range.** A relay on the operator's own network (for example the Docker bridge `172.17.0.1`) almost never has a certificate with an IP SAN, so verification there always fails with `x509: cannot validate certificate for {ip} because it doesn't contain any IP SAN`. The operator is handing mail to a local relay inside their own infrastructure, so TLS stays on (traffic is still encrypted) and only chain and name verification are relaxed.
+
+| Configured `smtp.host` | Certificate verification |
+|------------------------|--------------------------|
+| IPv4 literal in `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10`, `127.0.0.0/8` or `169.254.0.0/16` | **Skipped** (TLS still negotiated) |
+| IPv6 literal `::1`, `fc00::/7` (ULA) or `fe80::/10` (link-local) | **Skipped** (TLS still negotiated) |
+| Any public IP literal | Verified against the system roots; the certificate must carry an IP SAN |
+| Any hostname (including one that resolves to a private address) | Verified against the system roots and the hostname |
+
+- **Keyed on the configured host string, never on DNS results** — a hostname that resolves to a private address is still verified, so DNS answers can never downgrade verification
+- **Go:** classify with `netip.Addr` (`IsPrivate()`, `IsLoopback()`, `IsLinkLocalUnicast()`, plus the `100.64.0.0/10` range); set `tls.Config{ServerName: host, InsecureSkipVerify: true}` only for those addresses and never for any other path. **Rust:** classify with `std::net::IpAddr` and the same ranges, and apply the relaxed verifier only for those addresses
+- **Unchanged otherwise:** `tls: none` still sends plaintext, `tls: starttls` and `tls: tls` still require the upgrade to succeed (no silent plaintext fallback), and `AUTH` is sent only after TLS is established
+- **One info line at startup and on config change:** `SMTP host {ip} is a private address: TLS certificate verification skipped` — never per message
+- The startup connection test (EHLO) and every send use the same policy, so a relay that passes the test never fails later on verification
+- **Tests required:** each private range above skips verification; a public IP literal and every hostname verify; a hostname resolving to a private address verifies; `starttls` against a server without STARTTLS fails instead of falling back to plaintext
+
+### Email Message Standards
+
+**Every message the app sends MUST be a well-formed RFC 5322 / MIME message, whatever relay it goes through.**
+
+| Part | Requirement |
+|------|-------------|
+| `From` | `from.name` and `from.email` as one RFC 5322 mailbox; a non-ASCII display name is RFC 2047 encoded. The SMTP envelope `MAIL FROM` is `from.email` |
+| `To` | One valid `addr-spec` per message; recipients are never exposed to each other and never placed in `Bcc` headers |
+| `Subject` | Present and non-empty; non-ASCII is RFC 2047 encoded-word UTF-8 |
+| `Date` | RFC 5322 date-time with numeric zone, generated at send time |
+| `Message-ID` | Unique, `<{random}@{fqdn}>`, generated per message |
+| `MIME-Version` | `1.0` |
+| Body | `multipart/alternative` with a non-empty `text/plain; charset=UTF-8` part first and the `text/html; charset=UTF-8` part second; transfer encoding `quoted-printable` or `base64` |
+| `Auto-Submitted` | `auto-generated` on every notification and system email |
+| Line format | CRLF line endings, no line over 998 octets (wrap at 78 where the encoding allows) |
+| Header safety | Any value taken from user input is rejected if it contains CR or LF — header injection is never possible |
+
+- **Tests required:** every message carries all headers above; a non-ASCII subject and display name round-trip through RFC 2047; a CR/LF in a recipient, subject or name is rejected before sending; the plain-text part is never empty
+
 ### SMTP Requirement
 
 **ALL emails require a valid and working SMTP server. No SMTP = No emails. Don't even try.**
@@ -34868,12 +35309,12 @@ GeoIP databases are NEVER embedded in the binary — they are downloaded on firs
 
 ## GeoIP Is a Risk Signal — Never the Sole Access Gate (NON-NEGOTIABLE)
 
-**GeoIP MUST be treated as one risk signal among many — never as the sole access-control gate.** A request from a blocked country MUST still pass through every other layer of the security pipeline (rate limiting, authentication, authorization, input validation, audit logging). Conversely, a request from an allowed country MUST NOT skip any check on the assumption that "the country is trusted".
+**GeoIP MUST be treated as one risk signal among many — never as the sole access-control gate.** GeoIP is a deny-only layer: it can reject a request but never grant access. A request from an allowed, unknown or unlooked-up country MUST still pass through every other layer of the security pipeline (authentication, authorization, input validation, audit logging) and MUST NOT skip any check on the assumption that "the country is trusted". A request from a blocked country is rejected with `403` at the GeoIP step after the blocklist and the rate limiter, so it consumes rate-limit budget and is logged with its source IP; authentication is not evaluated for it because it is already denied.
 
 | Rule | Detail |
 |------|--------|
 | **Never sole gate** | Country / ASN / city signals can raise risk score, trigger MFA, lower rate-limit thresholds, or feed audit logs — they MUST NOT be the only thing standing between an attacker and a resource. |
-| **Always alongside, not instead of** | Country check runs alongside or after rate limiting and authentication, never replacing them. A blocked-country request still consumes rate-limit budget and is still logged with its identity. |
+| **Always alongside, not instead of** | The country check runs after the blocklist and the rate limiter and before authentication (PART 5 → "Middleware Order", positions 6–8 then 9). It only denies; it never replaces authentication or authorization for any request that passes it. |
 | **VPN / proxy / Tor caveat** | Country data is trivially bypassed via VPN, residential proxy, or Tor. Treat any blocking decision based on country as advisory, not authoritative. |
 | **GeoIP-only auth is forbidden** | "Allow if country = US" is not authentication. Login, API keys, session cookies, and tokens are still required regardless of source country. |
 | **Failure mode** | If a GeoIP database is missing, stale, or the lookup fails, the request MUST be processed by the rest of the pipeline normally (fail-open for GeoIP, fail-closed for real auth). Never block a request because a GeoIP lookup errored. |
@@ -35872,6 +36313,7 @@ package store
 import (
     "context"
     "database/sql"
+    "errors"
     "strings"
     "time"
 
@@ -35911,6 +36353,32 @@ func (m *MetricsDB) ExecContext(ctx context.Context, query string, args ...any) 
         metrics.DBErrors.WithLabelValues(op, classifyError(err)).Inc()
     }
     return result, err
+}
+
+// MetricsRow defers metric recording to Scan: database/sql reports a QueryRow error only there, never from QueryRowContext
+type MetricsRow struct {
+    row   *sql.Row
+    op    string
+    table string
+    start time.Time
+}
+
+// QueryRowContext shadows the embedded sql.DB method so single-row queries are counted like QueryContext/ExecContext
+func (m *MetricsDB) QueryRowContext(ctx context.Context, query string, args ...any) *MetricsRow {
+    op, table := parseQuery(query)
+    start := time.Now()
+    return &MetricsRow{row: m.DB.QueryRowContext(ctx, query, args...), op: op, table: table, start: start}
+}
+
+// Scan records the query, its duration and any error; sql.ErrNoRows is a normal outcome, not a database error
+func (r *MetricsRow) Scan(dest ...any) error {
+    err := r.row.Scan(dest...)
+    metrics.DBQueriesTotal.WithLabelValues(r.op, r.table).Inc()
+    metrics.DBQueryDuration.WithLabelValues(r.op, r.table).Observe(time.Since(r.start).Seconds())
+    if err != nil && !errors.Is(err, sql.ErrNoRows) {
+        metrics.DBErrors.WithLabelValues(r.op, classifyError(err)).Inc()
+    }
+    return err
 }
 
 // UpdateConnectionMetrics updates connection pool metrics
@@ -36631,7 +37099,7 @@ groups:
 | Algorithm | AES-256-GCM |
 | Key Derivation | Argon2id (password → encryption key) |
 | File Extension | `.tar.gz` (unencrypted) or `.tar.gz.enc` (encrypted) |
-| Password Storage | **NEVER stored** - admin must remember |
+| Password Storage | Kept only so scheduled backups can run unattended: encrypted at rest with `server.security.encryption_key` (AES-256-GCM), never hashed (it is key material, not a login verifier), never written to a log, manifest or archive, and never returned by any API. Restore never reads it: the admin supplies the password |
 
 **How Encryption Works:**
 1. Backup creates `.tar.gz` archive in memory
@@ -36648,7 +37116,7 @@ server:
     encryption:
       # true if password was set
       enabled: true
-      # Password is NEVER stored - prompted on-demand
+      # The password itself is set in the admin panel (stored encrypted at rest, see Password Storage above)
   compliance:
     # HIPAA, SOC2, etc.
     enabled: false
@@ -36691,6 +37159,7 @@ When `server.compliance.enabled: true`:
 - Old backups encrypted with old password still need old password to restore
 - Password hint can be stored (optional): "Hint: First pet's name + year"
 - No password recovery - if lost, backups are unrecoverable
+- The Argon2id login-password hashing rule (PART 11) does not apply to this password: it is key material, and Argon2id is used here only to derive the encryption key
 
 **CLI Backup with Encryption:**
 
@@ -36769,7 +37238,7 @@ server:
       max_total_size: "10%"
 ```
 
-**Default: 2 files total** (yesterday's full + today's incremental)
+**Default: 3 files total** (new full + the previous full that today's incremental is based on + today's incremental). File counts in the examples below leave out that one extra base full - see "Incremental Backup Contract".
 
 **With hourly enabled: 3 files total** (+ hourly incremental from `backup_hourly` task)
 
@@ -36782,10 +37251,12 @@ server:
 2. Check free space: if free < 2× size of most recent backup, OR disk usage
    > disk_threshold (default 90%), log backup.skipped_disk_full (level=error)
    and abort — do NOT create the backup
-3. Create full backup: {project_name}_backup_YYYY-MM-DD.tar.gz[.enc]
-4. Verify full backup (all checks must pass)
-5. Create daily incremental: {project_name}-daily.tar.gz[.enc]
-6. Verify daily incremental (all checks must pass)
+3. Take snapshot instant T0 (start of this step); create daily incremental
+   {project_name}-daily.tar.gz[.enc] = changes from the PREVIOUS full's
+   snapshot_at to T0 (skipped on the first run - no previous full exists)
+4. Verify daily incremental (all checks must pass)
+5. Create full backup of the state at T0: {project_name}_backup_YYYY-MM-DD.tar.gz[.enc]
+6. Verify full backup (all checks must pass)
 7. If ALL verifications pass:
    - Apply retention policy (delete old backups per retention settings)
    - If total backup size exceeds max_total_size: delete oldest first until under the cap
@@ -36861,7 +37332,7 @@ Every backup is verified **immediately after creation** - backups must be 100% w
 | File | Description | Retention |
 |------|-------------|-----------|
 | `{project_name}_backup_YYYY-MM-DD.tar.gz[.enc]` | Full backup (yesterday's data) | Controlled by `max_backups` |
-| `{project_name}-daily.tar.gz[.enc]` | Daily incremental (changes since full) | Always 1 (replaced each run) |
+| `{project_name}-daily.tar.gz[.enc]` | Daily incremental (cumulative changes since the previous full - see Incremental Backup Contract) | Always 1 (replaced each run) |
 | `{project_name}-hourly.tar.gz[.enc]` | Hourly incremental (if enabled) | Always 1 (replaced each run) |
 
 ### Retention Validation & Examples
@@ -36998,7 +37469,7 @@ Note: A single backup can satisfy multiple retention types (e.g., Jan 1st 2025
 on a Sunday counts as daily + weekly + monthly + yearly — uses highest priority)
 ```
 
-**Daily incremental is NOT counted** in retention - it's always exactly 1 file that gets replaced.
+**Daily incremental is NOT counted** in retention - it's always exactly 1 file that gets replaced. A full backup that is the `base_backup` of a retained incremental is exempt from pruning until that incremental is replaced (at most one extra full on disk).
 
 ### Cluster Backup Rules
 
@@ -37032,6 +37503,34 @@ on a Sunday counts as daily + weekly + monthly + yearly — uses highest priorit
 - Alert if ANY node has no valid backups
 - Alert if ANY node's daily backup is missing or invalid
 - Alert if nodes have different backup counts (sync issue)
+
+## Incremental Backup Contract
+
+**Decision: incrementals are cumulative (differential), never a chain. Restore always needs exactly one full + at most one incremental.**
+
+| Item | Rule |
+|------|------|
+| **Snapshot instant** | The backup task takes ONE instant `T0` at the start of the run. Every archive made in that run reflects the state at `T0` (SQLite via online backup API / `VACUUM INTO`, files copied after the DB snapshot) |
+| **Order in the 02:00 run** | Daily incremental FIRST (previous full -> `T0`), then the new full at `T0`. An incremental taken after the new full would cover an empty interval, which is the bug this order prevents |
+| **Base** | The most recent full on disk before this run. Hourly incremental: the newest full (including today's) |
+| **Cumulative** | An incremental holds EVERY change since its base's `snapshot_at`, not since the previous incremental; each new run replaces the old one |
+| **Manifest fields** | `manifest.json` of every archive: `type` (`full`/`incremental`), `snapshot_at` (UTC ISO 8601), `sha256`; incrementals add `base_backup` (file name), `base_sha256`, `deleted` (list of paths removed since the base) |
+| **Changed-file detection** | Compare each file's size + mtime + SHA-256 against the base manifest's file list (the full's manifest lists `path`, `size`, `sha256` for every file). Changed or new files go in the archive, removed ones in `deleted` |
+| **Database** | A SQLite database that changed is stored whole in the incremental (no page-level delta) |
+| **Archive format** | Same `tar.gz[.enc]` and encryption as a full; contains only changed/new files plus `manifest.json` |
+| **Base protection** | Retention never deletes a full that is the `base_backup` of a retained incremental |
+| **Verification** | An incremental is verified like a full, plus: base file exists and its SHA-256 equals `base_sha256` |
+| **First run** | No previous full: skip the daily incremental |
+
+**Restore (`--maintenance restore <file>`):**
+
+| Given | Behavior |
+|-------|----------|
+| A full | Restore it as-is |
+| An incremental | Look up `base_backup` in the same directory (same password), verify `base_sha256`, extract the base, then extract the incremental over it, then delete every path in `deleted`. Base missing or checksum mismatch = abort with `ERR_BASE_MISSING` / `ERR_BASE_CORRUPT`, nothing modified |
+| Daily vs hourly | The newest `snapshot_at` wins; the operator may pick either file. Both are applied the same way |
+
+All restore limits (`server.restore.*`) apply to the combined base + incremental expansion.
 
 ## Restore Command
 
@@ -37684,14 +38183,22 @@ func DoUpdate(ctx context.Context, release *Release) error {
         return fmt.Errorf("no sha256.txt asset found in release - refusing unverified update")
     }
 
-    // Download to temp file
-    tmpFile, err := os.CreateTemp("", "{project_name}-update-*")
+    // Download to a temp file under the {project_org}/{internal_name}-XXXXXX namespace (never the OS temp root)
+    orgDir := filepath.Join(os.TempDir(), "{project_org}")
+    if err := os.MkdirAll(orgDir, 0o755); err != nil {
+        return fmt.Errorf("failed to create temp namespace: %w", err)
+    }
+    tmpDir, err := os.MkdirTemp(orgDir, "{internal_name}-")
+    if err != nil {
+        return fmt.Errorf("failed to create temp dir: %w", err)
+    }
+    // Remove the whole temp dir on every exit path
+    defer os.RemoveAll(tmpDir)
+    tmpFile, err := os.CreateTemp(tmpDir, "update-*")
     if err != nil {
         return fmt.Errorf("failed to create temp file: %w", err)
     }
     tmpPath := tmpFile.Name()
-    // Clean up on error
-    defer os.Remove(tmpPath)
 
     req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
     if err != nil {
@@ -38902,7 +39409,8 @@ description="{app_name}"
 # actual binary (may differ from {internal_name} after rename)
 command="/usr/local/bin/{project_name}"
 command_args=""
-command_user="{internal_name}:{internal_name}"
+# No command_user: the service starts as root so the binary can bind privileged ports, then drops to
+# {internal_name}:{internal_name} in-process (PART 8). start_pre creates the pid and log directories for that user.
 pidfile="/var/run/{internal_org}/{internal_name}.pid"
 command_background=true
 output_log="/var/log/{internal_org}/{internal_name}/server.log"
@@ -38964,8 +39472,9 @@ case "$1" in
         echo "Starting $NAME..."
         mkdir -p $(dirname $PIDFILE) $(dirname $LOGFILE)
         chown -R $DAEMON_USER:$DAEMON_USER $(dirname $PIDFILE) $(dirname $LOGFILE)
+        # No --chuid: the binary drops privileges itself after binding its ports (PART 8)
         start-stop-daemon --start --quiet --background --make-pidfile \
-            --pidfile $PIDFILE --chuid $DAEMON_USER --exec $DAEMON \
+            --pidfile $PIDFILE --exec $DAEMON \
             --no-close >> $LOGFILE 2>&1
         ;;
     stop)
@@ -39143,7 +39652,7 @@ func (ws *windowsService) Execute(args []string, r <-chan svc.ChangeRequest, s c
 
 # PART 26: MAKEFILE
 
-**Six core targets. DO NOT ADD MORE.**
+**Six core targets. DO NOT ADD MORE.** The only other permitted target is `clean`, a housekeeping target that removes `binaries/` and `releases/` and builds nothing. There is no `all` target and none is required.
 
 ## Targets
 
@@ -39508,17 +40017,18 @@ release: build
 		-czf $(RELDIR)/$(PROJECT_NAME)-$(VERSION)-source.tar.gz .
 
 	# Delete existing release/tag if exists
-	@gh release delete $(VERSION) --yes 2>/dev/null || true
-	@git tag -d $(VERSION) 2>/dev/null || true
-	@git push origin :refs/tags/$(VERSION) 2>/dev/null || true
+	# Tag and release name are v{version}; version.txt stays unprefixed (numeric SemVer)
+	@gh release delete v$(VERSION) --yes 2>/dev/null || true
+	@git tag -d v$(VERSION) 2>/dev/null || true
+	@git push origin :refs/tags/v$(VERSION) 2>/dev/null || true
 
 	# Create new release (stable)
-	@gh release create $(VERSION) $(RELDIR)/* \
-		--title "$(PROJECT_NAME) $(VERSION)" \
-		--notes "Release $(VERSION)" \
+	@gh release create v$(VERSION) $(RELDIR)/* \
+		--title "v$(VERSION)" \
+		--notes "Release v$(VERSION)" \
 		--latest
 
-	@echo "Release complete: $(VERSION)"
+	@echo "Release complete: v$(VERSION)"
 
 # =============================================================================
 # DOCKER - Build and push container to registry (set REGISTRY env var)
@@ -39796,7 +40306,7 @@ make build
 | **Symlink to PATH** | `ln -s binaries/app /usr/local/bin/app` | Creates maintenance nightmare |
 | **Copy to system dirs** | `cp binaries/app /usr/local/bin/` | Stale binaries, version confusion |
 | **Symlink for testing** | `ln -s ../binaries/app test/app` | Use full path instead |
-| **Copy between dirs** | `cp binaries/app releases/app` | Use CI/CD release process |
+| **Copy between dirs** | `cp binaries/app releases/app` | Use the CI/CD release process (or the `make release` staging below) |
 | **Install locally** | Any form of "installing" the binary | Run from `binaries/` directly |
 
 ### Correct Usage
@@ -39805,7 +40315,7 @@ make build
 |------|-------|---------|
 | **Run binary** | `ln -s binaries/app ~/bin/app && app` | `./binaries/app` or `binaries/app` |
 | **Test binary** | `cp binaries/app /tmp/ && /tmp/app` | `./binaries/app --test` |
-| **Release** | `cp binaries/* releases/` | CI/CD handles release artifacts |
+| **Release** | `cp binaries/* releases/` by hand | CI/CD handles release artifacts; `make release` stages them for a manual local release |
 | **Deploy** | Copy binary to server | Use container or package manager |
 
 ### Why This Rule Exists
@@ -39818,9 +40328,9 @@ make build
 | **Path pollution** | Binaries scattered across system |
 | **No cleanup** | Copies left behind, consuming space |
 
-### The Only Exception: CI/CD Release
+### The Only Exceptions: CI/CD Release and `make release`
 
-The **only** time binaries are copied is during CI/CD release process, where they are:
+The **only** times binaries are copied are the CI/CD release process and the `make release` target (manual local stable release), which stages stripped copies of `binaries/` into `releases/` before uploading. In CI/CD they are:
 1. Built fresh by CI/CD
 2. Stripped (debug symbols removed)
 3. Uploaded directly to release (GitHub Releases, registry, etc.)
@@ -39971,7 +40481,7 @@ Docker build/runtime definitions are split between `docker/` and runtime `./volu
 ```
 docker/
 ├── Dockerfile              # Production Dockerfile
-├── Dockerfile.dev          # devel image — same as release but binary runs in debug mode; tagged :devel (project-specific)
+├── Dockerfile.dev          # devel image — same as release but baked with `MODE=development`; tagged :devel (project-specific)
 ├── docker-compose.yml      # Production compose - HUMAN USE ONLY
 ├── docker-compose.dev.yml  # Development compose - HUMAN USE ONLY
 ├── docker-compose.test.yml # Test compose - AI/AUTOMATED TESTING ONLY
@@ -40010,7 +40520,7 @@ docker/
 | Entrypoint script | `/usr/local/bin/entrypoint.sh` |
 | Init system | **tini** |
 | Internal port | **80** |
-| **ENV MODE** | **not set** — binary defaults to production; compose files set `MODE` explicitly (`production` / `development`) |
+| **ENV MODE** | **not set** — binary defaults to production; compose files set `MODE` explicitly (`production` / `development`). Only the `:devel` image (`Dockerfile.dev`) bakes `ENV MODE=development` |
 
 ### Container Paths
 
@@ -40247,7 +40757,7 @@ RUN chmod 755 /usr/local/bin/*
 # Set environment
 # Note: Tor available (binary installed) but server binary controls Tor startup (see PART 32)
 # DATABASE_DIR: SQLite location (binary auto-detects container, but explicit is clearer)
-# MODE is never baked into the image — binary defaults to production; compose sets MODE explicitly
+# MODE is never baked into the production image — binary defaults to production; compose sets MODE explicitly (only Dockerfile.dev bakes MODE=development)
 ENV TZ=America/New_York \
     DATABASE_DIR=/data/db/sqlite
 
@@ -40408,7 +40918,7 @@ exec $APP_BIN $FLAGS "$@"
 | `image:` tag | `:latest` in `docker-compose.yml` (production) · `:devel` in `docker-compose.dev.yml` and `docker-compose.test.yml` |
 | `version:` | **NEVER include** |
 | `name:` | `{project_name}` (top-level) |
-| `container_name:` | **Always set**, one fixed name per service, the same in production, dev, and test: `{project_name}-app`, `{project_name}-db`, `{project_name}-cache` (only the services that file includes). Dev and test never run on a production host, so a clash fails `docker compose up` instead of replacing production; their compose `name:` and network keep the `-dev` / `-test` suffix so it fails rather than adopting production's project |
+| `container_name:` | **Always set**, one fixed name per service, the same in production, dev, and test: `{project_name}-app`, `{project_name}-db`, `{project_name}-cache` (only the services that file includes). Dev and test never run on a production host, so a clash fails `docker compose up` instead of replacing production; their compose `name:` and network stay identical to production (no `-dev` / `-test` suffix); the fixed container names are what make a clash fail |
 | Main service name | `{project_name}` (matches project name) |
 | `pull_policy:` | `always` |
 | `restart:` | `always` |
@@ -40800,7 +41310,7 @@ RUN chmod +x /usr/local/bin/{project_name} /usr/local/bin/entrypoint.sh
 
 # Default environment
 # DATABASE_DIR: SQLite location (binary auto-detects container, but explicit is clearer)
-# MODE is never baked into the image — binary defaults to production; compose sets MODE explicitly
+# MODE is never baked into the production image — binary defaults to production; compose sets MODE explicitly (only Dockerfile.dev bakes MODE=development)
 ENV PORT=80 \
     DEBUG=false \
     TZ=America/New_York \
@@ -45672,7 +46182,7 @@ REGISTRY = "ghcr.io/${PROJECT_ORG}/${INTERNAL_NAME}"
 
 Before proceeding, confirm you understand:
 - [ ] Docker uses tini as init, Alpine base
-- [ ] Makefile has exactly 6 core targets: dev, local, build, test, release, docker
+- [ ] Makefile has exactly 6 build targets (dev, local, build, test, release, docker) plus the `clean` housekeeping target; no `all`
 - [ ] Binary naming: NEVER include -musl suffix
 - [ ] All 8 platform builds required (4 OS x 2 arch)
 - [ ] CLI builds (if src/client/ exists): 8 additional binaries with `-cli` suffix
@@ -47488,7 +47998,7 @@ The table is illustrative — the rule is universal: enumerate IDEA.md's feature
 
 In addition to the committed suite, AI-driven exploratory testing with a real browser (e.g. Claude driving the Playwright MCP server) is the defined workflow for finding what the scripted suite misses: walk every page, try hostile input, resize, toggle themes, read console/network errors.
 
-- Every finding is either fixed immediately or logged in `TODO.AI.md` — never left only in conversation
+- Every exploratory-pass finding is either fixed immediately or logged in `TODO.AI.md` (explicit-audit findings follow "Where Findings Are Tracked") — never left only in conversation
 - Every confirmed finding is converted into a committed deterministic chromedp test so it can never regress silently
 - Agent runs are not reproducible: they are NEVER a gate of any kind — the committed deterministic suite is the repeatable record of frontend correctness, run on demand alongside this pass
 
@@ -47797,6 +48307,7 @@ Documentation uses MkDocs Material theme with dark/light/auto switching.
 | `security.md` | ✓ | Security model, auth, health/public endpoints, security reporting, and well-known namespace |
 | `integrations.md` | ✓ | External identity, native app links, autodiscovery, webhooks, federation, and other protocol/platform integrations (or an explicit "none enabled" statement) |
 | `development.md` | ✓ | Development/contributing guide |
+| `translating.md` | ✓ | Translation guide for translators (format, glossary, review, credits) |
 | `stylesheets/dark.css` | Optional | Dark theme customization |
 | `stylesheets/light.css` | Optional | Light theme customization |
 | `requirements.txt` | ✓ | Python dependencies for MkDocs |
@@ -47922,6 +48433,7 @@ nav:
     - Integrations: integrations.md
   - Development:
     - Contributing: development.md
+    - Translating: translating.md
 
 extra:
   social:
@@ -48274,6 +48786,7 @@ docker run --name "{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -
 - [Security](security.md) - Auth, public endpoints, reporting, and hardening behavior
 - [Integrations](integrations.md) - External identity, discovery, and platform integrations
 - [Development](development.md) - Contributing guide
+- [Translating](translating.md) - How to add or update a language
 
 ## Links
 
@@ -48556,7 +49069,7 @@ make test
 - Maintain WCAG AA contrast ratios (4.5:1 minimum)
 - Keep both light and dark themes readable
 - Update `docs/stylesheets/dark.css` and `docs/stylesheets/light.css` accordingly
-- Document color choices in project's AI.md file
+- Document color choices in the project's IDEA.md file
 
 **Example project-specific customization:**
 - Change accent colors to match project branding
@@ -48611,11 +49124,20 @@ make test
 |------|----------|-----------|-------------------|
 | `en` | English | `ltr` | one, other |
 | `es` | Spanish | `ltr` | one, other |
-| `zh` | Chinese (Mandarin) | `ltr` | other (no plural forms) |
 | `fr` | French | `ltr` | one, other (0 is "one") |
 | `ar` | Arabic | `rtl` | zero, one, two, few, many, other |
 | `de` | German | `ltr` | one, other |
-| `ja` | Japanese | `ltr` | other (no plural forms) |
+| `it` | Italian | `ltr` | one, many, other (`many` only for round multiples of 1,000,000) |
+
+**The table above is the REQUIRED MINIMUM, not the exhaustive list.** A project may support more languages; it never supports fewer. Translators are expected to add more over time (see "Translating"); Chinese and Japanese, for example, are deliberately not in the minimum and can be contributed later. Rules for any language beyond the table:
+
+| Rule | Detail |
+|------|--------|
+| **Supported = has a complete locale file** | A language is supported if and only if a locale file whose message keys exactly match `en.json` (plural messages by key, categories per "Plural key parity") is embedded in the binary (the build-time key check applies to it). No locale file = not supported, anywhere |
+| **One registry** | The supported set comes from ONE registry (code, native name, direction, CLDR plural categories) that is checked at build time against the embedded locale files: registry entries, locale files and the runtime default list MUST be the same set. No separate hardcoded language list in config defaults, the language selector, `Accept-Language` matching or `isSupported` |
+| **Defaults** | The runtime default enabled languages are every embedded locale (the required minimum six plus any extra); an operator may narrow the list but never below the six |
+| **Documentation** | README, `--help` and the language selector list only supported languages, derived from or verified against the registry; the stated count MUST equal the number of locale files. Claiming a language with no locale file (for example a README listing Korean without `ko.json`) is a defect |
+| **Adding a language** | Add the locale file, the registry entry (direction + plural categories) and the table row above in the project's docs in one change; the build fails if any of the three is missing |
 
 ### Language Selection via Query Parameter
 
@@ -50193,12 +50715,36 @@ LANG=es_ES.UTF-8 {project_name}-cli --help
 
 ### Adding New Languages
 
-1. Copy `src/common/i18n/locales/en.json` to `src/common/i18n/locales/{lang}.json`
-2. Translate ALL keys (no key may be omitted)
-3. Add language code to `config.server.i18n.available_languages`
+**The supported-language table is a MINIMUM. Translators are expected to add languages over time — adding one needs no code beyond the steps below.**
+
+1. Copy `src/common/i18n/locales/en.json` to `src/common/i18n/locales/{lang}.json` (`{lang}` = the BCP 47 language code, lowercase, e.g. `pt`, `pt-br`, `ko`)
+2. Translate ALL keys (no key may be omitted) and fill the `meta` block: `language` (code), `name` (English name), `native_name`, `direction` (`ltr` or `rtl`), `version`; optional `translators` (names or handles)
+3. Register the language: add it to the language registry (code, native name, direction, CLDR plural categories) and to `config.server.i18n.available_languages`
 4. Language automatically appears in the language selector (WebUI) and `--lang` flag (CLI/agent)
 5. Run `make test` (or the raw Docker command below) to verify all keys are present
 6. Rebuild ALL binaries — server, CLI, and agent all get the new language via `go:embed`
+7. Update the project's README language list and `docs/translating.md` credits (the count MUST equal the number of locale files)
+
+### Translating (Guide for Translators)
+
+**Every project ships `docs/translating.md` (ReadTheDocs page, linked from `CONTRIBUTING`/README) with the content of this section, so a translator can contribute without reading the code. `en.json` is the single source: translators never edit it, they translate it.**
+
+| Topic | Rule |
+|-------|------|
+| **Who and how** | AI first, humans refine. A developer is usually fluent in one language (often English or their native one) and perhaps a second, so the AI assistant writes the translations in every supported language it is fluent in, and a human translator corrects them whenever they notice a problem. Anyone may also translate or fix a language by hand: open a pull request (or send the file to the maintainer) containing ONE locale file `{lang}.json`, plus the registry/config lines from "Adding New Languages" for a new language. Updating an existing language is the same: edit that language's file only |
+| **File format** | UTF-8 JSON, same structure and key order as `en.json`, 2-space indent, no trailing commas, no comments. Keys are never translated or renamed; only values are |
+| **Placeholders** | `{count}`, `{total}`, `{datetime}` and every other `{name}` stays EXACTLY as in English (same name, same braces); only its position in the sentence may move. A value with a missing or renamed placeholder fails the build |
+| **Plurals** | Provide every CLDR plural category the language needs (`zero`, `one`, `two`, `few`, `many`, `other`; see "Plural Rules"). Translators check the category list for their language at the CLDR plural chart; a missing category fails the build |
+| **Whole sentences** | Each value is a complete phrase. Never rely on joining fragments; word order, gender and case differ per language. If an English string looks like a fragment, report it as an issue instead of working around it |
+| **Register and tone** | One consistent register per language (formal "you": `Sie`, `usted`, `vous`, `Lei`, ...). Short and neutral, matching the English UI tone; no slang, humor or idioms that do not travel |
+| **What stays untranslated** | Product and brand names, protocol and technology names (API, Tor, `.onion`, I2P, JSON, token), code, file names, config keys, URLs and the literal values users type (`dark`, `auto`). The project's glossary in `docs/translating.md` lists the agreed term for every recurring word (token, paste, rotate, revoke, ...), and translators reuse it |
+| **Typography** | Follow the language's own rules (French non-breaking space before `: ; ! ?`, quotation marks, decimal and thousands separators come from `golang.org/x/text`, not from the translation) |
+| **AI and machine translation** | Expected and encouraged: when the AI is fluent enough in the language it translates the strings itself (natural, idiomatic wording, not word-for-word), and a language is NOT held back waiting for a native speaker. Where the AI is not fluent enough to produce a reliable translation (rare or low-resource languages), it says so and the language waits for a human translator instead of shipping guesses. Human translators fix mistakes at any time through a normal pull request, and their corrections win over the AI wording on every later sync |
+| **Layout check** | Translations are often longer than English (up to about 40%). The translator or reviewer opens the app in that language at 320, 768 and 1280 px (see the review matrix) and confirms nothing is clipped, wrapped badly or overflowing; right-to-left languages are also checked mirrored |
+| **Scripts needing fonts** | A language whose script the system font stack may not cover (for example CJK, Devanagari, Thai) is added together with a font-stack entry in `--font-family` and a check that long text wraps without spaces (`overflow-wrap: anywhere`) |
+| **Review and merge** | A maintainer checks: tests pass, placeholders and plurals intact, glossary respected, layout check done, README count and `docs/translating.md` credits updated. Native-speaker review is welcome but is not a merge gate |
+| **Keeping translations current** | AI assistants keep every locale file in sync with each English string change (add, change, remove) using best-effort translations in the same change — the AI rule in PART 0 → "Translation Rule" — so key sets never drift. The AI writes them whenever it is fluent in the language; human translators refine or correct them at any time through the normal contribution flow, and no marker or flag is needed. A language is dropped from the build only if its maintainer asks to retire it |
+| **Credit** | Translators are credited in `docs/translating.md` and in the locale file's `meta.translators` (their choice of name or handle) |
 
 ### Build-Time Validation
 
@@ -50211,9 +50757,9 @@ ordinary Go tests, run like every other test inside Docker (this PART →
 $GO_DOCKER casjaysdev/go:latest go test -run "TestKeyConsistency|TestLocalesFS" ./src/common/i18n/...
 
 # Validates:
-# - All language files have identical key sets to en.json
+# - All language files have identical message-key sets to en.json (plural categories per "Plural key parity")
 # - No empty string values
-# - All interpolation variables ({var}) match across languages
+# - All interpolation variables ({var}) match across languages ({count} is optional per plural category)
 # - All plural categories required by the language are present
 # - No orphaned keys (keys in other languages not in en.json)
 ```
@@ -50252,13 +50798,13 @@ separate Makefile target is needed.
 
 **Use Go's `golang.org/x/text` package for locale-aware formatting.**
 
-| Format Type | Example (en-US) | Example (de-DE) | Example (ar-SA) | Example (ja-JP) |
+| Format Type | Example (en-US) | Example (de-DE) | Example (ar-SA) | Example (it-IT) |
 |-------------|-----------------|-----------------|-----------------|-----------------|
-| Date | 12/31/2024 | 31.12.2024 | ٣١/١٢/٢٠٢٤ | 2024/12/31 |
+| Date | 12/31/2024 | 31.12.2024 | ٣١/١٢/٢٠٢٤ | 31/12/2024 |
 | Time | 2:30 PM | 14:30 | ٢:٣٠ م | 14:30 |
-| Number | 1,234.56 | 1.234,56 | ١٬٢٣٤٫٥٦ | 1,234.56 |
-| Currency | $1,234.56 | 1.234,56 € | ١٬٢٣٤٫٥٦ ر.س | ¥1,235 |
-| Percentage | 45.5% | 45,5 % | ٤٥٫٥٪ | 45.5% |
+| Number | 1,234.56 | 1.234,56 | ١٬٢٣٤٫٥٦ | 1.234,56 |
+| Currency | $1,234.56 | 1.234,56 € | ١٬٢٣٤٫٥٦ ر.س | 1.234,56 € |
+| Percentage | 45.5% | 45,5 % | ٤٥٫٥٪ | 45,5% |
 
 **Implementation:**
 ```go
@@ -50276,6 +50822,8 @@ func FormatNumber(n float64, lang string) string {
 
 **Use CLDR plural categories:** `zero`, `one`, `two`, `few`, `many`, `other`
 
+**Plural key parity (exception to exact key parity):** key parity with `en.json` is measured on MESSAGE keys. A plural message (an object under `plurals`, for example `plurals.items`) counts as ONE key whatever categories it holds. Inside it, each language provides exactly the CLDR categories that language needs (always `other`): English `one`, `other`; Arabic `zero`, `one`, `two`, `few`, `many`, `other`; Italian `one`, `many`, `other`; Chinese or Japanese `other` only. A language never needs to copy English's categories and never omits one it requires. `zero` is additionally allowed in any language as an optional explicit zero-count text ("No items"). Any other category the language does not use is an orphan and fails the build. Placeholder parity inside a plural message: `{count}` is optional in every category (an explicit zero or singular text such as "No items" may omit it); every OTHER placeholder (`{name}`, ...) must appear, spelled identically, in every category of that message and in every language's version of it.
+
 | Language | Categories Used |
 |----------|-----------------|
 | English (en) | one, other |
@@ -50283,8 +50831,7 @@ func FormatNumber(n float64, lang string) string {
 | French (fr) | one, other (0 is "one") |
 | German (de) | one, other |
 | Arabic (ar) | zero, one, two, few, many, other |
-| Chinese (zh) | other (no plural forms) |
-| Japanese (ja) | other (no plural forms) |
+| Italian (it) | one, many, other (`many` only for round multiples of 1,000,000) |
 
 **Go Implementation:**
 ```go
@@ -50308,11 +50855,10 @@ server:
     available_languages:
       - en
       - es
-      - zh
       - fr
-      - ar
       - de
-      - ja
+      - it
+      - ar
     fallback_language: en
     cookie_name: lang
     # 1 year
@@ -50630,14 +51176,17 @@ server:
     allow_user_preference: true
 
     # --- Performance Settings ---
-    # Maximum circuits to keep open (higher = faster but more memory)
+    # Maximum circuits Tor builds concurrently — rendered into torrc as MaxClientCircuitsPending (Tor default 32; higher = faster setup under load, more memory)
     max_circuits: 32
 
-    # Circuit timeout (how long before giving up)
-    circuit_timeout: 60s
+    # Seconds to wait for Tor to publish its control_port file at startup (10-300)
+    startup_timeout: 60
 
-    # Bootstrap timeout (wait for Tor network connection)
-    bootstrap_timeout: 3m
+    # Circuit timeout in seconds (how long before giving up)
+    circuit_timeout: 60
+
+    # Bootstrap timeout in seconds (wait for Tor network connection)
+    bootstrap_timeout: 180
 
     # --- Security Settings ---
     # Scrub sensitive info from Tor logs
@@ -51018,27 +51567,35 @@ import (
     "context"
     "fmt"
     "log"
+    "net"
     "net/http"
     "os"
+    "os/exec"
     "path/filepath"
+    "regexp"
     "strings"
     "sync"
+    "syscall"
     "time"
 
-    "github.com/cretz/bine/tor"
+    "github.com/cretz/bine/control"
     "github.com/pires/go-proxyproto"
+    "golang.org/x/net/proxy"
 )
 
 // TorService manages the Tor hidden service and outbound connections.
 // Server binary fully owns and controls the Tor process lifecycle.
 type TorService struct {
-    tor        *tor.Tor
+    // Tor child process (spawned by this server, never by bine's tor.Start)
+    cmd        *exec.Cmd
+    // Authenticated control connection (bine control package)
+    ctrl       *control.Conn
     // Full .onion address (with suffix), read from {HiddenServiceDir}/hostname
     onionAddress string
     // Dedicated PROXY-protocol loopback port the hidden service forwards to
     torBackendPort int
     // For outbound Tor connections (nil if disabled)
-    dialer     *tor.Dialer
+    dialer     proxy.ContextDialer
 }
 
 // TorConfig holds Tor-related configuration from server config
@@ -51053,6 +51610,8 @@ type TorConfig struct {
     // Performance settings
     // 1-128, default 32
     MaxCircuits      int `yaml:"max_circuits" json:"max_circuits"`
+    // 10-300s, default 60
+    StartupTimeout   int `yaml:"startup_timeout" json:"startup_timeout"`
     // 10-300s, default 60
     CircuitTimeout   int `yaml:"circuit_timeout" json:"circuit_timeout"`
     // 30-600s, default 180
@@ -51183,65 +51742,68 @@ func startDedicatedTor(ctx context.Context, cfg *TorConfig) (*TorService, error)
     }
     log.Printf("Regenerated torrc at %s (backend port %d)", torrcPath, torBackendPort)
 
-    // Build platform-specific StartConf
-    conf := &tor.StartConf{
-        // Use our custom torrc from config directory
-        TorrcFile: torrcPath,
-
-        // Runtime data directory - isolated from system Tor
-        DataDir: torDataDir,
-
-        // Let torrc control SocksPort (auto if outbound enabled, 0 if not)
-        NoAutoSocksPort: true,
-
-        // Debug output (development only)
-        // DebugWriter: os.Stderr,
-    }
-
-    // Use the tor binary resolved above (honors the cfg.Binary override).
-    conf.ExePath = torBinary
-
-    // Start OUR OWN Tor process - completely separate from system Tor
-    // Server starts → Tor starts; Server stops → Tor stops
-    t, err := tor.Start(ctx, conf)
+    // Spawn OUR OWN Tor process (never bine's tor.Start: its control-port-file
+    // wait is ~2 s, which fails on slow disks / cold starts). See "Control Port
+    // & Startup Sequence" below for the full contract.
+    cmd, err := spawnTor(ctx, torBinary, torrcPath, torDataDir)
     if err != nil {
         return nil, fmt.Errorf("failed to start dedicated tor: %w", err)
     }
 
-    // Wait for Tor to bootstrap (connect to network)
-    // Use bootstrap timeout from config (default 180 seconds = 3 minutes)
+    // 1. Wait for a COMPLETE "PORT=127.0.0.1:{port}" line in the control_port file
+    startupTimeout := time.Duration(cfg.StartupTimeout) * time.Second
+    controlAddr, err := waitControlPort(ctx, cmd, filepath.Join(torDataDir, "control_port"), startupTimeout)
+    if err != nil {
+        stopTor(cmd, nil)
+        return nil, fmt.Errorf("tor control port: %w", err)
+    }
+
+    // 2. Connect + authenticate (cookie / SAFECOOKIE, handled by Authenticate)
+    ctrl, err := dialControl(ctx, controlAddr)
+    if err != nil {
+        stopTor(cmd, nil)
+        return nil, fmt.Errorf("tor control auth: %w", err)
+    }
+
+    // 3. Subscribe BEFORE enabling the network so no event is missed, then bootstrap
     bootstrapTimeout := time.Duration(cfg.BootstrapTimeout) * time.Second
     dialCtx, cancel := context.WithTimeout(ctx, bootstrapTimeout)
     defer cancel()
-    if err := t.EnableNetwork(dialCtx, true); err != nil {
-        t.Close()
-        return nil, fmt.Errorf("failed to enable tor network: %w", err)
+    if err := bootstrapTor(dialCtx, ctrl); err != nil {
+        stopTor(cmd, ctrl)
+        return nil, fmt.Errorf("tor bootstrap: %w", err)
     }
 
-    // The hidden service is already declared in the torrc (HiddenServiceDir block).
-    // During bootstrap Tor generated (or loaded) the v3 ed25519 key and wrote the
-    // .onion into {hsDir}/hostname - no ADD_ONION, no manual key handling here.
-    onionBytes, err := os.ReadFile(hostnamePath)
+    // 4. The hidden service is declared in torrc (HiddenServiceDir block). Tor writes
+    // {hsDir}/hostname during startup; wait for it instead of reading once.
+    onionAddress, err := waitHostname(dialCtx, hostnamePath)
     if err != nil {
-        t.Close()
-        return nil, fmt.Errorf("failed to read onion hostname: %w", err)
+        stopTor(cmd, ctrl)
+        return nil, fmt.Errorf("tor hostname: %w", err)
     }
-    onionAddress := strings.TrimSpace(string(onionBytes))
 
     svc := &TorService{
-        tor:            t,
+        cmd:            cmd,
+        ctrl:           ctrl,
         onionAddress:   onionAddress,
         torBackendPort: torBackendPort,
     }
 
     // Initialize outbound dialer if enabled (server-wide or user preference allowed)
     if cfg.UseNetwork || cfg.AllowUserPreference {
-        dialer, err := t.Dialer(ctx, nil)
-        if err != nil {
+        // GETINFO net/listeners/socks returns the runtime SocksPort ("127.0.0.1:{port}")
+        socksAddr, err := socksListener(ctrl)
+        if err == nil {
+            var d proxy.Dialer
+            d, err = proxy.SOCKS5("tcp", socksAddr, nil, proxy.Direct)
+            if cd, ok := d.(proxy.ContextDialer); ok && err == nil {
+                svc.dialer = cd
+            }
+        }
+        if svc.dialer == nil {
             log.Printf("Warning: failed to create Tor dialer: %v", err)
             // Continue without outbound - hidden service still works
         } else {
-            svc.dialer = dialer
             log.Printf("Tor outbound connections enabled")
         }
     }
@@ -51280,17 +51842,127 @@ func (s *TorService) GetHTTPClient(useTor bool) *http.Client {
     }
 }
 
-// Close shuts down the Tor process
+// Close shuts down the Tor process: SIGNAL SHUTDOWN over the control connection,
+// then WAIT for the process to exit (up to 10 s) before killing it.
 func (s *TorService) Close() error {
-    if s.tor != nil {
-        return s.tor.Close()
-    }
-    return nil
+    return stopTor(s.cmd, s.ctrl)
 }
 
 // The onion key and hostname are generated and persisted by Tor itself under
 // HiddenServiceDir ({data_dir}/tor/site) - the app never writes the key.
 ```
+
+### Control Port & Startup Sequence
+
+**The server spawns `tor` itself and talks to it over the control port. It never relies on bine's `tor.Start` (fixed ~2 s control-port-file wait, aborts on the first read error) and never uses default ports.**
+
+**torrc lines REQUIRED for this sequence** (all in the generated torrc):
+
+| Line | Why |
+|------|-----|
+| `DataDirectory {data_dir}/tor` | Isolated from system Tor; dir pre-created `0700`, owned by the server user |
+| `ControlPort 127.0.0.1:auto` | Runtime-selected loopback port, never saved |
+| `ControlPortWriteToFile {data_dir}/tor/control_port` | Tor writes `PORT=127.0.0.1:{port}` here once the listener is open |
+| `CookieAuthentication 1` | Cookie file `{data_dir}/tor/control_auth_cookie` (32 bytes); no password stored anywhere |
+| `DisableNetwork 1` | Start offline so the app can subscribe to events before bootstrap begins |
+| `__OwningControllerProcess {server_pid}` | Tor exits by itself if the server dies (crash, SIGKILL) |
+| `SocksPort auto` / `SocksPort 0` | Per `server.tor.use_network` |
+| `HiddenServiceDir` block | Per existing torrc generation |
+
+**Sequence (each step bounded; any failure = WARN + Tor disabled, server keeps running):**
+
+| # | Step | Bound | Rule |
+|---|------|-------|------|
+| 1 | Remove stale `control_port` file; spawn `tor -f {torrc}` as a child (stdout/stderr captured for debug) | - | A leftover file from a previous run MUST NOT be trusted |
+| 2 | Poll `control_port` every 250 ms | `server.tor.startup_timeout` | Missing, empty, or partial file = keep polling. Accept ONLY a complete line matching `^PORT=127\.0\.0\.1:([0-9]+)\n$` with port 1-65535. Abort immediately if the child exits (include its captured stderr) |
+| 3 | Connect to the control address, call `Authenticate("")` | 10 s | Cookie / SAFECOOKIE is negotiated from PROTOCOLINFO; do NOT hand-roll the hash |
+| 4 | `SETEVENTS STATUS_CLIENT HS_DESC` (bine `AddEventListener`) | - | Subscribe BEFORE step 5 |
+| 5 | `SETCONF DisableNetwork=0` | - | Bootstrap begins now |
+| 6 | Wait for `STATUS_CLIENT ... BOOTSTRAP PROGRESS=100` | `server.tor.bootstrap_timeout` | Also check `GETINFO status/bootstrap-phase` once after subscribing (event may already have fired). A `WARN`/`ERR` severity with a `REASON` is logged at debug and kept waiting; only the timeout is fatal |
+| 7 | Wait for `{hsDir}/hostname` to exist and hold a valid `*.onion` line | remaining bootstrap budget | Poll every 250 ms; never read the file once without a wait |
+| 8 | Wait for first `HS_DESC UPLOADED` (best effort) | 60 s | Timeout = WARN only; the address is already valid and published asynchronously |
+
+**Reference implementation of the two helpers that carry the timing rules** (`spawnTor`, `dialControl`, `bootstrapTor`, `waitHostname`, `socksListener` follow the table above):
+
+```go
+var controlPortRe = regexp.MustCompile(`^PORT=(127\.0\.0\.1:[0-9]{1,5})\n$`)
+
+// waitControlPort polls the control_port file until a COMPLETE valid line
+// appears, the timeout elapses, or the tor child exits.
+func waitControlPort(ctx context.Context, cmd *exec.Cmd, file string, timeout time.Duration) (string, error) {
+    deadline := time.NewTimer(timeout)
+    defer deadline.Stop()
+    tick := time.NewTicker(250 * time.Millisecond)
+    defer tick.Stop()
+    for {
+        if cmd.ProcessState != nil {
+            return "", fmt.Errorf("tor exited before opening the control port: %s", cmd.ProcessState)
+        }
+        // Missing, empty, or partial file is NOT an error: keep polling
+        if b, err := os.ReadFile(file); err == nil {
+            if m := controlPortRe.FindSubmatch(b); m != nil {
+                if _, port, _ := net.SplitHostPort(string(m[1])); port != "0" {
+                    return string(m[1]), nil
+                }
+            }
+        }
+        select {
+        case <-ctx.Done():
+            return "", ctx.Err()
+        case <-deadline.C:
+            return "", fmt.Errorf("control_port file not ready after %s", timeout)
+        case <-tick.C:
+        }
+    }
+}
+
+// stopTor asks Tor to shut down, then WAITS for exit before escalating.
+func stopTor(cmd *exec.Cmd, ctrl *control.Conn) error {
+    if ctrl != nil {
+        // Best effort: SIGNAL SHUTDOWN, then close the control connection
+        _ = ctrl.Signal("SHUTDOWN")
+        _ = ctrl.Close()
+    }
+    if cmd == nil || cmd.Process == nil {
+        return nil
+    }
+    done := make(chan struct{})
+    go func() { _ = cmd.Wait(); close(done) }()
+    select {
+    case <-done:
+        return nil
+    case <-time.After(10 * time.Second):
+    }
+    _ = cmd.Process.Signal(syscall.SIGTERM)
+    select {
+    case <-done:
+        return nil
+    case <-time.After(5 * time.Second):
+    }
+    _ = cmd.Process.Kill()
+    <-done
+    return nil
+}
+```
+
+**Error handling:**
+
+| Failure | Detection | Action |
+|---------|-----------|--------|
+| `control_port` file never appears | Step 2 timeout | Kill child, WARN with last stderr lines; check `DataDirectory` permissions and for a stale process holding the lock |
+| File present but empty/partial | Parse fails | Keep polling (Tor writes it non-atomically); never treat as fatal before the timeout |
+| Port is 0 or not loopback | Parse check | Reject, keep polling until timeout |
+| Child exits before port file | `cmd.Wait` channel | Fail immediately with exit status + stderr (bad torrc, port in use, `DataDirectory` locked) |
+| `515 Authentication failed` | Step 3 error | Cookie unreadable or stale: kill child, delete `control_auth_cookie`, restart once; second failure = WARN |
+| `DataDirectory` lock held | stderr "Could not bind"/"already running" | Another Tor uses this dir: kill only the PID recorded in `{data_dir}/tor/tor.pid` if it is a `tor` process we started, then restart once |
+| Bootstrap timeout | Step 6 timeout | Kill child, WARN `Tor bootstrap timeout, hidden service unavailable`, retry per Restart rules |
+| `hostname` missing after bootstrap | Step 7 timeout | Kill child, WARN; check `HiddenServiceDir` mode `0700` and ownership |
+| `HS_DESC FAILED` | Event | WARN with `REASON`; Tor retries itself, no restart |
+| Control connection drops at runtime | Read error on events | WARN `Tor control connection lost, restarting` (existing Restart rules) |
+
+**Shutdown:** send `SIGNAL SHUTDOWN` on the control connection, close it, then wait for the process to exit up to 10 s (bine's own `Close` waits only 300 ms); on timeout send SIGTERM, then SIGKILL after 5 s more. `__OwningControllerProcess` is the backstop if the server dies without running shutdown.
+
+**Test checklist (REQUIRED):** control_port file written late (delay 5 s) still succeeds; partial/empty file tolerated; stale file ignored; wrong cookie recovers via one restart; child killed during startup fails fast; bootstrap-timeout path leaves no `tor` process behind; server SIGKILL leaves no `tor` process behind.
 
 ### Port Allocation
 
@@ -51366,7 +52038,10 @@ func (s *TorService) Close() error {
 func getTorConfig(cfg *TorConfig, hsDir string, torBackendPort int) string {
     // All OSes use the same localhost auto-port control connection.
     // "auto" = Tor picks an available high port at runtime (never saved)
-    controlConfig := "ControlPort 127.0.0.1:auto"
+    // Every line below is REQUIRED by the startup sequence (Control Port & Startup Sequence).
+    torDir := filepath.Join(paths.GetDataDir(), "tor")
+    controlConfig := fmt.Sprintf("DataDirectory %s\nControlPort 127.0.0.1:auto\nControlPortWriteToFile %s\nCookieAuthentication 1\nDisableNetwork 1\n__OwningControllerProcess %d",
+        torDir, filepath.Join(torDir, "control_port"), os.Getpid())
 
     // SocksPort: enabled for outbound connections, disabled for hidden service only
     // "auto" = Tor picks available high port at runtime (never saved)
@@ -51414,8 +52089,9 @@ AccountingMax %s`, cfg.MaxMonthlyBandwidth)
 # Security Hardening
 SafeLogging %s
 
-# Circuit limits
+# Circuit limits (MaxClientCircuitsPending comes from server.tor.max_circuits)
 MaxCircuitDirtiness 600
+MaxClientCircuitsPending {max_circuits}
 
 # Bandwidth limits per second (from config)
 BandwidthRate %s
@@ -51465,11 +52141,13 @@ HiddenServiceExportCircuitID haproxy
 | `DirPort 0` | Disabled | Not a directory server |
 | `ExitPolicy reject *:*` | Block all | Extra safety |
 | `MaxCircuitDirtiness 600` | 10 minutes | Keep circuits longer |
+| `MaxClientCircuitsPending {max_circuits}` | `server.tor.max_circuits` (default 32) | Cap on circuits under construction at once |
 
 **Runtime Port Detection:**
 - Ports are NEVER hardcoded or saved - always detected at runtime
 - `SocksPort auto` → Tor picks available high port, bine reads it after startup
 - `ControlPort 127.0.0.1:auto` → Tor picks available high port on localhost
+- **Control-port file wait:** Tor writes the chosen control port to a control_port file. bine v0.2.0 polls that file for only about two seconds, and a slower Tor start (first run, cold disk, slow consensus) fails with an empty or invalid port file. The app MUST NOT rely on bine's built-in wait: it polls the file itself every 250 ms for up to `server.tor.startup_timeout` seconds (default 60) until it holds a valid `PORT=127.0.0.1:{port}` line, and only then connects. On timeout it stops the Tor process, logs the error with the torrc path, marks Tor unavailable (clearnet keeps serving) and retries on the next Tor restart attempt
 
 **Hidden Service Settings (via torrc `HiddenServiceDir`, not ADD_ONION):**
 
@@ -51973,7 +52651,7 @@ func ensureTorFile(path string, content []byte) error {
 | `use_network` | Boolean | `false` | - | Use Tor for outbound connections |
 | `allow_user_preference` | Boolean | `true` | - | Allow users to override outbound setting |
 | **Performance** | | | | |
-| `max_circuits` | Integer | `32` | 1-128 | Maximum circuits to keep open |
+| `max_circuits` | Integer | `32` | 1-128 | Maximum circuits Tor builds concurrently (torrc `MaxClientCircuitsPending`) |
 | `circuit_timeout` | Integer | `60` | 10-300 | Circuit timeout (seconds) |
 | `bootstrap_timeout` | Integer | `180` | 30-600 | Bootstrap timeout (seconds) |
 | **Security** | | | | |
@@ -52446,7 +53124,7 @@ Tor Hidden Service: Connected
 
 ### Overview
 
-**I2P support is OPTIONAL and opt-in — disabled by default.** This is the deliberate difference from Tor (PART 32.1), which is auto-enabled whenever the `tor` binary is found. The eepsite is created **only** when I2P is explicitly enabled (`features.i2p.enabled: true` / `I2P_ENABLED=true` / `--i2p`) **and** a provider is available.
+**I2P support is OPTIONAL and opt-in — disabled by default.** This is the deliberate difference from Tor (PART 32.1), which is auto-enabled whenever the `tor` binary is found. The eepsite is created **only** when I2P is explicitly enabled (`server.i2p.enabled: true` / `I2P_ENABLED=true` / `--i2p`) **and** a provider is available.
 
 **I2P provides one capability here:**
 1. **Eepsite** — server-side `.b32.i2p` hosting over the I2P network.
@@ -52457,20 +53135,20 @@ Tor Hidden Service: Connected
 - SOCKS/HTTP client proxying through I2P.
 
 **Two providers (i2pd preferred, SAM fallback).** When enabled, `startDedicatedI2P` selects a provider in this order:
-1. **Model A — i2pd (preferred).** If an `i2pd` binary resolves, the app spawns and manages a **dedicated i2pd process** and regenerates its `tunnels.conf` server-tunnel on every startup (the exact parallel to torrc regeneration). i2pd persists the destination keyfile; the `.b32.i2p` address derives from it.
+1. **Model A — i2pd (preferred).** If an `i2pd` binary resolves, the app spawns and manages a **dedicated i2pd process** (its own `i2pd.conf`, SAM on a private loopback port, every other i2pd service disabled) and drives it through the SAME SAMv3 code path as Model B. The app owns the destination key; i2pd is only the router. See "I2P Provider Contract".
 2. **Model B — external SAM bridge.** Else, if a SAMv3 bridge is reachable (`127.0.0.1:7656` by default — an already-running i2pd or Java I2P router), the app talks raw SAMv3 over TCP (no new dependency): it creates a `STREAM` session from a persisted destination and issues `STREAM FORWARD` so the router forwards incoming eepsite connections to the app's backend port.
 3. **Neither available → log a warning and skip** (mirrors Tor's "binary not found → disabled, not an error").
 
 **Key Architecture Points:**
-- **Opt-in, default off** — no eepsite, no port, no `tunnels.conf`, no SAM session unless enabled.
+- **Opt-in, default off** — no eepsite, no port, no `i2pd.conf`, no SAM session unless enabled.
 - **Server binary owns the provider** — Model A: full i2pd process lifecycle; Model B: the SAM session lifecycle.
 - **Dedicated backend port** — the eepsite maps `.b32.i2p:{virtual_port}` → `127.0.0.1:{i2p_backend_port}`, a random-unused loopback port. **Unlike Tor, there is no PROXY-protocol header** (SAM/i2pd do not prepend one), so the backend is a **plain loopback listener**, separate from the clearnet port.
-- **Destination identity persists** — the key lives under `{data_dir}/i2p/site/`; the `.b32.i2p` address survives restarts. `tunnels.conf` is derived state, regenerated each run.
+- **Destination identity persists** — the key lives under `{data_dir}/i2p/site/` (one SAM `PRIV` line, written by the app for both models); the `.b32.i2p` address survives restarts. `i2pd.conf` is derived state, regenerated each run.
 - **Server enforces permissions** — creates all dirs/files with correct owner/group/perms (0700 dirs, 0600 keys).
 
 ### Configuration
 
-**I2P is opt-in.** No provider is contacted and no port is allocated unless `enabled: true`.
+**I2P is opt-in.** No provider is contacted and no port is allocated unless `enabled: true`. The canonical config path is `server.i2p.enabled` (env `I2P_ENABLED`, flag `--i2p`), grouped under `server` like `server.tor`; `features.i2p.*` names the same state only as response fields in health output and is never a config key. Precedence follows PART 8: `--i2p` flag, then `I2P_ENABLED`, then `server.i2p.enabled`.
 
 ```yaml
 server:
@@ -52502,35 +53180,36 @@ server:
     # SAM/destination signature type (7 = EdDSA-SHA512-Ed25519, modern default)
     signature_type: 7
 
-    # Bootstrap timeout (wait for the destination + tunnels to become ready)
-    bootstrap_timeout: 5m
+    # Bootstrap timeout in seconds, 30-600 (wait for the destination + tunnels to become ready)
+    bootstrap_timeout: 300
 ```
 
 **Notes:**
 - **Opt-in only** — never auto-enabled; selecting it requires an explicit config/flag/env.
 - Model A uses the external `i2pd` binary (not embedded), keeping `CGO_ENABLED=0` static binaries.
 - Model B needs no dependency — SAMv3 is spoken over a plain `net.Conn`.
-- **App handles EVERYTHING** for Model A — directory creation, permissions, `tunnels.conf` generation, i2pd process management. For Model B the external router owns tunnels; the app owns only the SAM session and the persisted destination key.
+- **App handles EVERYTHING** for Model A — directory creation, permissions, `i2pd.conf` generation, i2pd process management, the destination key. For Model B the external router owns tunnels; the app owns only the SAM session and the persisted destination key.
 - **I2P directories are NOT configurable** — always derived: config `{config_dir}/i2p/`, data `{data_dir}/i2p/`, log `{log_dir}/i2pd.log` (Model A only).
 
 ### Provider Model
 
 ```
-1. I2P enabled? (features.i2p.enabled)
+1. I2P enabled? (server.i2p.enabled)
    └─ NO  → skip entirely (no port, no config, no session)
    └─ YES → continue
 
 2. Resolve provider:
    ├─ Find i2pd binary (cfg.Binary → common locations → $PATH)
-   │    └─ FOUND → Model A (spawn i2pd + tunnels.conf)
+   │    └─ FOUND → Model A (spawn i2pd + i2pd.conf, SAM on a private port)
    ├─ Else probe SAM (cfg.SAMAddress, default 127.0.0.1:7656)
    │    └─ REACHABLE → Model B (external SAM bridge)
    └─ NEITHER → log WARN, disable I2P, continue (not an error)
 
 3. Allocate dedicated backend port (only now that a provider is confirmed)
 4. Load/persist destination key under {data_dir}/i2p/site/
-5. Model A: write {config_dir}/i2p/tunnels.conf, start i2pd
-   Model B: SAM SESSION CREATE + STREAM FORWARD → backend port
+5. Model A: write {config_dir}/i2p/i2pd.conf, start i2pd, wait for its SAM port
+   Both models: SESSION CREATE (control socket), then STREAM FORWARD SILENT=true (second socket)
+   Model B: use cfg.SAMAddress (the router is already running; nothing to spawn)
 6. Derive/read .b32.i2p address
 ```
 
@@ -52544,6 +53223,90 @@ server:
 | Security | Backend port loopback-only; keys 0600 under `{data_dir}/i2p/site/` |
 
 **Note:** Unlike Tor, the eepsite backend is a plain loopback listener — I2P provides no per-connection PROXY-protocol header, so `go-proxyproto` is NOT used for I2P.
+
+### I2P Provider Contract
+
+**Both providers are driven through ONE protocol path: SAMv3. Model A is "spawn a private i2pd, then talk SAM to it"; Model B is "talk SAM to the router that is already running". The app owns the destination key in both cases.**
+
+| Topic | Rule |
+|-------|------|
+| **Model A router config** | The app writes `{config_dir}/i2p/i2pd.conf` on every start (derived state) and passes it with `--conf`. Every i2pd service the app does not use is disabled, so a default i2pd cannot open 7070/4444/4447/7654 or collide with a system i2pd. `--tunconf` points at an EMPTY `{config_dir}/i2p/tunnels.conf` and `--tunnelsdir` at an EMPTY `{config_dir}/i2p/tunnels.d/`, so no tunnel from any other location is ever loaded. There is no server tunnel: the eepsite is a SAM session |
+| **Model A SAM port** | A random-unused loopback port allocated after the provider is confirmed (same detection as the backend port); never `7656`. Never persisted |
+| **Model B SAM** | `server.i2p.sam_address`. The router's SAM bridge must be enabled by its operator (`[sam] enabled = true` in i2pd, "SAM application bridge" in Java I2P). SAM 3.1 or newer is required (`HELLO VERSION MIN=3.1 MAX=3.3`) |
+| **One socket per job** | Every SAM socket needs its own `HELLO`. The session control socket carries `SESSION CREATE` only; `STREAM FORWARD` is sent on a SECOND, new socket. SAM ends the session when its control socket closes and stops forwarding when the forward socket closes, so both stay open for the life of the eepsite |
+| **`SILENT=true` is mandatory** | Without it SAM writes the connecting peer's destination as the first line of every forwarded connection, which corrupts the HTTP request. Command: `STREAM FORWARD ID={id} PORT={i2p_backend_port} HOST=127.0.0.1 SILENT=true`. The reply `STREAM STATUS RESULT=OK` is sent either way |
+| **Key file** | `{data_dir}/i2p/site/site-keys.dat` holds ONE line: the SAM `PRIV` value (I2P base64 of destination + private keys). Written by the app (0600) for both models. If missing: `DEST GENERATE SIGNATURE_TYPE={signature_type}`, then write temp file + fsync + rename BEFORE `SESSION CREATE`, so a crash never loses a published identity. If present but unparsable: fail with an error naming the file; NEVER regenerate silently |
+| **I2P base64** | Alphabet `A-Za-z0-9-~` (`-` and `~` replace `+` and `/`), `=` padding. Standard base64 decoders MUST NOT be used |
+| **Address derivation** | Decode `PRIV`. The destination is its first `387 + certlen` bytes, where `certlen` is the big-endian uint16 at byte offsets 385-386 (Ed25519 + X25519 key certificates give 391). Address = lowercase base32 without padding of `SHA-256(destination)` + `.b32.i2p` (52 characters + suffix). Computed locally, no router round trip |
+| **Session options** | `SESSION CREATE STYLE=STREAM ID={id} DESTINATION={PRIV} i2cp.leaseSetEncType=4 inbound.length=.. outbound.length=.. inbound.quantity=.. outbound.quantity=..`. `ID` is unique per start (`site-{pid}`); `DUPLICATED_ID` retries once with a new suffix |
+| **Reply timing** | `SESSION STATUS` arrives only AFTER the router has built tunnels (seconds, or minutes on a first start that must reseed). Wait up to `server.i2p.bootstrap_timeout`; NEVER abandon the socket and retry while a build is in progress. The first start of a fresh i2pd data directory may need more than 300 s: raise `bootstrap_timeout` (max 600) on slow links |
+| **Secrets in logs** | `PRIV` is a private key. SAM command lines are never logged or put in error text; errors name the command word only (`SESSION CREATE`) |
+| **Backend listener** | The plain loopback listener on `i2p_backend_port` MUST be accepting before `STREAM FORWARD` is sent. SAM must connect to it within 3 s per incoming stream, so the accept loop never blocks |
+| **No client identity** | With `SILENT=true` every stream arrives from `127.0.0.1`. The dedicated I2P listener is therefore treated as ONE client for rate limiting and bans (a separate global I2P bucket); per-IP rules MUST NOT ban `127.0.0.1` on this listener. Any `X-I2P-*` request header is stripped at the edge and never logged |
+| **Host header** | The request `Host` is the eepsite's `.b32.i2p` or any `.i2p` alias the visitor used; the I2P listener accepts all of them and builds URLs from the app's own `.b32.i2p` |
+
+**Model A `i2pd.conf` (generated; `{sam_port}` and `{log_dir}` filled in):**
+
+```ini
+daemon = false
+ipv4 = true
+ipv6 = false
+notransit = true
+floodfill = false
+log = file
+logfile = {log_dir}/i2pd.log
+loglevel = warn
+
+[http]
+enabled = false
+[httpproxy]
+enabled = false
+[socksproxy]
+enabled = false
+[sam]
+enabled = true
+address = 127.0.0.1
+port = {sam_port}
+[bob]
+enabled = false
+[i2cp]
+enabled = false
+[i2pcontrol]
+enabled = false
+[upnp]
+enabled = false
+```
+
+`notransit = true` and `floodfill = false` keep the router a pure client (no relay or floodfill duty, as already required above). Launch: `i2pd --conf {config_dir}/i2p/i2pd.conf --tunconf {config_dir}/i2p/tunnels.conf --tunnelsdir {config_dir}/i2p/tunnels.d --datadir {data_dir}/i2p --pidfile {data_dir}/i2p/i2pd.pid`. Option names are validated against the installed i2pd in the startup self-test (below).
+
+**Startup sequence (each step bounded; any failure = WARN + I2P disabled, server keeps running):**
+
+| # | Step | Bound |
+|---|------|-------|
+| 1 | Model A only: reap a stale i2pd (pid file names a live `i2pd` process we started: terminate it), write `i2pd.conf`, spawn i2pd | - |
+| 2 | Model A only: wait for the SAM port to accept a TCP connection and answer `HELLO`; abort at once if the child exits | 60 s |
+| 3 | Open the control socket: `HELLO`, load or create the key, compute the address | 10 s |
+| 4 | `SESSION CREATE` (status `building`) | `bootstrap_timeout` |
+| 5 | Open the forward socket: `HELLO`, `STREAM FORWARD ... SILENT=true` (status `running`) | 10 s |
+
+**Status values** (CLI `--status` and the health field `features.i2p.state`; `features.i2p.status` is the normalized mapping in PART 13): `disabled`, `no_provider`, `starting` (steps 1-3), `building` (step 4), `running`, `error`.
+
+**Error handling:**
+
+| Failure | Detection | Action |
+|---------|-----------|--------|
+| No i2pd and SAM unreachable | Provider resolution | `no_provider`, INFO/WARN, continue (not an error) |
+| `HELLO` returns `NOVERSION` | Step 3 | `error`: router too old, SAM 3.1+ required |
+| SAM port never opens (Model A) | Step 2 timeout | Stop i2pd, WARN with the i2pd.log path, retry per restart rules |
+| i2pd exits during startup | Child exit | Fail at once with exit status; check ports and `{data_dir}/i2p` ownership |
+| `SESSION STATUS RESULT=DUPLICATED_DEST` | Step 4 | `error`: another session already uses this key (a second instance or an old session still alive); do not retry in a tight loop, back off 60 s |
+| `RESULT=INVALID_KEY` | Step 4 | `error`: key file corrupt; the operator regenerates the address (never automatic) |
+| Step 4 timeout | `bootstrap_timeout` | Close the socket, WARN `I2P tunnels not ready`, retry per restart rules |
+| Control or forward socket closes | Read error / EOF | Session lost: `error`, recreate both sockets with backoff (5 s -> 300 s) using the SAME key |
+
+**Shutdown (Model A):** close the forward socket, then the control socket (this destroys the session), then terminate i2pd: SIGTERM where the platform has it (kill on Windows), wait up to 10 s, then kill. On Linux the child is started with a parent-death signal so a crashed server does not leave i2pd running; the pid file is the backstop for every platform. Model B only closes its two sockets and never touches the router.
+
+**Test checklist (REQUIRED):** `site-keys.dat` created before `SESSION CREATE` and reused on the next start (same address); I2P base64 round trip with `-` and `~`; address matches a known destination vector; forwarded stream carries NO leading destination line (`SILENT=true`); forward uses a second socket; `DUPLICATED_ID` retry; `INVALID_KEY` does not regenerate; i2pd never opens 7070/4444/4447/7654 (Model A); slow `SESSION CREATE` (60 s) succeeds; server SIGKILL leaves no i2pd process; `PRIV` never appears in logs.
 
 ### I2P Process Management
 
@@ -52564,6 +53327,8 @@ Find i2pd binary:
 
 **i2pd logging:** i2pd logs to `{log_dir}/i2pd.log` at `warn` level by default (configurable). Model B logging is owned by the external router.
 
+**Model B liveness (safe monitoring):** the app NEVER writes to the control connection that owns its SAM session. SAM destroys a session when its control socket closes, and extra commands on it can corrupt the stream-forward state. Liveness uses a separate short-lived probe connection every 30 seconds: open a new TCP connection to `sam_address`, send `HELLO VERSION MIN=3.1 MAX=3.3`, accept `HELLO REPLY RESULT=OK`, then send `QUIT` and close. The probe issues no `SESSION`, `STREAM` or `NAMING` command. Three consecutive probe failures (5-second timeout each) set the status to `error`. Separately, if the session's own control connection closes or errors, the session is lost: set the status to `error` and recreate it (a new `SESSION CREATE` with the same persisted destination key) with backoff.
+
 **Process ownership:** the server binary creates all Model-A directories/files with the current uid/gid and enforces 0700/0600 permissions before starting i2pd.
 
 ### Implementation
@@ -52578,6 +53343,11 @@ import (
     "context"
     "crypto/sha256"
     "encoding/base32"
+    "encoding/base64"
+    "encoding/binary"
+    "errors"
+    "io/fs"
+    "syscall"
     "fmt"
     "log"
     "net"
@@ -52610,8 +53380,12 @@ type I2PService struct {
     i2pBackendPort int
     // Model A: the managed i2pd process (nil for Model B)
     i2pd *exec.Cmd
-    // Model B: the live SAM control connection (nil for Model A)
+    // The live SAM control connection that owns the session (both models)
     samConn net.Conn
+    // The STREAM FORWARD socket; closing it stops forwarding (both models)
+    forwardConn net.Conn
+    // Closed when the managed i2pd exits (Model A)
+    i2pdExited chan struct{}
 }
 
 // I2PConfig holds I2P-related configuration from server config.
@@ -52686,9 +53460,12 @@ func resolveI2PDBinary(cfg *I2PConfig) (string, error) {
     return "", fmt.Errorf("i2pd binary not found")
 }
 
-// samReachable reports whether a SAMv3 bridge is accepting connections at addr.
+// samReachable reports whether a SAMv3 bridge is accepting connections at addr
+// AND completes HELLO (a bare TCP connect also succeeds against unrelated services).
 func samReachable(addr string) bool {
-    conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    conn, _, err := samDial(ctx, addr)
     if err != nil {
         return false
     }
@@ -52735,24 +53512,21 @@ func startDedicatedI2P(ctx context.Context, cfg *I2PConfig) (*I2PService, error)
 
     svc := &I2PService{provider: provider, i2pBackendPort: i2pBackendPort}
 
-    switch provider {
-    case I2PProviderI2PD:
-        // Model A: regenerate tunnels.conf every startup (derived state), then
-        // start a dedicated i2pd. i2pd persists the destination in keysPath.
-        addr, err := startI2PD(ctx, cfg, i2pdBinary, keysPath, i2pBackendPort, svc)
-        if err != nil {
+    // Both models end in the same SAM session. Model A first spawns a dedicated
+    // i2pd and uses its private SAM port; Model B uses cfg.SAMAddress.
+    samAddr := cfg.SAMAddress
+    if provider == I2PProviderI2PD {
+        var err error
+        if samAddr, err = startI2PD(ctx, cfg, i2pdBinary, svc); err != nil {
             return nil, err
         }
-        svc.eepsiteAddress = addr
-    case I2PProviderSAM:
-        // Model B: create a STREAM session from the persisted destination and
-        // STREAM FORWARD incoming connections to the backend port.
-        addr, err := startSAMEepsite(ctx, cfg, keysPath, i2pBackendPort, svc)
-        if err != nil {
-            return nil, err
-        }
-        svc.eepsiteAddress = addr
     }
+    addr, err := startSAMEepsite(ctx, cfg, samAddr, keysPath, i2pBackendPort, svc)
+    if err != nil {
+        svc.Close()
+        return nil, err
+    }
+    svc.eepsiteAddress = addr
 
     log.Printf("I2P eepsite started (%s): %s:%d → 127.0.0.1:%d",
         providerName(provider), svc.eepsiteAddress, cfg.VirtualPort, i2pBackendPort)
@@ -52762,16 +53536,20 @@ func startDedicatedI2P(ctx context.Context, cfg *I2PConfig) (*I2PService, error)
 // EepsiteAddress returns the full .b32.i2p address.
 func (s *I2PService) EepsiteAddress() string { return s.eepsiteAddress }
 
-// Close shuts down the provider (i2pd process or SAM session).
+// Close shuts down the provider: forward socket, then control socket (this
+// destroys the session), then - Model A only - the managed i2pd.
 func (s *I2PService) Close() error {
+    if s.forwardConn != nil {
+        s.forwardConn.Close()
+        s.forwardConn = nil
+    }
     if s.samConn != nil {
         s.samConn.Close()
         s.samConn = nil
     }
-    if s.i2pd != nil && s.i2pd.Process != nil {
-        err := s.i2pd.Process.Signal(os.Interrupt)
+    if s.i2pd != nil {
+        stopI2PD(s.i2pd, s.i2pdExited)
         s.i2pd = nil
-        return err
     }
     return nil
 }
@@ -52787,8 +53565,8 @@ func providerName(p I2PProvider) string {
     }
 }
 
-// The destination key is generated once and persisted under {data_dir}/i2p/site/
-// (i2pd writes site-keys.dat; the SAM path writes the DEST PRIV there) - the
+// The destination key is generated once by SAM (DEST GENERATE) and persisted by
+// the app under {data_dir}/i2p/site/site-keys.dat for BOTH models - the
 // .b32.i2p address is stable across restarts.
 ```
 
@@ -52796,7 +53574,7 @@ func providerName(p I2PProvider) string {
 
 | Resource | Model A (i2pd) | Model B (SAM) |
 |----------|----------------|---------------|
-| Control | i2pd child process | SAMv3 TCP `sam_address` |
+| Control | i2pd child process; SAMv3 TCP on a private random loopback port | SAMv3 TCP `sam_address` |
 | Eepsite backend | `127.0.0.1:{i2p_backend_port}` (plain) | `127.0.0.1:{i2p_backend_port}` (plain) |
 | Destination key | `{data_dir}/i2p/site/site-keys.dat` | `{data_dir}/i2p/site/site-keys.dat` |
 
@@ -52827,118 +53605,289 @@ func providerName(p I2PProvider) string {
 - **Backend port is loopback-only** and receives plain HTTP (no PROXY header to parse).
 - **Same backend port model as Tor** — dedicated, random-unused, never the clearnet port — but without `go-proxyproto`.
 
-#### tunnels.conf Generation (Model A)
+#### i2pd.conf Generation and Launch (Model A)
 
-`tunnels.conf` is derived state, regenerated on every startup from `I2PConfig` + the current backend port. The destination identity persists via `keys` (`site-keys.dat`), NOT via `tunnels.conf`, so overwriting it is always safe.
+`i2pd.conf` is derived state, regenerated on every startup. The destination identity persists in `site-keys.dat` (written by the app), NOT in `i2pd.conf`, so overwriting it is always safe. Content: see "I2P Provider Contract".
 
 ```go
-// getI2PTunnelsConf generates the i2pd server-tunnel definition. The eepsite is
-// declared here via a [site] server tunnel pointing at the dedicated backend
-// port; i2pd persists the destination in keysPath and derives the .b32.i2p.
-func getI2PTunnelsConf(cfg *I2PConfig, keysPath string, i2pBackendPort int) string {
-    return fmt.Sprintf(`[site]
-type = server
-host = 127.0.0.1
+// getI2PDConf renders the dedicated i2pd.conf: SAM on a private loopback port,
+// every other service disabled, no transit, no floodfill.
+func getI2PDConf(samPort int, logPath string) string {
+    return fmt.Sprintf(`daemon = false
+ipv4 = true
+ipv6 = false
+notransit = true
+floodfill = false
+log = file
+logfile = %s
+loglevel = warn
+
+[http]
+enabled = false
+[httpproxy]
+enabled = false
+[socksproxy]
+enabled = false
+[sam]
+enabled = true
+address = 127.0.0.1
 port = %d
-keys = %s
-inbound.length = %d
-outbound.length = %d
-inbound.quantity = %d
-outbound.quantity = %d
-signaturetype = %d
-`, i2pBackendPort, keysPath,
-        cfg.InboundLength, cfg.OutboundLength,
-        cfg.InboundQuantity, cfg.OutboundQuantity, cfg.SignatureType)
+[bob]
+enabled = false
+[i2cp]
+enabled = false
+[i2pcontrol]
+enabled = false
+[upnp]
+enabled = false
+`, logPath, samPort)
 }
 
-// startI2PD writes tunnels.conf (regenerated each run) and starts a dedicated
-// i2pd child process, then reads the .b32.i2p from i2pd once the destination is
-// ready. i2pd creates/persists site-keys.dat at keysPath.
-func startI2PD(ctx context.Context, cfg *I2PConfig, binary, keysPath string, i2pBackendPort int, svc *I2PService) (string, error) {
-    configDir := paths.GetConfigDir()
-    dataDir := paths.GetDataDir()
-    tunnelsPath := filepath.Join(configDir, "i2p", "tunnels.conf")
+// startI2PD writes i2pd.conf (regenerated each run), starts a dedicated i2pd and
+// waits until its SAM port answers HELLO. It returns the SAM address.
+func startI2PD(ctx context.Context, cfg *I2PConfig, binary string, svc *I2PService) (string, error) {
+    confDir := filepath.Join(paths.GetConfigDir(), "i2p")
+    dataDir := filepath.Join(paths.GetDataDir(), "i2p")
+    confPath := filepath.Join(confDir, "i2pd.conf")
+    tunConf := filepath.Join(confDir, "tunnels.conf")
+    tunDir := filepath.Join(confDir, "tunnels.d")
+    pidPath := filepath.Join(dataDir, "i2pd.pid")
 
-    conf := getI2PTunnelsConf(cfg, keysPath, i2pBackendPort)
-    // Regenerate every startup (derived state); identity lives in keysPath.
-    if err := updateI2PTunnels(tunnelsPath, []byte(conf)); err != nil {
-        return "", fmt.Errorf("failed to write tunnels.conf: %w", err)
+    // A previous server run may have left its i2pd behind (SIGKILL, power loss)
+    reapStaleI2PD(pidPath, binary)
+
+    samPort := getRandomAvailablePort()
+    if err := updateI2PConf(confPath, []byte(getI2PDConf(samPort, filepath.Join(paths.GetLogDir(), "i2pd.log")))); err != nil {
+        return "", fmt.Errorf("failed to write i2pd.conf: %w", err)
     }
-    log.Printf("Regenerated tunnels.conf at %s (backend port %d)", tunnelsPath, i2pBackendPort)
+    // Empty tunnel definitions: nothing but our SAM session may exist
+    if err := updateI2PConf(tunConf, nil); err != nil {
+        return "", err
+    }
+    if err := os.MkdirAll(tunDir, 0700); err != nil {
+        return "", err
+    }
+    log.Printf("Regenerated i2pd.conf at %s (SAM port %d)", confPath, samPort)
 
-    cmd := exec.CommandContext(ctx, binary,
-        "--datadir", filepath.Join(dataDir, "i2p"),
-        "--tunconf", tunnelsPath,
-        "--log", "file",
-        "--logfile", filepath.Join(paths.GetLogDir(), "i2pd.log"),
+    // exec.Command, NOT CommandContext: context cancel must not hard-kill i2pd
+    cmd := exec.Command(binary,
+        "--conf", confPath,
+        "--tunconf", tunConf,
+        "--tunnelsdir", tunDir,
+        "--datadir", dataDir,
+        "--pidfile", pidPath,
     )
+    // Linux: parent-death signal so a crashed server cannot orphan i2pd
+    // (setParentDeathSignal lives in a //go:build linux file; no-op elsewhere)
+    setParentDeathSignal(cmd)
     if err := cmd.Start(); err != nil {
         return "", fmt.Errorf("failed to start i2pd: %w", err)
     }
-    svc.i2pd = cmd
+    exited := make(chan struct{})
+    go func() { _ = cmd.Wait(); close(exited) }()
+    svc.i2pd, svc.i2pdExited = cmd, exited
 
-    // Wait for i2pd to publish the destination, then derive the address.
-    deadline := time.Duration(cfg.BootstrapTimeout) * time.Second
-    addr, err := waitForI2PDAddress(ctx, keysPath, deadline)
-    if err != nil {
-        cmd.Process.Signal(os.Interrupt)
-        return "", err
+    samAddr := fmt.Sprintf("127.0.0.1:%d", samPort)
+    deadline := time.Now().Add(60 * time.Second)
+    for {
+        if conn, _, err := samDial(ctx, samAddr); err == nil {
+            conn.Close()
+            return samAddr, nil
+        }
+        select {
+        case <-exited:
+            return "", fmt.Errorf("i2pd exited before its SAM port opened: %v", cmd.ProcessState)
+        case <-ctx.Done():
+            stopI2PD(cmd, exited)
+            return "", ctx.Err()
+        case <-time.After(500 * time.Millisecond):
+        }
+        if time.Now().After(deadline) {
+            stopI2PD(cmd, exited)
+            return "", fmt.Errorf("i2pd SAM port not ready after 60s (see i2pd.log)")
+        }
     }
-    return addr, nil
+}
+
+// stopI2PD terminates the managed i2pd: SIGTERM, wait up to 10 s for exit, then kill.
+func stopI2PD(cmd *exec.Cmd, exited <-chan struct{}) {
+    if cmd == nil || cmd.Process == nil {
+        return
+    }
+    _ = cmd.Process.Signal(syscall.SIGTERM) // Windows: returns an error, Kill below handles it
+    select {
+    case <-exited:
+    case <-time.After(10 * time.Second):
+        _ = cmd.Process.Kill()
+    }
 }
 ```
 
-#### SAM Session (Model B)
+#### SAM Session (both models)
 
-Raw SAMv3 over TCP — no dependency. The destination is generated once and persisted; the session issues `STREAM FORWARD` so the router delivers incoming eepsite connections to the backend port.
+Raw SAMv3 over TCP, no dependency. Every socket gets its own `HELLO`; the session socket creates the session; a second socket forwards streams. See "I2P Provider Contract" for the rules behind each line.
 
 ```go
-// startSAMEepsite opens a SAMv3 control connection, loads (or generates and
-// persists) the destination, creates a STREAM session, and forwards incoming
-// streams to the dedicated backend port. Returns the .b32.i2p address.
-func startSAMEepsite(ctx context.Context, cfg *I2PConfig, keysPath string, i2pBackendPort int, svc *I2PService) (string, error) {
-    conn, err := net.DialTimeout("tcp", cfg.SAMAddress, 5*time.Second)
+// i2pBase64 is the I2P base64 variant ('-' and '~' instead of '+' and '/').
+var i2pBase64 = base64.NewEncoding("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-~")
+
+// samReply is one parsed SAM reply line, e.g. "SESSION STATUS RESULT=OK".
+type samReply struct {
+    topic, action string
+    kv            map[string]string
+}
+
+func parseSAMReply(line string) *samReply {
+    line = strings.TrimSpace(line)
+    rep := &samReply{kv: map[string]string{}}
+    // MESSAGE="..." may contain spaces: take it first, then split the rest
+    if i := strings.Index(line, `MESSAGE="`); i >= 0 {
+        rep.kv["MESSAGE"] = strings.Trim(line[i+len(`MESSAGE=`):], `"`)
+        line = strings.TrimSpace(line[:i])
+    }
+    f := strings.Fields(line)
+    if len(f) >= 2 {
+        rep.topic, rep.action = f[0], f[1]
+        for _, t := range f[2:] {
+            if k, v, ok := strings.Cut(t, "="); ok {
+                rep.kv[k] = v
+            }
+        }
+    }
+    return rep
+}
+
+// samCmd sends one command and reads exactly one reply line within timeout.
+// The command text may hold a private key: it is never logged or returned in errors.
+func samCmd(conn net.Conn, r *bufio.Reader, timeout time.Duration, format string, args ...any) (*samReply, error) {
+    _ = conn.SetDeadline(time.Now().Add(timeout))
+    defer conn.SetDeadline(time.Time{})
+    if _, err := fmt.Fprintf(conn, format+"\n", args...); err != nil {
+        return nil, fmt.Errorf("SAM write: %w", err)
+    }
+    line, err := r.ReadString('\n')
     if err != nil {
-        return "", fmt.Errorf("failed to dial SAM %s: %w", cfg.SAMAddress, err)
+        return nil, fmt.Errorf("SAM read: %w", err)
+    }
+    return parseSAMReply(line), nil
+}
+
+// samDial opens a SAM socket and completes HELLO (required on every socket).
+func samDial(ctx context.Context, addr string) (net.Conn, *bufio.Reader, error) {
+    d := net.Dialer{Timeout: 5 * time.Second}
+    conn, err := d.DialContext(ctx, "tcp", addr)
+    if err != nil {
+        return nil, nil, err
     }
     r := bufio.NewReader(conn)
-
-    // 1. Handshake
-    if _, err := fmt.Fprintf(conn, "HELLO VERSION MIN=3.0 MAX=3.3\n"); err != nil {
+    rep, err := samCmd(conn, r, 10*time.Second, "HELLO VERSION MIN=3.1 MAX=3.3")
+    if err != nil {
         conn.Close()
+        return nil, nil, err
+    }
+    if rep.kv["RESULT"] != "OK" {
+        conn.Close()
+        return nil, nil, fmt.Errorf("SAM HELLO: %s %s", rep.kv["RESULT"], rep.kv["MESSAGE"])
+    }
+    return conn, r, nil
+}
+
+// destinationBytes returns the destination part of a PRIV value:
+// 387 + certificate length, the length being the uint16 at offsets 385-386.
+func destinationBytes(priv string) ([]byte, error) {
+    raw, err := i2pBase64.DecodeString(priv)
+    if err != nil || len(raw) < 387 {
+        return nil, fmt.Errorf("invalid destination key")
+    }
+    n := 387 + int(binary.BigEndian.Uint16(raw[385:387]))
+    if len(raw) < n {
+        return nil, fmt.Errorf("truncated destination key")
+    }
+    return raw[:n], nil
+}
+
+// loadOrCreateDestination returns the persisted PRIV, generating and persisting
+// one first (temp file + rename) when none exists. A corrupt file is an error.
+func loadOrCreateDestination(conn net.Conn, r *bufio.Reader, keysPath string, sigType int) (string, error) {
+    b, err := os.ReadFile(keysPath)
+    if err == nil {
+        priv := strings.TrimSpace(string(b))
+        if _, err := destinationBytes(priv); err != nil {
+            return "", fmt.Errorf("corrupt destination key file %s: %w", keysPath, err)
+        }
+        return priv, nil
+    }
+    if !errors.Is(err, fs.ErrNotExist) {
         return "", err
     }
-    if _, err := readSAMReply(r, "HELLO REPLY"); err != nil {
-        conn.Close()
+    rep, err := samCmd(conn, r, 10*time.Second, "DEST GENERATE SIGNATURE_TYPE=%d", sigType)
+    if err != nil {
         return "", err
     }
+    priv := rep.kv["PRIV"]
+    if _, err := destinationBytes(priv); err != nil {
+        return "", fmt.Errorf("DEST GENERATE returned an unusable key")
+    }
+    tmp := keysPath + ".tmp"
+    if err := os.WriteFile(tmp, []byte(priv+"\n"), 0600); err != nil {
+        return "", err
+    }
+    if err := os.Rename(tmp, keysPath); err != nil {
+        return "", err
+    }
+    return priv, nil
+}
 
-    // 2. Load persisted destination or generate + persist a new one.
-    dest, err := loadOrCreateSAMDestination(conn, r, keysPath, cfg.SignatureType)
+// startSAMEepsite creates the STREAM session on the control socket, then forwards
+// streams to the backend port on a SECOND socket (SILENT=true). Returns the
+// .b32.i2p address. samAddr is the Model A private SAM port or cfg.SAMAddress.
+func startSAMEepsite(ctx context.Context, cfg *I2PConfig, samAddr, keysPath string, i2pBackendPort int, svc *I2PService) (string, error) {
+    conn, r, err := samDial(ctx, samAddr)
+    if err != nil {
+        return "", fmt.Errorf("failed to reach SAM %s: %w", samAddr, err)
+    }
+    priv, err := loadOrCreateDestination(conn, r, keysPath, cfg.SignatureType)
     if err != nil {
         conn.Close()
         return "", err
     }
+    dest, _ := destinationBytes(priv)
+    addr := b32Address(dest)
 
-    // 3. Create the STREAM session bound to that destination.
-    fmt.Fprintf(conn, "SESSION CREATE STYLE=STREAM ID=site DESTINATION=%s "+
-        "inbound.length=%d outbound.length=%d inbound.quantity=%d outbound.quantity=%d\n",
-        dest.priv, cfg.InboundLength, cfg.OutboundLength, cfg.InboundQuantity, cfg.OutboundQuantity)
-    if _, err := readSAMReply(r, "SESSION STATUS"); err != nil {
+    // The reply comes only after tunnels are built: wait the full bootstrap_timeout,
+    // never abandon the socket and retry mid-build
+    id := fmt.Sprintf("site-%d", os.Getpid())
+    rep, err := samCmd(conn, r, time.Duration(cfg.BootstrapTimeout)*time.Second,
+        "SESSION CREATE STYLE=STREAM ID=%s DESTINATION=%s i2cp.leaseSetEncType=4 "+
+            "inbound.length=%d outbound.length=%d inbound.quantity=%d outbound.quantity=%d",
+        id, priv, cfg.InboundLength, cfg.OutboundLength, cfg.InboundQuantity, cfg.OutboundQuantity)
+    if err != nil {
+        conn.Close()
+        return "", fmt.Errorf("SESSION CREATE: %w", err)
+    }
+    if rep.kv["RESULT"] != "OK" {
+        conn.Close()
+        return "", fmt.Errorf("SESSION CREATE: %s %s", rep.kv["RESULT"], rep.kv["MESSAGE"])
+    }
+
+    // STREAM FORWARD goes on a NEW socket; SILENT=true stops SAM prepending the
+    // peer destination line to every forwarded connection
+    fconn, fr, err := samDial(ctx, samAddr)
+    if err != nil {
         conn.Close()
         return "", err
     }
-
-    // 4. Forward incoming eepsite streams to the backend port.
-    fmt.Fprintf(conn, "STREAM FORWARD ID=site PORT=%d HOST=127.0.0.1\n", i2pBackendPort)
-    if _, err := readSAMReply(r, "STREAM STATUS"); err != nil {
+    rep, err = samCmd(fconn, fr, 10*time.Second,
+        "STREAM FORWARD ID=%s PORT=%d HOST=127.0.0.1 SILENT=true", id, i2pBackendPort)
+    if err != nil || rep.kv["RESULT"] != "OK" {
+        fconn.Close()
         conn.Close()
-        return "", err
+        return "", fmt.Errorf("STREAM FORWARD failed")
     }
 
-    // Keep the control connection open for the session lifetime.
-    svc.samConn = conn
-    return b32Address(dest.pub), nil
+    // Both sockets stay open for the life of the eepsite
+    svc.samConn, svc.forwardConn = conn, fconn
+    return addr, nil
 }
 
 // b32Address derives the .b32.i2p address: base32(sha256(destination)) without
@@ -52957,7 +53906,7 @@ func b32Address(destBinary []byte) string {
 | **App Start** | (if enabled) resolve provider → start eepsite → derive address | No-op when disabled |
 | **App Running** | Monitor provider, restart if it dies | Model A: watch i2pd; Model B: watch SAM conn |
 | **App Shutdown** | Stop i2pd / close SAM session, then exit | Server owns the lifecycle |
-| **Config change** | Stop → Start with new config (regenerates tunnels.conf) | |
+| **Config change** | Stop → Start with new config (regenerates i2pd.conf) | |
 | **Regenerate address** | Stop → delete `{data_dir}/i2p/site/` → Start | New destination |
 
 #### Restart Implementation
@@ -53000,8 +53949,8 @@ func (im *I2PManager) startLocked() error {
 }
 
 // UpdateConfig applies new settings and restarts I2P. startLocked ->
-// startDedicatedI2P regenerates tunnels.conf (with a freshly allocated backend
-// port) from the new config, so no separate tunnels.conf write is needed here.
+// startDedicatedI2P regenerates i2pd.conf (with a freshly allocated backend
+// port) from the new config, so no separate i2pd.conf write is needed here.
 func (im *I2PManager) UpdateConfig(config *I2PConfig) error {
     im.mu.Lock()
     defer im.mu.Unlock()
@@ -53124,13 +54073,14 @@ func monitorI2P(ctx context.Context, service *I2PService, restartFunc func() (*I
 | Data | Location | Notes |
 |------|----------|-------|
 | I2P config directory | `{config_dir}/i2p/` | Server creates with 0700 |
-| I2P tunnels file | `{config_dir}/i2p/tunnels.conf` | Server generates with 0600 (Model A) |
+| I2P router config | `{config_dir}/i2p/i2pd.conf` | Server generates with 0600 (Model A) |
+| Empty tunnel definitions | `{config_dir}/i2p/tunnels.conf`, `{config_dir}/i2p/tunnels.d/` | Server creates empty (0600 / 0700) so no other tunnel is ever loaded (Model A) |
 | I2P data directory | `{data_dir}/i2p/` | Server creates with 0700 (Model A) |
-| Destination key | `{data_dir}/i2p/site/site-keys.dat` | Server creates with 0600 |
+| Destination key | `{data_dir}/i2p/site/site-keys.dat` | App creates with 0600; one line, SAM `PRIV` in I2P base64 (both models) |
 | i2pd process PID | `{data_dir}/i2p/i2pd.pid` | Model A only |
 | i2pd log file | `{log_dir}/i2pd.log` | Model A only |
 
-**Model B** owns no i2pd files — only `{data_dir}/i2p/site/site-keys.dat` (the persisted destination) is written by the app.
+**Model B** owns no i2pd files — only `{data_dir}/i2p/site/site-keys.dat` (the persisted destination) is written by the app. Model A additionally owns `i2pd.conf`, `tunnels.conf`/`tunnels.d/` (empty), `i2pd.pid` and `i2pd.log`.
 
 #### Runtime Directory Handling
 
@@ -53271,7 +54221,7 @@ func ValidateI2PConfig(config *I2PConfig) []ValidationError {
 | Scenario | Behavior |
 |----------|----------|
 | I2P disabled (default) | No provider contacted, no port, no config — eepsite off |
-| Enabled, i2pd found | Model A: i2pd spawned, tunnels.conf regenerated, `.b32.i2p` derived from `site-keys.dat` |
+| Enabled, i2pd found | Model A: i2pd spawned with its own `i2pd.conf`, SAM session + `STREAM FORWARD`, `.b32.i2p` derived from `site-keys.dat` |
 | Enabled, no i2pd, SAM reachable | Model B: SAM session + STREAM FORWARD to backend port |
 | Enabled, no provider | Log WARN, continue without I2P (not an error) |
 | Subsequent runs | Same `.b32.i2p` (destination key persists in `{data_dir}/i2p/site/`) |
@@ -53850,8 +54800,8 @@ display:
 
 | Config Value | Behavior |
 |--------------|----------|
-| `auto` (default) | Detect: GUI if display, TUI if terminal, error if neither |
-| `gui` | Force GUI mode (error if no display available) |
+| `auto` (default) | Detect in priority order: GUI if a display is available (and GUI support is built in), else TUI if an interactive terminal, else error |
+| `gui` | Force GUI mode (reports `gui_unavailable` and exits if no display is available — never degrades to TUI) |
 | `tui` | Force TUI mode (error if no terminal available) |
 
 **Why config override exists:**
@@ -53860,14 +54810,16 @@ display:
 - Accessibility requirements
 - Testing specific modes
 
-**Auto-detection remains default.** Config override is for users who explicitly want to force a mode.
+**Auto-detection remains default.** Config override is for users who explicitly want to force a mode. When both a display and an interactive terminal exist, the GUI wins; the TUI is only the fallback when no display is available. A command argument always beats every display mode.
 
 | Condition | Result |
 |-----------|--------|
 | `-h`, `--help` | Print help, exit (CLI only, never TUI) |
 | `-v`, `--version` | Print version, exit (CLI only, never TUI) |
-| Interactive terminal + no command | TUI mode |
-| Interactive terminal + config flags only | TUI mode |
+| Display available + no command (`display.mode: auto`, GUI built in) | GUI mode |
+| Display available + config flags only (`display.mode: auto`, GUI built in) | GUI mode |
+| Interactive terminal + no command, no display (or GUI not built in) | TUI mode |
+| Interactive terminal + config flags only, no display (or GUI not built in) | TUI mode |
 | Interactive terminal + command/args | CLI mode |
 | Piped/redirected output | Plain output (no TUI) |
 | Non-interactive (cron, scripts) | Plain output |
@@ -55833,7 +56785,7 @@ Flags:
 -v, --version                          - Show version
 --shell completions [SHELL]            - Print shell completions (auto-detect if SHELL omitted)
 --shell init [SHELL]                   - Print shell init command (auto-detect if SHELL omitted)
---shell help                           - Show shell integration help
+--shell --help                         - Show shell integration help
 
 --server URL                           - Server URL (default: from config)
 --token TOKEN                          - API token for authentication
@@ -55853,7 +56805,7 @@ Administration (requires admin token):
 Shells: bash, zsh, fish, sh, dash, ksh, powershell, pwsh
 
 Run without arguments for interactive TUI mode.
-Run '{project_name}-cli <command> help' for detailed help on any command.
+Run '{project_name}-cli <flag> --help' (for example `--shell --help`) for detailed help on any command flag.
 ```
 
 **If user renames binary:**
@@ -57154,7 +58106,7 @@ Flags:
 -v, --version                          - Show version
 --shell completions [SHELL]            - Print shell completions (auto-detect if SHELL omitted)
 --shell init [SHELL]                   - Print shell init command (auto-detect if SHELL omitted)
---shell help                           - Show shell integration help
+--shell --help                         - Show shell integration help
 
 --config DIR                           - Config directory
 --data DIR                             - Data directory
@@ -57164,6 +58116,7 @@ Flags:
 
 --mode {production|development|debug}  - Application mode
 --debug                                - Enable debug mode
+--i2p                                  - Enable the I2P eepsite (opt-in)
 --color {auto|yes|no}                  - Color output (default: auto)
 --lang CODE                            - Language for output (default: auto)
 --status                               - Show agent health
@@ -63987,7 +64940,7 @@ project_org:     {project_org}
 # STABLE — equals project_name on first install; change only on an explicit rename or fork reset
 internal_name:   {project_name}
 app_name:        {project_name}
-official_site:   {fqdn}
+official_site:   https://{fqdn}
 # Defaults to project_org if unset
 maintainer_name: {maintainer_name}
 # Optional — used only if set
@@ -64039,7 +64992,7 @@ project_name:    jokes-api
 project_org:     casjay
 internal_name:   jokes-api
 app_name:        Jokes API
-official_site:   jokes.example.com
+official_site:   https://jokes.example.com
 maintainer_name: Jane Doe
 maintainer_email: jane@example.com
 
@@ -64091,7 +65044,7 @@ project_name:    linkshort
 project_org:     casjay
 internal_name:   linkshort
 app_name:        LinkShort
-official_site:   short.example.com
+official_site:   https://short.example.com
 maintainer_name: Jane Doe
 maintainer_email: jane@example.com
 
@@ -64143,7 +65096,7 @@ project_name:    weather-api
 project_org:     casjay
 internal_name:   weather-api
 app_name:        Weather API
-official_site:   weather.example.com
+official_site:   https://weather.example.com
 maintainer_name: Jane Doe
 maintainer_email: jane@example.com
 
@@ -64659,12 +65612,12 @@ make docker
 - [ ] BSD: rc.d script
 
 **PART 26: Makefile**
-- [ ] `make build` - Build binary
+- [ ] `make dev` - Quick development build
+- [ ] `make local` - Production test build
+- [ ] `make build` - Full release build (all platforms)
 - [ ] `make test` - Run tests
-- [ ] `make docker` - Build Docker image
-- [ ] `make release` - Create release
-- [ ] `make clean` - Clean build artifacts
-- [ ] `make all` - Full build
+- [ ] `make release` - Create release with source archive
+- [ ] `make docker` - Build container image
 - [ ] Cross-compilation targets
 - [ ] Version injection at build time
 
@@ -64724,6 +65677,7 @@ make docker
   - [ ] docs/security.md
   - [ ] docs/integrations.md
   - [ ] docs/development.md
+  - [ ] docs/translating.md
 - [ ] ReadTheDocs builds successfully
 - [ ] Documentation badge in README.md
 
@@ -64752,13 +65706,13 @@ make docker
   - [ ] `features.tor.hostname` ({onion_address})
 
 **PART 32.2: I2P Eepsite (OPTIONAL — opt-in)**
-- [ ] Disabled by default; enabled only via `features.i2p.enabled` / `I2P_ENABLED=true` / `--i2p`
+- [ ] Disabled by default; enabled only via `server.i2p.enabled` / `I2P_ENABLED=true` / `--i2p`
 - [ ] Provider resolution: i2pd binary preferred, external SAM bridge fallback
 - [ ] Dedicated i2pd process (Model A, not a system router) when i2pd found
 - [ ] `.b32.i2p` address generation from persisted destination key
-- [ ] `tunnels.conf` regenerated each startup (Model A); key persists at `{data_dir}/i2p/site/`
+- [ ] `i2pd.conf` regenerated each startup (Model A); key persists at `{data_dir}/i2p/site/`
 - [ ] I2P status + enable toggle in admin panel
-- [ ] I2P config in `{config_dir}/i2p/tunnels.conf`
+- [ ] I2P router config in `{config_dir}/i2p/i2pd.conf`; `tunnels.conf` and `tunnels.d/` stay empty
 - [ ] I2P data in `{data_dir}/i2p/`
 - [ ] I2P fields in `/api/{api_version}/server/healthz`:
   - [ ] `features.i2p.enabled` (yes/no)
@@ -65364,7 +66318,7 @@ make docker
 - [ ] Log output: ALWAYS plain text (no icons, no colors, no box drawing)
 - [ ] `--status` output: Pretty to console, exit code for scripts (0=healthy, 1=unhealthy)
 - [ ] `--help` output: Plain text, no colors (works in all terminals)
-- [ ] `--version` output: Plain text, single line
+- [ ] `--version` output: Plain text, no color; the first line is `{project_name} {project_version} ({short_commit})`, followed by the build metadata lines (see PART 8 → "--version Output")
 
 ---
 
@@ -65372,7 +66326,7 @@ make docker
 
 ### Translation File Integrity
 
-- [ ] All locale files exist in `src/common/i18n/locales/` (en, es, fr, de, zh, ar, ja)
+- [ ] All locale files exist in `src/common/i18n/locales/` (en, es, fr, de, it, ar, plus any translator-added language)
 - [ ] `en.json` is complete — every user-facing string has a key
 - [ ] All locale files have identical key sets to `en.json` (no missing, no extra)
 - [ ] All interpolation variables (`{var}`) match across all locale files
@@ -65801,6 +66755,7 @@ When bootstrapping a new project from this specification:
    touch docs/security.md
    touch docs/integrations.md
    touch docs/development.md
+   touch docs/translating.md
    touch docs/requirements.txt
    touch docs/stylesheets/dark.css
    touch docs/stylesheets/light.css
