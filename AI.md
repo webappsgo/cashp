@@ -133,7 +133,20 @@ IDEA.md is the project PLAN. AI.md (this file) is the SOURCE OF TRUTH.
 | **IDEA.md** | PROJECT PLAN - must follow AI.md | Features change, project variables change |
 
 **Rule hierarchy:** SPEC.md > AI.md > global CLAUDE.md. If SPEC.md and AI.md conflict, SPEC.md wins — that is its purpose.
+**No SPEC.md (or an empty one):** AI.md alone is the authority — nothing overrides it. SPEC.md exists only to record a project rule that must differ from the template; it never edits AI.md, and it is never created just to log an AI.md defect.
 **Rule:** If AI.md and IDEA.md conflict, AI.md wins. Fix IDEA.md.
+
+## IDEA.md Is the WHAT, AI.md Is the HOW
+
+**IDEA.md says WHAT the product is (features, data, business rules, audience, non-goals). AI.md says HOW every project is built and is the authority on every implementation and baseline requirement. When they disagree, AI.md wins and IDEA.md is corrected.**
+
+| IDEA.md MAY | IDEA.md MAY NOT |
+|-------------|-----------------|
+| Define the product's features, data models, business rules and audience | Remove, weaken or waive a mandatory AI.md requirement (server baseline, configuration, security, health, build, CI/CD, i18n, accessibility, documentation, testing) |
+| Choose which of the template's explicitly OPTIONAL capabilities the project uses (the PARTs the template labels optional) | Change how a mandatory requirement is implemented |
+| State non-goals in product terms (for example "no user accounts") | Use a non-goal as a reason to skip a mandatory part |
+
+**Non-goal vs mandatory requirement:** a non-goal limits the product's FEATURES, never AI.md's baseline. "No accounts" is honored by not enabling the optional multi-user parts; it does not remove the health endpoint, the config file, the security headers or any other mandatory part, which are built exactly as AI.md defines them. If an IDEA.md line contradicts a mandatory AI.md requirement, fix the IDEA.md line (reword it as product scope) — never change the implementation to match it. Log a template defect only when AI.md itself is ambiguous or self-contradictory.
 
 ## IDEA.md Required Layout
 
@@ -3066,6 +3079,7 @@ See IDEA.md for the full project breakdown.
 - SPEC.md overrides AI.md for project-specific rules only
 - IDEA.md is the project PLAN — must be SPEC compliant
 - If IDEA.md conflicts with AI.md, AI.md wins — fix IDEA.md
+- No SPEC.md (or an empty one) → AI.md alone is the authority; IDEA.md non-goals only scope the template's optional capabilities (see PART 0 → "IDEA.md Is the WHAT, AI.md Is the HOW")
 
 ## Mandatory Compliance Schedule
 
@@ -3208,7 +3222,7 @@ Implemented core server functionality and API.
 | Human-owned tasks | `TODO.md` | Never emptied or deleted by AI; mark items done in place |
 | Defects found while doing other work, including the exploratory pass | Fixed immediately, otherwise `TODO.AI.md` | Never left only in conversation |
 | Findings from an explicit audit (the user said "audit") with more than 5 issues | Temporary `AUDIT.AI.md` | Not `TODO.AI.md`; deleted when every issue is resolved. Five or fewer are fixed directly with no tracking file |
-| Defects or contradictions in `AI.md` itself | `SPEC.md` (the project's tie-break override) for the local decision, plus a report appended as one bullet under `## {project_name} AI.md issues` in the `TODO.{TEMPLATE}.md` of the project's parent directory, where `{TEMPLATE}` is the template the project's `AI.md` was copied from (`API`, `SERVER` or `HYBRID`) — the shared template-maintainers' inbox; for apimgr projects (API template) `~/Projects/github/apimgr/TODO.API.md`, for webappsgo projects (SERVER template) `~/Projects/github/webappsgo/TODO.SERVER.md` | `AI.md` is read-only: never edit it, and never log its defects in `TODO.AI.md`. Maintainers clear the inbox once the template is fixed |
+| Defects or contradictions in `AI.md` itself | The local decision (follow `AI.md` as written when the project has no `SPEC.md`; record it in `SPEC.md` only when the project must deviate), plus a report appended as one bullet under `## {project_name} AI.md issues` in the `TODO.{TEMPLATE}.md` of the project's parent directory, where `{TEMPLATE}` is the template the project's `AI.md` was copied from (`API`, `SERVER` or `HYBRID`) — the shared template-maintainers' inbox; for apimgr projects (API template) `~/Projects/github/apimgr/TODO.API.md`, for webappsgo projects (SERVER template) `~/Projects/github/webappsgo/TODO.SERVER.md` | `AI.md` is read-only: never edit it, and never log its defects in `TODO.AI.md`. Maintainers clear the inbox once the template is fixed |
 
 ## Project Audit
 
