@@ -8451,6 +8451,25 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 
 **If `server.yaml` found, auto-migrate to `server.yml` on startup.**
 
+### Drop-in Config Directory (`yaml.d`)
+
+**Large configs may be split into drop-in files in `{config_dir}/yaml.d/`, next to `server.yml`. The directory is optional; `server.yml` alone is always valid.**
+
+| Rule | Behavior |
+|------|----------|
+| **Files** | `*.yml` and `*.yaml`, regular files only (a symlink is followed only when its target stays inside `yaml.d/`). Hidden files, backups (`*.bak`, `*~`, `*.orig`), other extensions and subdirectories are ignored |
+| **Order** | Built-in defaults, then `server.yml`, then every drop-in in byte-wise filename order (`10-tls.yml`, `20-mail.yml`); a later file overrides an earlier one. CLI flags and environment variables keep their higher priority |
+| **Merge** | Maps merge key by key and recursively. A scalar or a list in a later file REPLACES the earlier value whole; lists are never appended; an explicit `null` is an error, not a reset |
+| **Keys** | Same dotted paths as `server.yml`; any section may live in any file, and one section may span several files |
+| **Validation** | The MERGED result goes through the normal config validation. An error names the file, line and key; a duplicate scalar key inside one file is an error |
+| **Reload** | The file watcher watches `server.yml` and `yaml.d/`. A change, add or remove re-merges everything. If the merged result is invalid, the last good config stays active and the error is logged |
+| **Generated values** | The server writes generated values (the saved random port, `server.token`) only to `server.yml`, never to a drop-in. If a drop-in sets the same key, the drop-in wins and the startup log says which file did |
+| **Permissions** | `server.yml` and every drop-in follow the same rules (`0600` when they hold secrets; PART 11); a drop-in that is group or world writable is refused |
+| **Backup** | `{config_dir}/yaml.d/` is included in backups whenever it exists (PART 21 → "Backup Contents") |
+- **Admin panel:** the panel writes only `server.yml`. A setting that a drop-in file sets is shown read-only with the file name (`set by yaml.d/20-mail.yml`) and cannot be changed in the panel; edit that file instead.
+- **Cluster Mode:** drop-ins belong to the file layer. The database layer stays above it (PART 5 priority), and the `server.yml` cache sync never touches `yaml.d/`.
+- **Visibility:** the startup log lists each loaded drop-in in order (info level) and names the file that won for every overridden key (debug level); secret values are never logged.
+
 ## Port Rules
 
 **Default port is a random unused port in the 64000-64999 range.**
@@ -13182,7 +13201,7 @@ func flattenConfig(cfg *Config) []ConfigPair {
 1. CLI flags (highest priority)
 2. Environment variables
 3. Database (admin WebUI changes)
-4. Config file (server.yml)
+4. Config files (`server.yml`, then `yaml.d/*`)
 5. Defaults (lowest priority)
 ```
 
@@ -37321,6 +37340,7 @@ groups:
 | Content | Included | Notes |
 |---------|----------|-------|
 | `server.yml` | ✓ Always | Configuration file |
+| `{config_dir}/yaml.d/` | ✓ If exists | Drop-in config files |
 | `server.db` | ✓ Always | Main database (settings) |
 | `users.db` | ✓ Always | User database (admins table holds admin credentials) |
 | `{config_dir}/template/` | ✓ If exists | Custom email templates |
