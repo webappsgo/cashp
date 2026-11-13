@@ -14103,17 +14103,19 @@ func IsValidSSLHost(host string) bool {
 
 **Client IP Detection (for logging, rate limiting, GeoIP):**
 
-| Priority | Source | Notes |
-|----------|--------|-------|
-| 1 | `CF-Connecting-IP` | Cloudflare — single IP |
-| 2 | `True-Client-IP` | Akamai / Cloudflare Enterprise — single IP |
-| 3 | `X-Real-IP` | nginx — single IP |
-| 4 | `X-Forwarded-For` | Standard chain "client, proxy1, proxy2" — take the leftmost entry |
-| 5 | `Forwarded` | RFC 7239 — first `for=` element; accepts `for=192.0.2.60` and the quoted, bracketed IPv6 form `for="[2001:db8:cafe::17]:4711"` |
-| 6 | `X-Client-IP` | Alternative — single IP |
-| 7 | `r.RemoteAddr` | Fallback — always used when the immediate peer is not in `trusted_proxies` |
+Resolution walks the proxy chain from the right (nearest hop first), following RFC 7239 §5.2 and the de-facto `X-Forwarded-For` convention. The leftmost entry is client-controlled and is NEVER trusted on its own.
 
-Headers 1–6 are only honored when the immediate TCP peer passes the `trusted_proxies` gate (PART 12 → "Trusted Proxies"); otherwise resolution skips straight to `r.RemoteAddr`. The resolved client IP feeds access logs, rate limiting, blocklists, and GeoIP — never trust evaluation (see "Middleware ordering" below).
+| Step | Rule |
+|------|------|
+| 1. Peer gate | Normalize the TCP peer (see "Client IP Normalization & IPv6" below). If it is NOT in `trusted_proxies`, the client IP IS the peer and every proxy header is ignored |
+| 2. Pick the header | `server.trusted_proxies.client_ip_header`: `auto` (default) uses the first present of `X-Forwarded-For`, `Forwarded` (RFC 7239), `CF-Connecting-IP`, `True-Client-IP`, `X-Real-IP`, `X-Client-IP`; or one pinned header name, in which case ONLY that header is read. Production deployments SHOULD pin it to the header their front proxy sets or appends to |
+| 3. Build the chain | For `X-Forwarded-For` and `Forwarded`, join every instance of the header in order (RFC 9110 §5.3) and split into hops (for `Forwarded`, the `for=` value of each element). Examine at most the rightmost 32 hops |
+| 4. Walk right to left | Normalize each hop. A hop in `trusted_proxies` is another proxy: skip it and continue left. The first hop NOT in `trusted_proxies` is the client IP |
+| 5. Stop conditions | An invalid or obfuscated hop (`unknown`, `_hidden`, not an address) ends the walk: the client IP is the nearest valid hop to its right (the TCP peer if there is none). If every hop is trusted, the client IP is the leftmost hop |
+| 6. Single-value headers | `CF-Connecting-IP`, `True-Client-IP`, `X-Real-IP` and `X-Client-IP` carry ONE address, so there is nothing to walk. They are honored only because the peer is trusted, and the front proxy MUST overwrite them (never pass a client-supplied value through) |
+| 7. Normalize | The result is normalized per "Client IP Normalization & IPv6" |
+
+The resolved client IP feeds access logs, rate limiting, blocklists, and GeoIP — never trust evaluation (see "Middleware ordering" below).
 
 **Normalization:** the resolved client IP is normalized exactly once, per "Client IP Normalization & IPv6" below, before any consumer uses it.
 
@@ -14128,9 +14130,9 @@ Headers 1–6 are only honored when the immediate TCP peer passes the `trusted_p
 
 | Step | Rule |
 |------|------|
-| 1. Extract | Resolve the client IP from the detection table above. Take ONE value (the leftmost `X-Forwarded-For` entry) and trim spaces |
+| 1. Extract | Resolve the client IP with the right-to-left walk above; every hop is a separate value, trimmed of spaces |
 | 1a. Proxy header forms | Every header above can carry IPv4 or IPv6, with or without brackets, a port or an IPv6 zone. RFC 7239 `Forwarded` is parsed per element: `for=192.0.2.60`, `for="[2001:db8:cafe::17]:4711"` (quotes and brackets are required for IPv6). The obfuscated values `unknown` and `_hidden` are invalid values |
-| 1b. Trusted-proxy gate | The TCP peer is normalized (steps 2-4) BEFORE it is compared with `trusted_proxies`, so a `::ffff:127.0.0.1` peer matches `127.0.0.0/8` and a proxy's IPv6 address matches its configured `/128` or prefix |
+| 1b. Trusted-proxy gate | The TCP peer and every chain hop are normalized (steps 2-4) BEFORE they are compared with `trusted_proxies`, so a `::ffff:127.0.0.1` peer matches `127.0.0.0/8` and a proxy's IPv6 address matches its configured `/128` or prefix |
 | 2. Strip transport syntax | Remove the port (`net.SplitHostPort`: `[2001:db8::1]:443` → `2001:db8::1`, `192.0.2.1:8080` → `192.0.2.1`), the brackets, and any IPv6 zone (`fe80::1%eth0` → `fe80::1`) |
 | 3. Parse once | `netip.ParseAddr` → `netip.Addr`. The value is carried as that type and never compared as a string |
 | 4. Unmap | `addr.Unmap()`. An IPv4-mapped IPv6 address (`::ffff:192.0.2.1`, which a dual-stack `[::]` listener reports for IPv4 clients) becomes the plain IPv4 `192.0.2.1`, so one client is never split across two counters or able to dodge an IPv4 ban |
@@ -14164,6 +14166,19 @@ Headers 1–6 are only honored when the immediate TCP peer passes the `trusted_p
 | `not-an-ip` | rejected (falls back to `r.RemoteAddr`) |
 
 `2001:db8::1` and `2001:db8::2` MUST be two separate rate-limit buckets, and a ban on `192.0.2.1` MUST also block `::ffff:192.0.2.1`.
+
+**Proxy chain vectors (REQUIRED)** — TCP peer `10.0.0.1` is trusted (private range):
+
+| `X-Forwarded-For` | `trusted_proxies.additional` | Client IP |
+|-------------------|------------------------------|-----------|
+| `203.0.113.9` | none | `203.0.113.9` |
+| `1.2.3.4, 203.0.113.9` (client forged `1.2.3.4`, the proxy appended the real address) | none | `203.0.113.9` |
+| `203.0.113.9, 198.51.100.7` | `198.51.100.0/24` | `203.0.113.9` |
+| `10.1.1.1, 10.0.0.2` | none | `10.1.1.1` (every hop trusted: leftmost) |
+| `203.0.113.9, unknown` | none | the TCP peer `10.0.0.1` (nearest valid hop to the right of the invalid entry) |
+| `2001:db8::5, 2001:db8::6` | `2001:db8::6/128` | `2001:db8::5` |
+
+A request whose TCP peer is NOT trusted MUST ignore every proxy header: the client IP is the peer address.
 
 ### Request ID Handling
 
@@ -18614,6 +18629,8 @@ server:
   trusted_proxies:
     # Additional IPs/CIDRs to trust (private ranges always trusted)
     additional: []
+    # Header that carries the client IP: auto, or one pinned header name (see "Client IP Detection")
+    client_ip_header: auto
 ```
 
 **Used by `X-Forwarded-*` trust gate.** Every header-based detection chain in the spec — `BuildURL(r, ...)` (PART 8 → "Resolution Order"), CORS allow-list resolution (PART 16), CSP `connect-src` learning, domain-learning algorithm — only honors the following proxy headers when the **immediate peer's IP** is in `trusted_proxies` (private ranges + the `additional` allow-list):
@@ -18624,7 +18641,7 @@ server:
 | **Proto** | `X-Forwarded-Proto`, `X-Forwarded-Ssl`, `X-Url-Scheme` |
 | **Port** | `X-Forwarded-Port` |
 | **Base path** | `X-Forwarded-Prefix`, `X-Forwarded-Path`, `X-Script-Name` |
-| **Client IP** | `X-Real-IP`, `X-Forwarded-For`, `CF-Connecting-IP`, `True-Client-IP`, `X-Client-IP` |
+| **Client IP** | `X-Forwarded-For`, `Forwarded`, `CF-Connecting-IP`, `True-Client-IP`, `X-Real-IP`, `X-Client-IP` (pinned by `client_ip_header`; resolved by the right-to-left walk) |
 
 All of these headers are supported regardless of proxy vendor (Nginx, Caddy, HAProxy, Traefik, Apache, Cloudflare Tunnels, AWS ALB, etc.). Headers from non-trusted peers are dropped before resolution runs, so an attacker reaching the binary directly cannot inject a forged Host into the learned-origins list.
 
@@ -20045,7 +20062,7 @@ All settings above MUST be configurable via admin panel:
 |---------|----------|
 | Request Limits | Body size, timeouts |
 | Compression | Enable, level, MIME types |
-| Trusted Proxies | Additional IPs/CIDRs |
+| Trusted Proxies | Additional IPs/CIDRs, client IP header |
 | Session | Cookie name, max age, secure, http_only, same_site |
 | Rate Limiting | Enable, requests, window |
 | i18n | Default language, supported languages |
