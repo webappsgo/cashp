@@ -22254,7 +22254,7 @@ func renderNoJSHTML(w http.ResponseWriter, data interface{}) {
 | Rule | Description |
 |------|-------------|
 | **Sync with project** | Both MUST reflect current project API at all times |
-| **Sync with each other** | Both Swagger and GraphQL expose identical functionality |
+| **Sync with each other** | Both describe the same API: GraphQL is query-only (reads, per the route contract), so every read operation appears in both, while write operations (POST, PUT, PATCH, DELETE) exist in REST and Swagger only |
 | **Auto-generated** | Both specs generated from code (annotations, comments, or schema) |
 | **Never manual** | NEVER manually edit OpenAPI JSON or GraphQL schema |
 | **Build-time generation** | Specs regenerated on every build |
@@ -25719,17 +25719,18 @@ Toasts require JavaScript. For standard (non-AJAX) form POSTs, the server MUST u
 **Guest Header HTML Structure (same `.header-actions` region the profile menu would otherwise occupy):**
 ```html
 <div class="header-actions">
-  <form action="/server/preferences" method="POST" class="theme-toggle-inline">
-    <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
-    <button type="submit" name="theme" value="dark" aria-label="Dark theme">🌙</button>
-    <button type="submit" name="theme" value="light" aria-label="Light theme">☀️</button>
-    <button type="submit" name="theme" value="auto" aria-label="Auto theme">🔄</button>
-  </form>
   <a href="/server/preferences" class="header-link" aria-label="Preferences">⚙️</a>
+  <form action="/server/preferences" method="POST" class="theme-toggle-form">
+    <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+    <input type="hidden" name="theme" value="{{ nextTheme .Theme }}">
+    <button type="submit" class="theme-button" aria-label="Switch theme (currently {{ .Theme }})" title="Switch theme">
+      <svg class="icon-theme"><!-- reflects .Theme: moon/sun/circle-half --></svg>
+    </button>
+  </form>
 </div>
 ```
 
-No JS required — each button is a real form submit that sets the `theme` cookie server-side and redirects back (303 See Other), exactly like the authenticated theme toggle. External JS may intercept the submit to apply the theme class without a reload (progressive enhancement, not a requirement). The footer's `/server/preferences` link (see "Default Application Footer" above) remains — it's an additional path, not the only one.
+No JS required — the button is a real form submit whose target is the server-computed next mode (dark → light → auto → dark; see "Theme Cycle Logic"), so repeated clicks keep cycling; it sets the `theme` cookie server-side and redirects back (303 See Other), exactly like the authenticated theme toggle. External JS may intercept the submit to apply the theme class without a reload (progressive enhancement, not a requirement). The footer's `/server/preferences` link (see "Default Application Footer" above) remains — it's an additional path, not the only one.
 
 ### Profile Icon
 
@@ -30821,6 +30822,8 @@ func trackingScript(r *http.Request) template.HTML {
 
 **Submission sends to `server.contact.general.email` (or falls back to `server.contact.admin.email` if general is empty).**
 
+**API mirror:** `GET /api/{api_version}/server/contact` returns the same form as JSON (the field list with types, required flags and length limits, the captcha descriptor for the configured provider, `security_url` and `abuse_email`); `POST` submits it. The page and the API are two renderings of the same definition.
+
 **Below the form, the page MUST render exactly two informational sections — the content is spec'd here; never improvise it:**
 
 | Section | Content |
@@ -31131,7 +31134,9 @@ server:
 |-------|--------|-------------|
 | `/api/{api_version}/server/about` | GET | About information (JSON) |
 | `/api/{api_version}/server/privacy` | GET | Privacy policy (JSON) |
+| `/api/{api_version}/server/contact` | GET | Contact form description (JSON, no auth): `fields` (list of `{name, type, required, max_length}`), `captcha` (`{provider, site_key}` for `recaptcha`-style providers, `{provider, challenge_id, question}` for `simple`), `security_url`, `abuse_email`. Nothing else about recipients |
 | `/api/{api_version}/server/contact` | POST | Submit contact form |
+| `/api/{api_version}/server/auth/check` | GET | Token check (machine-only, no page; `Authorization: Bearer` required): `200` with `{kind}` when the token is valid (`kind` is `operator`, `owner` or, where the project has accounts, `user`), `401` otherwise. Side-effect free, rate-limited like other auth endpoints, never echoes the token |
 | `/api/{api_version}/server/help` | GET | Help content (JSON) |
 | `/api/{api_version}/server/help/mcp` | GET | MCP help content (JSON); `404` when MCP is disabled |
 | `/api/{api_version}/server/terms` | GET | Terms of service (JSON) |
@@ -55383,7 +55388,7 @@ User double-clicks {project_name}-cli:
 2. CONNECTION TEST
    - Validates server URL format
    - Tests connection to server
-   - Validates authentication (if provided)
+   - Validates authentication (if provided) with `GET /api/{api_version}/server/auth/check`: `200` shows the token kind, `401` reports an invalid token; without a token this step is skipped
    - Shows server info (name, version)
 
 3. NORMAL OPERATION
@@ -61985,7 +61990,9 @@ Organizations - only for projects with multi-user collaboration.
 |----------|--------|-------------|
 | `/api/{api_version}/server/about` | GET | About information |
 | `/api/{api_version}/server/privacy` | GET | Privacy policy |
+| `/api/{api_version}/server/contact` | GET | Contact form description (JSON, no auth): `fields` (list of `{name, type, required, max_length}`), `captcha` (`{provider, site_key}` for `recaptcha`-style providers, `{provider, challenge_id, question}` for `simple`), `security_url`, `abuse_email`. Nothing else about recipients |
 | `/api/{api_version}/server/contact` | POST | Submit contact form |
+| `/api/{api_version}/server/auth/check` | GET | Token check (machine-only, no page; `Authorization: Bearer` required): `200` with `{kind}` when the token is valid (`kind` is `operator`, `owner` or, where the project has accounts, `user`), `401` otherwise. Side-effect free, rate-limited like other auth endpoints, never echoes the token |
 | `/api/{api_version}/server/help` | GET | Help content |
 
 ### Public Reports Scope (`/api/{api_version}/server/reports/`)
