@@ -24022,7 +24022,7 @@ var reservedNames = []string{
     // Technical
     "graphql", "mcp", "swagger", "rest", "rpc", "ws", "websocket",
     "cdn", "media", "uploads", "files", "images",
-    ".well-known", "robots.txt", "sitemap.xml", "favicon.ico",
+    ".well-known", "robots.txt", "sitemap.xml", "feed.xml", "rss.xml", "favicon.ico",
 
     // Project-specific (add yours in IDEA.md)
 }
@@ -29091,6 +29091,8 @@ server:
 | File | Purpose | Generated |
 |------|---------|-----------|
 | `/sitemap.xml` | Site map for search engines | Yes - auto-generated |
+| `/feed.xml` | Atom feed of recent public items | Yes - auto-generated |
+| `/rss.xml` | RSS feed of recent public items | Yes - auto-generated |
 | `/favicon.ico` | Browser favicon | Embedded default, customizable |
 | `/.well-known/*` | Standards/discovery/verification endpoints only | Mix of dynamic, config-backed, embedded, or feature-gated |
 
@@ -29153,6 +29155,76 @@ server:
 - Generate sitemap index file at `/sitemap.xml`
 - Split into multiple sitemap files: `/sitemap-1.xml`, `/sitemap-2.xml`, etc.
 - Each sitemap file max 50,000 URLs
+
+**Absolute URLs (sitemap, feeds, `robots.txt`):** every URL these files emit is ABSOLUTE and built per request with `BuildURL(r, path)`, that is `{proto}://{fqdn}[:{port}]/path`, resolved from the request context (PART 8 → "Resolution Order"). In these files `{app_url}` means exactly that value. Never relative paths, never a value cached at startup: `<loc>`, feed `<link>`, `<id>`, `rel="self"`, `<guid>` permalinks and the `Sitemap:` line must match the host and scheme the client used (a `.onion` request gets `.onion` URLs).
+
+### Feeds (/feed.xml and /rss.xml)
+
+**ALL projects serve two syndication feeds, ON by default, listing the most recent PUBLIC items of the project's primary public resource.** `IDEA.md` names that resource; the feed is the reader-facing "what is new".
+
+| Project type | Feed lists |
+|--------------|------------|
+| Pastebin | Most recent public pastes |
+| Link shortener | Most recent public links |
+| Microblog / social API | Most recent public posts |
+| Meta search engine | Most recent searches (see "Recent-search filtering") |
+| Anything else | Most recent public items of its main public resource; a project with none serves a valid feed with zero entries, never a `404` |
+
+| Route | Format | Content-Type |
+|-------|--------|--------------|
+| `/feed.xml` | Atom 1.0 (RFC 4287) | `application/atom+xml; charset=utf-8` |
+| `/rss.xml` | RSS 2.0 | `application/rss+xml; charset=utf-8` |
+
+Both routes carry the same items. They are fixed-format files like `sitemap.xml`: no content negotiation, no `.txt`, no User-Agent detection, `GET` and `HEAD` only.
+
+**Entry fields:**
+
+| Field | Rule |
+|-------|------|
+| Id / guid | The item's absolute permalink; stable for the life of the item |
+| Title | Plain text, XML-escaped, at most 140 characters |
+| Link | Absolute permalink (see "Absolute URLs" above) |
+| Published / updated | RFC 3339 (Atom) or RFC 822 (RSS) timestamps |
+| Summary | Plain text, at most 280 characters, XML-escaped; never raw HTML or full private content |
+| Author | Only when the author is publicly shown on the item's own page; otherwise omitted |
+
+**Which items appear:** only items an anonymous visitor can already see and that are listed publicly. Never private, unlisted, password-protected, expired, deleted, moderated-away or burn-after-read items. The public-info rule (PART 11) applies to every feed byte. All text is XML-escaped and characters invalid in XML 1.0 are removed.
+
+**Recent-search filtering (meta search and any project that lists searches):** a recent-search feed is allowed and ON by default. It lists the query text and the time only, never an IP, user, session or result. Before an entry is stored or served, the query is dropped, not masked, when any of these match:
+
+| Pattern | Examples |
+|---------|----------|
+| Phone number | 7 or more digits once spaces, `-`, `.`, `(`, `)` and a leading `+` are removed |
+| Email address | `name@host` |
+| Street address | A house number followed by a street word (`street`, `st`, `avenue`, `ave`, `road`, `rd`, `lane`, `ln`, `drive`, `dr`, `blvd`, `court`, `way`, `suite`, `apt`), or a PO box |
+| Government, card or account number | A 9 or more digit run, any 13 to 19 digit run passing the Luhn check, an SSN-shaped `ddd-dd-dddd` |
+| IP address | IPv4 or IPv6 literal |
+| Token-like string | A run of 20 or more characters of `[A-Za-z0-9+/_=-]` containing digits and letters, or a URL carrying `token`, `key`, `password` or `secret` |
+| Too long | More than 100 characters |
+
+The filter is a best-effort safety net, not a guarantee; when a query is doubtful it is dropped. A project may add patterns, never remove these. Identical queries collapse to one entry. Operators can set `server.seo.feed.search.enabled: false` to turn the recent-search feed off.
+
+**Configuration:**
+
+```yaml
+server:
+  seo:
+    feed:
+      # Default: true
+      enabled: true
+      # Entries per feed; range 1-200
+      max_items: 50
+      # Channel/feed title; default is {app_name}
+      title: ""
+      search:
+        # Default: true; only used by projects that list searches
+        enabled: true
+```
+
+**HTTP behavior:** `Cache-Control: public, max-age=300`, `ETag` and `Last-Modified`, `304` on a matching conditional request, the public read rate limit (PART 11). With `server.seo.feed.enabled: false` both routes return `404`.
+
+**Discovery:** the home page `<head>` carries `<link rel="alternate" type="application/atom+xml" title="{app_name}" href="{app_url}/feed.xml">` and the RSS equivalent, with absolute URLs. Feed routes are not listed in `robots.txt` and are not disallowed there.
+
 
 ### Admin Panel (/server/{admin_path}/config/branding)
 
@@ -61420,7 +61492,7 @@ PATCH /api/{api_version}/users/settings
 | `/server/healthz` | GET | None | Frontend health (PART 13) |
 | `/healthz` | GET | None | Only when `server.healthz.root.enabled: true`; same handler as `/server/healthz`, never a redirect |
 | `/server/metrics[/{service}]`, `/metrics[/{service}]` (root alias) | GET | Bearer token (per-service, mandatory) | Prometheus/Grafana/Loki metrics (PART 21); may additionally be IP-restricted in config |
-| `/sitemap.xml`, `/robots.txt`, `/favicon.ico`, `/manifest.json`, `/.well-known/*` | GET | None | Conventional web files; `/.well-known/*` is limited to documented allowlisted entries only |
+| `/sitemap.xml`, `/feed.xml`, `/rss.xml`, `/robots.txt`, `/favicon.ico`, `/manifest.json`, `/.well-known/*` | GET | None | Conventional web files; `/.well-known/*` is limited to documented allowlisted entries only |
 | `/server/docs/swagger`, `/server/docs/graphql` | GET | None | Public API docs (HTML) |
 | `/api/swagger`, `/api/{api_version}/server/swagger` | GET | None | Public OpenAPI JSON spec |
 | `/api/graphql`, `/api/{api_version}/server/graphql` | POST | None for introspection; per-operation otherwise | GraphQL — see PART 14 GraphQL section for resolver-level auth |
@@ -66237,6 +66309,17 @@ make docker
 - [ ] `lastmod` dates accurate
 - [ ] Large sites (>50k URLs) use sitemap index
 - [ ] Referenced in robots.txt: `Sitemap: {app_url}/sitemap.xml`
+
+### Feeds
+
+- [ ] `/feed.xml` (Atom 1.0) and `/rss.xml` (RSS 2.0) served, ON by default, same items in both
+- [ ] Items are the most recent PUBLIC items of the project's main public resource (a project with none serves a valid empty feed, not `404`)
+- [ ] Every URL in sitemap, feeds and the `Sitemap:` line is absolute `{proto}://{fqdn}` built per request via `BuildURL`, never relative or cached at startup
+- [ ] Private, unlisted, expired, deleted and burn-after-read items NEVER appear
+- [ ] Recent-search feed drops queries matching the phone, email, address, number, IP, token and length filters (tests cover each pattern)
+- [ ] `ETag`/`Last-Modified`/`304`, `Cache-Control: public, max-age=300`, all text XML-escaped
+- [ ] Home page `<head>` has absolute `rel="alternate"` links for both feeds
+- [ ] `server.seo.feed.enabled: false` returns `404` on both routes
 
 ### Site Verification Meta Tags
 
