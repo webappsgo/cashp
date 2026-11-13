@@ -21772,13 +21772,23 @@ func isTextBrowser(r *http.Request) bool {
 
 // isHttpTool detects HTTP tools (curl, wget, httpie, etc.)
 // HTTP tools are NON-INTERACTIVE - they just dump output
+// Detection is a denylist: any User-Agent not matched here is treated as a browser (HTML on frontend routes, JSON on /api/**)
 func isHttpTool(r *http.Request) bool {
     ua := strings.ToLower(r.Header.Get("User-Agent"))
 
     httpTools := []string{
-        "curl/", "wget/", "httpie/",
-        "libcurl/", "python-requests/",
-        "go-http-client/", "axios/", "node-fetch/",
+        // Command-line tools
+        "curl/", "wget/", "httpie/", "xh/", "hurl/", "libcurl/",
+        // Python
+        "python-requests/", "python-urllib/", "python-httpx/", "aiohttp/", "urllib3/",
+        // Go and Rust
+        "go-http-client/", "go-resty/", "fasthttp", "reqwest/", "ureq/", "hyper/",
+        // JavaScript runtimes and libraries
+        "axios/", "node-fetch/", "undici", "superagent/", "deno/", "bun/",
+        // JVM, PHP, Perl, Ruby, Dart, PowerShell
+        "okhttp/", "apache-httpclient/", "java/", "guzzlehttp/", "libwww-perl/", "lwp-trivial/", "faraday", "dart/", "windowspowershell/",
+        // API clients and load tools
+        "postmanruntime/", "insomnia/", "bruno-runtime/", "k6/",
     }
     for _, tool := range httpTools {
         if strings.Contains(ua, tool) {
@@ -24038,65 +24048,36 @@ func URLNormalizeMiddleware(next http.Handler) http.Handler {
 
 ```go
 func detectClientType(r *http.Request) string {
-    // 1. Check Accept header first (explicit preference)
+    // 1. Explicit Accept header preference (JSON first, matching the frontend priority table)
     accept := r.Header.Get("Accept")
 
+    if strings.Contains(accept, "application/json") {
+        return "json"
+    }
     if strings.Contains(accept, "text/html") {
         return "html"
     }
     if strings.Contains(accept, "text/plain") {
         return "text"
     }
-    if strings.Contains(accept, "application/json") {
-        // Rare for frontend, but support it
-        return "json"
-    }
 
-    // 2. Our own CLI client is INTERACTIVE - receives JSON (see PART 14 isOurCliClient)
+    // 2. Our own CLI client is INTERACTIVE - receives JSON (see isOurCliClient)
     if isOurCliClient(r) {
         return "json"
     }
 
     // 3. Text-mode browsers (lynx, w3m, links, ...) are a browser class -
-    // they receive the no-JS HTML alternative (see PART 14 isTextBrowser)
+    // they receive the no-JS HTML alternative (see isTextBrowser)
     if isTextBrowser(r) {
         return "html"
     }
 
-    // 4. Check User-Agent for browser detection
-    ua := r.Header.Get("User-Agent")
-
-    // Browser User-Agents (common patterns)
-    browsers := []string{
-        "Mozilla/", "Chrome/", "Safari/", "Edge/", "Firefox/",
-        "Opera/", "MSIE", "Trident/",
-    }
-
-    for _, browser := range browsers {
-        if strings.Contains(ua, browser) {
-            return "html"
-        }
-    }
-
-    // 5. CLI tools (curl, wget, httpie, etc.)
-    cliTools := []string{
-        "curl/", "Wget/", "HTTPie/", "python-requests/",
-        "Go-http-client/", "node-fetch/",
-    }
-
-    for _, tool := range cliTools {
-        if strings.Contains(ua, tool) {
-            return "text"
-        }
-    }
-
-    // 6. Empty or unknown User-Agent
-    if ua == "" {
-        // Default to text for programmatic access
+    // 4. Known HTTP tools and an empty User-Agent get formatted text (see isHttpTool)
+    if isHttpTool(r) {
         return "text"
     }
 
-    // 7. Default: HTML (safest fallback)
+    // 5. Default: every other client, including unrecognized ones, is treated as a browser (HTML)
     return "html"
 }
 ```
