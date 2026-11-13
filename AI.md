@@ -29223,7 +29223,7 @@ server:
 
 **HTTP behavior:** `Cache-Control: public, max-age=300`, `ETag` and `Last-Modified`, `304` on a matching conditional request, the public read rate limit (PART 11). With `server.seo.feed.enabled: false` both routes return `404`.
 
-**Discovery:** the home page `<head>` carries `<link rel="alternate" type="application/atom+xml" title="{app_name}" href="{app_url}/feed.xml">` and the RSS equivalent, with absolute URLs. Feed routes are not listed in `robots.txt` and are not disallowed there.
+**No advertising:** pages never link to or advertise the sitemap or the feeds (no `<link rel="alternate">`, no footer or header links, no badges). The server only provides `/sitemap.xml`, `/feed.xml` and `/rss.xml`; consumers find them by convention. Feed routes are not listed in `robots.txt` and are not disallowed there.
 
 
 ### Admin Panel (/server/{admin_path}/config/branding)
@@ -66318,7 +66318,7 @@ make docker
 - [ ] Private, unlisted, expired, deleted and burn-after-read items NEVER appear
 - [ ] Recent-search feed drops queries matching the phone, email, address, number, IP, token and length filters (tests cover each pattern)
 - [ ] `ETag`/`Last-Modified`/`304`, `Cache-Control: public, max-age=300`, all text XML-escaped
-- [ ] Home page `<head>` has absolute `rel="alternate"` links for both feeds
+- [ ] Pages do NOT advertise the sitemap or feeds (no `rel="alternate"` links, no UI links)
 - [ ] `server.seo.feed.enabled: false` returns `404` on both routes
 
 ### Site Verification Meta Tags
