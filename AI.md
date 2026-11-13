@@ -14109,15 +14109,61 @@ func IsValidSSLHost(host string) bool {
 | 2 | `True-Client-IP` | Akamai / Cloudflare Enterprise — single IP |
 | 3 | `X-Real-IP` | nginx — single IP |
 | 4 | `X-Forwarded-For` | Standard chain "client, proxy1, proxy2" — take the leftmost entry |
-| 5 | `X-Client-IP` | Alternative — single IP |
-| 6 | `r.RemoteAddr` | Fallback — always used when the immediate peer is not in `trusted_proxies` |
+| 5 | `Forwarded` | RFC 7239 — first `for=` element; accepts `for=192.0.2.60` and the quoted, bracketed IPv6 form `for="[2001:db8:cafe::17]:4711"` |
+| 6 | `X-Client-IP` | Alternative — single IP |
+| 7 | `r.RemoteAddr` | Fallback — always used when the immediate peer is not in `trusted_proxies` |
 
-Headers 1–5 are only honored when the immediate TCP peer passes the `trusted_proxies` gate (PART 12 → "Trusted Proxies"); otherwise resolution skips straight to `r.RemoteAddr`. The resolved client IP feeds access logs, rate limiting, blocklists, and GeoIP — never trust evaluation (see "Middleware ordering" below).
+Headers 1–6 are only honored when the immediate TCP peer passes the `trusted_proxies` gate (PART 12 → "Trusted Proxies"); otherwise resolution skips straight to `r.RemoteAddr`. The resolved client IP feeds access logs, rate limiting, blocklists, and GeoIP — never trust evaluation (see "Middleware ordering" below).
+
+**Normalization:** the resolved client IP is normalized exactly once, per "Client IP Normalization & IPv6" below, before any consumer uses it.
 
 **Request ID (for tracing):**
 - `X-Request-ID` - Standard
 - `X-Correlation-ID` - Alternative
 - `X-Trace-ID` - Distributed tracing
+
+### Client IP Normalization & IPv6
+
+**Every client IP is a full, normalized address. IPv4 and IPv6 are both first-class, and IPv6 is NEVER truncated to a prefix (no `/64` grouping) for rate limiting, bans, counters, logs or audit entries.**
+
+| Step | Rule |
+|------|------|
+| 1. Extract | Resolve the client IP from the detection table above. Take ONE value (the leftmost `X-Forwarded-For` entry) and trim spaces |
+| 1a. Proxy header forms | Every header above can carry IPv4 or IPv6, with or without brackets, a port or an IPv6 zone. RFC 7239 `Forwarded` is parsed per element: `for=192.0.2.60`, `for="[2001:db8:cafe::17]:4711"` (quotes and brackets are required for IPv6). The obfuscated values `unknown` and `_hidden` are invalid values |
+| 1b. Trusted-proxy gate | The TCP peer is normalized (steps 2-4) BEFORE it is compared with `trusted_proxies`, so a `::ffff:127.0.0.1` peer matches `127.0.0.0/8` and a proxy's IPv6 address matches its configured `/128` or prefix |
+| 2. Strip transport syntax | Remove the port (`net.SplitHostPort`: `[2001:db8::1]:443` → `2001:db8::1`, `192.0.2.1:8080` → `192.0.2.1`), the brackets, and any IPv6 zone (`fe80::1%eth0` → `fe80::1`) |
+| 3. Parse once | `netip.ParseAddr` → `netip.Addr`. The value is carried as that type and never compared as a string |
+| 4. Unmap | `addr.Unmap()`. An IPv4-mapped IPv6 address (`::ffff:192.0.2.1`, which a dual-stack `[::]` listener reports for IPv4 clients) becomes the plain IPv4 `192.0.2.1`, so one client is never split across two counters or able to dodge an IPv4 ban |
+| 5. Canonical string | `addr.String()` (RFC 5952: lowercase, compressed, `2001:db8::1`). This is the ONLY string form used for map keys, log fields, audit entries, ban records and API output |
+| Invalid value | Treated as "header absent": fall through to the next source, finally `r.RemoteAddr`. Never panic, and never log or key on the raw header text |
+
+**Granularity: the exact address.**
+
+| Consumer | Key |
+|----------|-----|
+| Rate limiting (per-IP) | The normalized address (full 128 bits for IPv6, 32 bits for IPv4) |
+| Bans, blocks, abuse counters | The same normalized address. An IPv6 ban matches that one address |
+| Allow/deny lists, blocklists, `trusted_proxies` | A single address or a CIDR. A bare IPv6 is `/128` and a bare IPv4 is `/32`, matched against the normalized address. Prefix rules are an operator's explicit choice in the list, never an automatic grouping |
+| GeoIP / ASN lookup | The normalized address (an IPv4-mapped address is already unmapped) |
+| Access and audit logs | The canonical string, full address, never masked or truncated |
+
+**Memory bound:** the IPv6 address space is effectively unbounded, so per-IP rate-limit state MUST be a bounded, expiring structure (a fixed-size LRU or a time-windowed map) whose entries are dropped when their window ends. A host that holds a large IPv6 prefix can rotate source addresses; the defense is the per-identifier and global limits plus explicit operator CIDR bans, never silent prefix grouping.
+
+**Dual-stack:** the default listen address `[::]` serves IPv4 and IPv6 on one socket (`IPV6_V6ONLY` off). Any URL or log field that embeds an IPv6 literal with a port uses brackets (`[2001:db8::1]:443`).
+
+**Test vectors (REQUIRED):**
+
+| Input | Normalized |
+|-------|------------|
+| `192.0.2.1` | `192.0.2.1` |
+| `192.0.2.1:8080` | `192.0.2.1` |
+| `::ffff:192.0.2.1` | `192.0.2.1` |
+| `[2001:DB8::1]:443` | `2001:db8::1` |
+| `2001:0db8:0000:0000:0000:0000:0000:0001` | `2001:db8::1` |
+| `fe80::1%eth0` | `fe80::1` |
+| `not-an-ip` | rejected (falls back to `r.RemoteAddr`) |
+
+`2001:db8::1` and `2001:db8::2` MUST be two separate rate-limit buckets, and a ban on `192.0.2.1` MUST also block `::ffff:192.0.2.1`.
 
 ### Request ID Handling
 
