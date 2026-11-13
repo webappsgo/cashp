@@ -16829,21 +16829,23 @@ Repo-level (source-code) vulnerabilities are reported primarily via GitHub priva
 
 **Security-mode form fields (in addition to Name + Email + Captcha):**
 
-| Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| Researcher GPG | URL OR pasted pubkey block | Optional | If supplied, server validates the key and uses it for the acknowledgment email. URL form: any `https://`, including keyservers (`https://keys.openpgp.org/vks/v1/by-fingerprint/...`). |
-| Affected component | Dropdown OR free text | Yes | Dropdown populated from project's `IDEA.md` features (auth, API, frontend, admin, etc.); "Other" allows free text. |
-| Affected endpoint / URL | Text | Optional | The exact URL or path where the issue surfaces. |
-| Severity (researcher's self-assessment) | Critical / High / Medium / Low / Informational | Yes | Maintainers re-triage; this is the researcher's expectation. |
-| Vulnerability summary | Text (single line) | Yes | Used as the email subject and tracker entry title. |
-| Steps to reproduce | Markdown textarea | Yes | Maintainers need this to confirm. |
-| Impact | Markdown textarea | Yes | What an attacker could achieve. |
-| Suggested fix | Markdown textarea | Optional | Maintainers credit researcher more easily when a fix is proposed. |
-| CVE requested? | Checkbox | Optional | If yes, maintainers initiate CVE assignment after triage. |
-| Disclosure timeline preference | Number of days (default 90) | Optional | Researcher's preferred coordinated-disclosure window. Maintainers may negotiate. |
-| Credit preference | Yes (real name) / Yes (handle) / No / Anonymous | Yes | Drives `/server/security/thanks` listing on disclosure. |
-| Coordinated disclosure agreement | Checkbox | Yes | Researcher agrees to coordinated disclosure (no public release until coordinated date or 90 days, whichever first). |
-| Hidden auto-filled | — | — | `app_version`, `commit_hash`, `security_id`, `timestamp`, `request_user_agent`. Used for triage; never shown to researcher. |
+| Field | Type | Required | Notes | Max length |
+|-------|------|----------|-------|-------------|
+| Researcher GPG | URL OR pasted pubkey block | Optional | If supplied, server validates the key and uses it for the acknowledgment email. URL form: any `https://`, including keyservers (`https://keys.openpgp.org/vks/v1/by-fingerprint/...`). | 16384 (2048 for a URL) |
+| Affected component | Dropdown OR free text | Yes | Dropdown populated from project's `IDEA.md` features (auth, API, frontend, admin, etc.); "Other" allows free text. | 255 |
+| Affected endpoint / URL | Text | Optional | The exact URL or path where the issue surfaces. | 2048 |
+| Severity (researcher's self-assessment) | Critical / High / Medium / Low / Informational | Yes | Maintainers re-triage; this is the researcher's expectation. | null |
+| Vulnerability summary | Text (single line) | Yes | Used as the email subject and tracker entry title. | 200 |
+| Steps to reproduce | Markdown textarea | Yes | Maintainers need this to confirm. | 10000 |
+| Impact | Markdown textarea | Yes | What an attacker could achieve. | 5000 |
+| Suggested fix | Markdown textarea | Optional | Maintainers credit researcher more easily when a fix is proposed. | 5000 |
+| CVE requested? | Checkbox | Optional | If yes, maintainers initiate CVE assignment after triage. | null |
+| Disclosure timeline preference | Number of days (default 90) | Optional | Researcher's preferred coordinated-disclosure window. Maintainers may negotiate. | null |
+| Credit preference | Yes (real name) / Yes (handle) / No / Anonymous | Yes | Drives `/server/security/thanks` listing on disclosure. | null |
+| Coordinated disclosure agreement | Checkbox | Yes | Researcher agrees to coordinated disclosure (no public release until coordinated date or 90 days, whichever first). | null |
+| Hidden auto-filled | — | — | `app_version`, `commit_hash`, `security_id`, `timestamp`, `request_user_agent`. Used for triage; never shown to researcher. | null |
+
+**Length limits:** `Max length` counts Unicode characters after trimming; `null` means no text limit (the field is an enum, checkbox, number or generated value). The same limits appear as `max_length` in the `GET /api/{api_version}/server/contact` field list (`null` where the table says `null`), and a longer value is rejected with a field-level `VALIDATION_FAILED` error.
 
 ### Submission Flow (POST `/api/{api_version}/server/contact` with `security_id` set)
 
@@ -30811,13 +30813,13 @@ func trackingScript(r *http.Request) template.HTML {
 
 **Contact form - sends message to the configured general contact recipient.**
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| Name | Text | Yes | Sender's name |
-| Email | Email | Yes | Sender's email (for reply) |
-| Subject | Text | Yes | Message subject |
-| Message | Textarea | Yes | Message body |
-| Captcha | Captcha | Yes | Spam prevention - rendered on the initial form and required on EVERY submission (anonymous form: no failed-attempt state exists). Single-use; a new challenge is issued after each submit, failed or not |
+| Field | Type | Required | Description | Max length |
+|-------|------|----------|-------------|-------------|
+| Name | Text | Yes | Sender's name | 100 |
+| Email | Email | Yes | Sender's email (for reply) | 254 |
+| Subject | Text | Yes | Message subject | 200 |
+| Message | Textarea | Yes | Message body | 5000 |
+| Captcha | Captcha | Yes | Spam prevention - rendered on the initial form and required on EVERY submission (anonymous form: no failed-attempt state exists). Single-use; a new challenge is issued after each submit, failed or not | null |
 
 **Submission sends to `server.contact.general.email` (or falls back to `server.contact.admin.email` if general is empty).**
 
