@@ -16831,7 +16831,7 @@ Repo-level (source-code) vulnerabilities are reported primarily via GitHub priva
 
 | Field | Type | Required | Notes | Max length |
 |-------|------|----------|-------|-------------|
-| Researcher GPG | URL OR pasted pubkey block | Optional | If supplied, server validates the key and uses it for the acknowledgment email. URL form: any `https://`, including keyservers (`https://keys.openpgp.org/vks/v1/by-fingerprint/...`). | 16384 (2048 for a URL) |
+| Researcher GPG | URL OR pasted pubkey block | Optional | If supplied, server validates the key and uses it for the acknowledgment email. URL form: any `https://`, including keyservers (`https://keys.openpgp.org/vks/v1/by-fingerprint/...`); a URL longer than 2048 characters is rejected as a validation rule, not as part of `max_length`. | 16384 |
 | Affected component | Dropdown OR free text | Yes | Dropdown populated from project's `IDEA.md` features (auth, API, frontend, admin, etc.); "Other" allows free text. | 255 |
 | Affected endpoint / URL | Text | Optional | The exact URL or path where the issue surfaces. | 2048 |
 | Severity (researcher's self-assessment) | Critical / High / Medium / Low / Informational | Yes | Maintainers re-triage; this is the researcher's expectation. | null |
@@ -16842,10 +16842,11 @@ Repo-level (source-code) vulnerabilities are reported primarily via GitHub priva
 | CVE requested? | Checkbox | Optional | If yes, maintainers initiate CVE assignment after triage. | null |
 | Disclosure timeline preference | Number of days (default 90) | Optional | Researcher's preferred coordinated-disclosure window. Maintainers may negotiate. | null |
 | Credit preference | Yes (real name) / Yes (handle) / No / Anonymous | Yes | Drives `/server/security/thanks` listing on disclosure. | null |
+| Credit handle | Text | Only when Credit preference is "Yes (handle)" | Public handle shown on the thanks page; required for that choice, ignored for the others. "Yes (real name)" uses the Name field. | 100 |
 | Coordinated disclosure agreement | Checkbox | Yes | Researcher agrees to coordinated disclosure (no public release until coordinated date or 90 days, whichever first). | null |
 | Hidden auto-filled | — | — | `app_version`, `commit_hash`, `security_id`, `timestamp`, `request_user_agent`. Used for triage; never shown to researcher. | null |
 
-**Length limits:** `Max length` counts Unicode characters after trimming; `null` means no text limit (the field is an enum, checkbox, number or generated value). The same limits appear as `max_length` in the `GET /api/{api_version}/server/contact` field list (`null` where the table says `null`), and a longer value is rejected with a field-level `VALIDATION_FAILED` error.
+**Length limits:** `Max length` counts Unicode characters after trimming; `null` means no text limit (the field is an enum, checkbox, number or generated value). The same limits appear as `max_length` in the `GET /api/{api_version}/server/contact` field list (`null` where the table says `null`), and a longer value is rejected with a field-level `VALIDATION_FAILED` error. `max_length` is always one number or `null`; any narrower rule that depends on the value kind (the 2048-character cap on a GPG key URL) is a validation rule stated in the field notes, never a second `max_length`.
 
 ### Submission Flow (POST `/api/{api_version}/server/contact` with `security_id` set)
 
