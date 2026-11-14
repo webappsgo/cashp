@@ -137,7 +137,7 @@ IDEA.md is the project PLAN. AI.md (this file) is the SOURCE OF TRUTH.
 
 **Rule hierarchy:** SPEC.md > AI.md > global CLAUDE.md. If SPEC.md and AI.md conflict, SPEC.md wins — that is its purpose.
 **No SPEC.md (or an empty one):** AI.md alone is the authority — nothing overrides it. SPEC.md exists only to record a project rule that must differ from the template; it never edits AI.md, and it is never created just to log an AI.md defect.
-**Rule:** If AI.md and IDEA.md conflict, AI.md wins. Fix IDEA.md.
+**Rule:** If AI.md and IDEA.md conflict, AI.md wins. Fix IDEA.md (procedure: PART 0 → "IDEA.md Alignment (WHAT vs HOW)").
 
 ## IDEA.md Is the WHAT, AI.md Is the HOW
 
@@ -2891,6 +2891,40 @@ resize_for_context() {
 - Multi-page formats (PDF, GIF, multi-frame TIFF) — apply the same rule per page/frame, or extract a single page first (`pdftoppm`, `magick "$pdf[0]"`, etc.).
 - This rule applies to images the AI itself opens for analysis. Images served by the application at runtime are governed by PART 16 (Web Frontend) instead.
 
+### IDEA.md Alignment (WHAT vs HOW)
+
+**IDEA.md is the WHAT and AI.md is the HOW. When IDEA.md contradicts AI.md, IDEA.md is updated. The implementation never bends to the contradiction, and AI.md is never edited to match it.**
+
+**The test for every IDEA.md line:** would removing it change what the product does for its users or operators? Yes means it is WHAT and stays. Would it change only how the product is built? Yes means it is HOW: it belongs in AI.md or in the code, so it is removed from IDEA.md (or reworded into product terms).
+
+| IDEA.md line | WHAT or HOW | Action |
+|--------------|-------------|--------|
+| "Pastes expire after 1 day, 1 week, or never" | WHAT | Keep |
+| "No user accounts" (a non-goal) | WHAT | Keep; it scopes the optional multi-user parts only |
+| "Stores data in Redis" or "listens on port 8080" | HOW, and it contradicts AI.md (storage and port rules) | Remove, or reword to the product need ("pastes survive a restart") |
+| "Health check lives at `/health` and returns plain text" | HOW, and it contradicts AI.md (health routes and formats) | Remove; AI.md defines it |
+| "Skip the security headers, this is an internal tool" | A waiver of a mandatory requirement | Remove; mandatory parts are built exactly as AI.md defines them |
+| "Publishes a raw TCP paste port 9999" | WHAT (AI.md says such a port is documented in IDEA.md) | Keep |
+
+**IDEA.md may declare only what AI.md explicitly lets it declare:** the product's features, data models, business rules and audience; the template's explicitly OPTIONAL capabilities the project uses; and the specific items AI.md names as "declared in IDEA.md" (for example a custom build image, owner tokens, a custom raw port, a data class or compliance profile). Everything else IDEA.md says about HOW is either a copy of AI.md (remove it: duplicated rules drift when AI.md changes) or a contradiction (fix it). IDEA.md refers to AI.md by PART number instead of restating a rule.
+
+**When to check (every time, not only at setup):**
+
+1. On the first read of the project in a session (Session Initialization).
+2. After AI.md is replaced or synced to a new template version: re-check IDEA.md against the PARTs that changed.
+3. Before implementing a feature: compare the IDEA.md lines for that feature with the relevant PART.
+4. Before any commit that touches IDEA.md or adds a feature.
+
+**What to do when a line contradicts AI.md, in this order:**
+
+1. AI.md wins. The contradiction is a defect in IDEA.md.
+2. Fix IDEA.md with the smallest edit that keeps the product intent: reword the line into product terms (what the user gets) or delete it when it only restates HOW.
+3. Implement what AI.md says. NEVER change code to match the contradictory IDEA.md line.
+4. If the product genuinely needs something AI.md forbids or defines differently (not just different wording), it is NOT an IDEA.md edit. STOP and ask the user. The answer is a SPEC.md rule override (SPEC.md wins over AI.md), recorded in SPEC.md; IDEA.md then states only the product-level behavior.
+5. NEVER touch `## Project variables` as part of a fix (changing a variable needs explicit user confirmation).
+6. Record the fix in one line of the commit message (for example `IDEA.md: reworded the storage line to match AI.md PART 10`). No report file.
+7. If AI.md itself is ambiguous or contradicts itself, that is a template defect, not an IDEA.md problem: handle it under "If Spec Seems Wrong" and do not edit IDEA.md around it.
+
 ### IDEA.md Migration
 
 **When this kicks in:** AI reads `IDEA.md` and finds it does NOT have all three required top-level sections (`## Project description`, `## Project variables`, `## Business logic`) in that order. This applies to projects created before the three-section format was specified, or any IDEA.md that drifted.
@@ -3082,7 +3116,7 @@ See IDEA.md for the full project breakdown.
 - SPEC.md overrides AI.md for project-specific rules only
 - IDEA.md is the project PLAN — must be SPEC compliant
 - If IDEA.md conflicts with AI.md, AI.md wins — fix IDEA.md
-- No SPEC.md (or an empty one) → AI.md alone is the authority; IDEA.md non-goals only scope the template's optional capabilities (see PART 0 → "IDEA.md Is the WHAT, AI.md Is the HOW")
+- No SPEC.md (or an empty one) → AI.md alone is the authority; IDEA.md non-goals only scope the template's optional capabilities (see PART 0 → "IDEA.md Is the WHAT, AI.md Is the HOW" and "IDEA.md Alignment (WHAT vs HOW)")
 
 ## Mandatory Compliance Schedule
 
@@ -65757,6 +65791,7 @@ maintainer_email: jane@example.com
 - [ ] **AI.md is SOURCE OF TRUTH** - PARTS 0-36 define HOW, PART 37 is reference-only — read-only; optional PART activation goes in SPEC.md
 - [ ] **IDEA.md is the project PLAN** - WHAT (update when features change)
 - [ ] **IDEA.md must be SPEC compliant** - AI.md always wins conflicts
+- [ ] **IDEA.md contradictions are fixed in IDEA.md** - reword to product terms or remove; the implementation follows AI.md (PART 0 -> "IDEA.md Alignment (WHAT vs HOW)")
 - [ ] **IDEA.md examples are illustrative only** - SPEC defines actual patterns
 - [ ] Keep IDEA.md in sync with current project vision
 - [ ] **NEVER allow outdated files** - README, docs, Swagger, GraphQL must match current state
