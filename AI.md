@@ -8190,7 +8190,7 @@ _cache:
 |-------|---------|
 | `admins` / `usr_admins` | Admin accounts |
 | `users` / `usr_users` | Regular user accounts |
-| `api_keys` / `usr_api_keys` | API keys |
+| `tokens` / `usr_tokens` | Unified API tokens: admin, user, org and agent (PART 11) |
 | `password_resets` / `usr_password_resets` | Password reset tokens |
 | `email_verifications` / `usr_email_verifications` | Email verification tokens |
 | `totp_secrets` / `usr_totp_secrets` | TOTP 2FA secrets |
@@ -12374,7 +12374,7 @@ All projects use SQLite with two database files:
 
 **MongoDB (Project-Specific Use):**
 
-MongoDB is available but NOT used for standard schema (config, sessions, admins, api_keys, etc.). Use for project-specific application data only.
+MongoDB is available but NOT used for standard schema (config, sessions, admins, tokens, etc.). Use for project-specific application data only.
 
 **Good for:**
 - Document/JSON-heavy data (logs, events, analytics)
@@ -12618,12 +12618,12 @@ CREATE TABLE IF NOT EXISTS audit_log (
     category    TEXT NOT NULL,
     -- login, logout, config_change, user_create, etc.
     action      TEXT NOT NULL,
-    -- admin, api_key, system, anonymous
+    -- admin, token, system, anonymous
     actor_type  TEXT,
-    -- admin ID, API key ID, or null
+    -- admin ID, token ID, or null
     actor_id    TEXT,
     actor_ip    TEXT,
-    -- user, config, api_key, etc.
+    -- user, config, token, etc.
     target_type TEXT,
     target_id   TEXT,
     -- JSON with additional context
@@ -14831,10 +14831,10 @@ var schemaUpdates = []string{
     `CREATE INDEX IF NOT EXISTS idx_users_visibility ON users(visibility)`,
 
     // v1.3.0 - Add new table
-    `CREATE TABLE IF NOT EXISTS api_keys (
+    `CREATE TABLE IF NOT EXISTS user_notes (
         id INTEGER PRIMARY KEY,
         user_id INTEGER NOT NULL,
-        key_hash TEXT NOT NULL,
+        body TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`,
 }
@@ -62551,7 +62551,7 @@ mysql://[username[:password]@]host[:port]/database[?params]
 ```yaml
 # All tables go in same database with prefixes:
 # - srv_* tables (config, admin_sessions, rate_limits, audit_log, scheduler_*, backups)
-# - usr_* tables (admins, users, api_keys, password_resets, email_verifications, totp_secrets, passkeys, trusted_devices, user_sessions)
+# - usr_* tables (admins, users, tokens, password_resets, email_verifications, totp_secrets, passkeys, trusted_devices, user_sessions)
 ```
 
 ### Table Prefixes in Shared Database
@@ -62559,7 +62559,7 @@ mysql://[username[:password]@]host[:port]/database[?params]
 | Prefix | Tables |
 |--------|--------|
 | `srv_` | `srv_config`, `srv_config_meta`, `srv_admin_sessions`, `srv_rate_limits`, `srv_audit_log`, `srv_scheduler_tasks`, `srv_scheduler_history`, `srv_backups` |
-| `usr_` | `usr_admins`, `usr_users`, `usr_api_keys`, `usr_password_resets`, `usr_email_verifications`, `usr_totp_secrets`, `usr_passkeys`, `usr_trusted_devices`, `usr_user_sessions` |
+| `usr_` | `usr_admins`, `usr_users`, `usr_tokens`, `usr_password_resets`, `usr_email_verifications`, `usr_totp_secrets`, `usr_passkeys`, `usr_trusted_devices`, `usr_user_sessions` |
 
 ### Cluster Requirements
 
