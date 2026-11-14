@@ -624,7 +624,7 @@ if cacheSize > 1024*1024*1024 {
 | **STOPSIGNAL** | `SIGRTMIN+3` |
 | **ENTRYPOINT** | `["tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh"]` |
 | **NEVER modify ENTRYPOINT/CMD** | All customization via entrypoint.sh |
-| **Required packages** | `git`, `curl`, `bash`, `tini`, `tor` |
+| **Required packages** | `git`, `curl`, `bash`, `tini`, `tor`, `i2pd` |
 | **Tor** | Binary installed but **server binary controls startup** (see PART 32) |
 
 ### Container Port Behavior
@@ -13355,7 +13355,7 @@ func buildHealthResponse() *HealthResponse {
             Tor: TorInfo{
                 Enabled:  cfg.Features.Tor.Enabled,
                 Running:  torManager.IsRunning(),
-                // "healthy", "error:..."
+                // "disabled", "starting", "healthy" or "unavailable"
                 Status:   torManager.Status(),
                 // "abc123.onion"
                 Hostname: torManager.Hostname(),
@@ -13364,7 +13364,7 @@ func buildHealthResponse() *HealthResponse {
                 // OPT-IN: false unless server.i2p.enabled
                 Enabled:  cfg.Server.I2P.Enabled,
                 Running:  i2pManager.IsRunning(),
-                // "healthy", "disabled", "error:..."
+                // "disabled", "starting", "healthy" or "unavailable"
                 Status:   i2pManager.Status(),
                 // "abc...uv.b32.i2p" (empty when disabled)
                 Hostname: i2pManager.EepsiteAddress(),
@@ -20347,11 +20347,11 @@ type FeaturesInfo struct {
 
 // TorInfo - from Tor manager (PART 32.1)
 type TorInfo struct {
-    // Tor binary found and running
+    // Tor binary found (the hidden service is active on this instance)
     Enabled  bool   `json:"enabled"`
     // Hidden service active
     Running  bool   `json:"running"`
-    // "healthy", "starting", "error"
+    // "disabled", "starting", "healthy" or "unavailable" - never free text
     Status   string `json:"status"`
     // "abc123...xyz.onion" (56 chars, v3)
     Hostname string `json:"hostname"`
@@ -20363,7 +20363,7 @@ type I2PInfo struct {
     Enabled  bool   `json:"enabled"`
     // Eepsite active
     Running  bool   `json:"running"`
-    // "healthy", "disabled", "starting", "error"
+    // "disabled", "starting", "healthy" or "unavailable" - never free text
     Status   string `json:"status"`
     // "abc...uv.b32.i2p" (empty when disabled)
     Hostname string `json:"hostname"`
@@ -20453,6 +20453,7 @@ type StatsInfo struct {
 | **Values** | `ok` = loaded, parsed, non-empty, and within its maximum age · `degraded` = loaded but stale (update failing, past its max age) or running on the last known good copy · `error` = missing, empty, or unparseable with no usable copy |
 | **Disabled features** | A data set whose feature is disabled is OMITTED from `checks` (never reported as `ok` or `error`) |
 | **Aggregation** | `error` on `database` or `disk` → `unhealthy`. A dataset check at `degraded` or `error` → `degraded`, unless it was registered `critical` (the app cannot do its core job without it) → `unhealthy` |
+| **Overlay networks** | A Tor or I2P check at `degraded` → overall `degraded`. It is never `critical` and never makes the overall status `unhealthy` (see "Overlay Network Health") |
 | **Stable keys** | `{kind}_{id}` is a stable snake_case identifier — NEVER a file path, URL, or filename (public-safe; see Security) |
 | **Order** | Core checks first (`database`, `cache`, `disk`, `scheduler`), then `tor`, `i2p`, then dataset checks in registration order. JSON emits keys in exactly this order (custom marshaller — never an unordered map) |
 | **Cost** | `/server/healthz` reads CACHED results. The scheduler re-runs dataset checks at most every 60 seconds and after every data-set reload/update; a request NEVER triggers a disk scan, parse, or network fetch |
@@ -21077,13 +21078,13 @@ When not in cluster mode:
 | `cluster.nodes` | Array of all node URLs (for failover) |
 | `cluster.role` | primary, member |
 | `features.*` | Enabled features (bool or object) |
-| `features.tor.enabled` | Tor hidden service enabled (auto-detected or admin setting) |
-| `features.tor.running` | Tor process currently running |
-| `features.tor.status` | healthy, error:{short message} |
+| `features.tor.enabled` | The `tor` binary was found, so the hidden service is active on this instance (there is no toggle) |
+| `features.tor.running` | The hidden service is serving |
+| `features.tor.status` | `disabled`, `starting`, `healthy` or `unavailable`; never free text (see "Overlay Network Health") |
 | `features.tor.hostname` | Onion address (if running) |
-| `features.i2p.enabled` | I2P eepsite enabled (OPT-IN; false by default) |
-| `features.i2p.running` | I2P provider currently running |
-| `features.i2p.status` | Normalized: `disabled`, `starting`, `healthy`, `error:{short message}` (mapped from `features.i2p.state`: `disabled` and `no_provider` -> `disabled`; `starting` and `building` -> `starting`; `running` -> `healthy`; `error` -> `error:{short message}`) |
+| `features.i2p.enabled` | I2P is opted in AND a provider was found (OPT-IN; false by default) |
+| `features.i2p.running` | The eepsite is serving |
+| `features.i2p.status` | `disabled`, `starting`, `healthy` or `unavailable`; never free text (mapped from `features.i2p.state`, see "Overlay Network Health") |
 | `features.i2p.state` | Full lifecycle: `disabled`, `no_provider`, `starting`, `building`, `running`, `error` (the same values as CLI `--status`, PART 32.2) |
 | `features.i2p.hostname` | `.b32.i2p` address (if running) |
 | `features.i2p.provider` | i2pd, sam, or none |
@@ -21095,6 +21096,25 @@ When not in cluster mode:
 **Cluster fields for agent/CLI failover:**
 - `cluster.primary` - The primary server URL
 - `cluster.nodes` - All available nodes (agents/CLI use for automatic failover)
+
+### Overlay Network Health (Tor & I2P)
+
+**Tor and I2P report through ONE fixed contract. `features.tor.status` and `features.i2p.status` are ALWAYS exactly one of four words. They are never free text: no error message, path, exit code or library error ever appears in a health response (details go to the log and to `--status` only).**
+
+| `status` | `enabled` | `running` | `hostname` | `checks.tor` / `checks.i2p` | Meaning |
+|----------|-----------|-----------|------------|-----------------------------|---------|
+| `disabled` | `false` | `false` | empty | omitted | The network is not active on this instance: no `tor` binary (Tor), or I2P not opted in or no provider found (I2P) |
+| `starting` | `true` | `false` | empty | `ok` | The provider was launched and is bootstrapping or building tunnels |
+| `healthy` | `true` | `true` | the address | `ok` | Serving at `hostname` |
+| `unavailable` | `true` | `false` | empty | `degraded` | Active and the provider exists, but it is not serving: failed to start, bootstrap timeout, a directory permission problem, or the provider exited |
+
+- **`enabled` means "active on this instance", not "currently running".** Tor: a `tor` binary was found (there is no toggle). I2P: `server.i2p.enabled` is true AND a provider was found.
+- **A missing binary is `disabled`, never `unavailable`.** Not having Tor is a normal state (PART 31.1: "missing Tor is NOT an error"), so it never produces an `error` or `degraded` anywhere.
+- **Invariants:** `enabled: false` always comes with `running: false`, `status: "disabled"`, an empty `hostname` and NO `checks.tor` / `checks.i2p` key. `running: true` implies `status: "healthy"`. All fields are always present, with the same shape on every project.
+- **Overall status:** `unavailable` makes the check `degraded`, which makes the overall `status` `degraded` (HTTP 200). It never makes the overall status `unhealthy`, and it is never ignored (an `unavailable` network with an overall `healthy` is a bug).
+- **I2P mapping:** the lifecycle `state` maps to `status` as `disabled` and `no_provider` to `disabled`, `starting` and `building` to `starting`, `running` to `healthy`, `error` to `unavailable`.
+- **Text format:** `features.tor: unavailable` and `features.i2p: disabled` (the status word, then the hostname when there is one).
+- **Tests:** one table-driven test per network covers all four states and asserts the invariants above, and a failing provider test asserts that no path or error text reaches the response body.
 
 **Who uses health endpoints:**
 - Browsers, curl, and uptime checks use `/server/healthz`
@@ -40875,7 +40895,7 @@ docker/
 | Builder stage | `casjaysdev/go:latest` |
 | Runtime stage | `alpine:latest` |
 | Meta labels | All OCI labels (see below) |
-| Required packages | git, curl, bash, tini, tor |
+| Required packages | git, curl, bash, tini, tor, i2pd |
 | Tor handling | Installed but **binary controls** (see PART 32) |
 | Binary location | `/usr/local/bin/{project_name}` |
 | Entrypoint script | `/usr/local/bin/entrypoint.sh` |
@@ -41096,7 +41116,8 @@ RUN apk add --no-cache \
     curl \
     bash \
     tini \
-    tor
+    tor \
+    i2pd
 
 # NO directory creation - binary handles ALL setup based on env vars
 # This allows users to override CONFIG_DIR, DATA_DIR, etc.
@@ -41651,6 +41672,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor \
     tini \
     tor \
+    i2pd \
     tzdata \
     && rm -rf /var/lib/apt/lists/*
 
@@ -51863,6 +51885,7 @@ This prevents conflicts with any existing Tor installation on the system.
 **Rules:**
 - Tor not detected = **INFO** (not an error - Tor is optional)
 - Tor startup/runtime errors = **WARN** (server continues without Tor)
+- Tor health reporting follows PART 13 → "Overlay Network Health (Tor & I2P)": a startup failure of any kind (including a directory permission problem) sets `unavailable` and logs the detail; it never crashes the server and never puts error text in the health response
 - Server NEVER fails to start due to Tor issues
 - All Tor operations are best-effort, non-blocking
 
@@ -52881,18 +52904,9 @@ func ensureTorDirs() error {
         if err := os.MkdirAll(dir, 0700); err != nil {
             return fmt.Errorf("create tor dir %s: %w", dir, err)
         }
-        // Enforce permissions even if dir already existed
-        if err := os.Chmod(dir, 0700); err != nil {
-            return fmt.Errorf("chmod tor dir %s: %w", dir, err)
-        }
-        // Enforce ownership (current user)
-        uid := os.Getuid()
-        gid := os.Getgid()
-        if err := os.Chown(dir, uid, gid); err != nil {
-            // Non-fatal on Windows (no chown)
-            if runtime.GOOS != "windows" {
-                return fmt.Errorf("chown tor dir %s: %w", dir, err)
-            }
+        // Enforce private permissions even if the dir already existed
+        if err := enforcePrivate(dir, 0700); err != nil {
+            return fmt.Errorf("tor dir %s: %w", dir, err)
         }
     }
 
@@ -52913,21 +52927,7 @@ func updateTorrc(path string, content []byte) error {
         return fmt.Errorf("write file: %w", err)
     }
 
-    // Enforce permissions
-    if err := os.Chmod(path, 0600); err != nil {
-        return fmt.Errorf("chmod file: %w", err)
-    }
-
-    // Enforce ownership
-    uid := os.Getuid()
-    gid := os.Getgid()
-    if runtime.GOOS != "windows" {
-        if err := os.Chown(path, uid, gid); err != nil {
-            return fmt.Errorf("chown file: %w", err)
-        }
-    }
-
-    return nil
+    return enforcePrivate(path, 0600)
 }
 
 // ensureTorFile creates/updates a generic Tor file with correct permissions
@@ -52944,20 +52944,41 @@ func ensureTorFile(path string, content []byte) error {
     }
 
     // Enforce permissions (in case file existed with wrong perms)
-    if err := os.Chmod(path, 0600); err != nil {
-        return fmt.Errorf("chmod file: %w", err)
-    }
+    return enforcePrivate(path, 0600)
+}
 
-    // Enforce ownership
-    uid := os.Getuid()
-    gid := os.Getgid()
-    if runtime.GOOS != "windows" {
-        if err := os.Chown(path, uid, gid); err != nil {
-            return fmt.Errorf("chown file: %w", err)
+// enforcePrivate makes a Tor or I2P directory (mode 0700) or file (mode 0600) private to
+// the server. A chmod that fails with a permission error is tolerated ONLY when the path
+// is already private (no group or other bits): that is a container volume owned by another
+// uid and it must not disable Tor. The path must then be usable by the server.
+func enforcePrivate(path string, mode os.FileMode) error {
+    if runtime.GOOS == "windows" {
+        return nil
+    }
+    info, err := os.Stat(path)
+    if err != nil {
+        return err
+    }
+    if info.Mode().Perm() != mode {
+        if err := os.Chmod(path, mode); err != nil {
+            if !errors.Is(err, fs.ErrPermission) || info.Mode().Perm()&0o077 != 0 {
+                return fmt.Errorf("chmod %s: %w", path, err)
+            }
         }
     }
-
-    return nil
+    if info.IsDir() {
+        probe, err := os.CreateTemp(path, ".probe-*")
+        if err != nil {
+            return fmt.Errorf("%s is not writable by the server: %w", path, err)
+        }
+        probe.Close()
+        return os.Remove(probe.Name())
+    }
+    f, err := os.OpenFile(path, os.O_RDWR, 0)
+    if err != nil {
+        return fmt.Errorf("%s is not usable by the server: %w", path, err)
+    }
+    return f.Close()
 }
 ```
 
@@ -52966,8 +52987,8 @@ func ensureTorFile(path string, content []byte) error {
 | **Create before write** | Dirs must exist before creating torrc or keys |
 | **Permissions: 0700** | Tor directories are private (Unix: `rwx------`) |
 | **Permissions: 0600** | Tor files are private (Unix: `rw-------`) |
-| **Ownership** | Current user/group (NOT tor user, app owns everything) |
-| **Enforce on exist** | Always chmod/chown even if dir/file already exists (Unix only) |
+| **Ownership** | Set once by startup (as root: `chown -R` to the service user, step 8c; as a normal user: the running user creates the directories). `enforcePrivate` never chowns and never fails because of ownership alone |
+| **Enforce on exist** | Call `enforcePrivate` on every Tor directory and file at every start. It runs `chmod` only when the mode differs. A permission error from `chmod` is tolerated ONLY when the path is already private (no group or other bits), which is the normal case for a container volume owned by another uid. It then verifies the server can write there. A path that is neither private nor fixable is a hard error with an actionable log message (never in the health response) |
 | **Idempotent** | Safe to call multiple times |
 | **Windows** | chmod/chown skipped; Windows uses inherited ACLs from user profile |
 
@@ -53650,7 +53671,7 @@ enabled = false
 | 4 | `SESSION CREATE` (status `building`) | `bootstrap_timeout` |
 | 5 | Open the forward socket: `HELLO`, `STREAM FORWARD ... SILENT=true` (status `running`) | 10 s |
 
-**Status values** (CLI `--status` and the health field `features.i2p.state`; `features.i2p.status` is the normalized mapping in PART 13): `disabled`, `no_provider`, `starting` (steps 1-3), `building` (step 4), `running`, `error`.
+**Status values** (CLI `--status` and the health field `features.i2p.state`; `features.i2p.status` is the normalized mapping in PART 13, where `error` becomes `unavailable`): `disabled`, `no_provider`, `starting` (steps 1-3), `building` (step 4), `running`, `error`.
 
 **Error handling:**
 
@@ -54460,11 +54481,9 @@ func ensureI2PDirs() error {
         if err := os.MkdirAll(dir, 0700); err != nil {
             return fmt.Errorf("create i2p dir %s: %w", dir, err)
         }
-        if err := os.Chmod(dir, 0700); err != nil {
-            return fmt.Errorf("chmod i2p dir %s: %w", dir, err)
-        }
-        if err := os.Chown(dir, os.Getuid(), os.Getgid()); err != nil {
-            return fmt.Errorf("chown i2p dir %s: %w", dir, err)
+        // Same rules as the Tor directories (see enforcePrivate)
+        if err := enforcePrivate(dir, 0700); err != nil {
+            return fmt.Errorf("i2p dir %s: %w", dir, err)
         }
     }
     return nil
@@ -66075,7 +66094,7 @@ make docker
 - [ ] Tor fields in `/api/{api_version}/server/healthz`:
   - [ ] `features.tor.enabled` (yes/no)
   - [ ] `features.tor.running` (yes/no)
-  - [ ] `features.tor.status` (healthy/error:{message})
+  - [ ] `features.tor.status` (disabled/starting/healthy/unavailable)
   - [ ] `features.tor.hostname` ({onion_address})
 
 **PART 32.2: I2P Eepsite (OPTIONAL — opt-in)**
@@ -66090,7 +66109,7 @@ make docker
 - [ ] I2P fields in `/api/{api_version}/server/healthz`:
   - [ ] `features.i2p.enabled` (yes/no)
   - [ ] `features.i2p.running` (yes/no)
-  - [ ] `features.i2p.status` (disabled/healthy/error:{message})
+  - [ ] `features.i2p.status` (disabled/starting/healthy/unavailable)
   - [ ] `features.i2p.hostname` ({i2p_address})
   - [ ] `features.i2p.provider` (i2pd/sam/none)
 
