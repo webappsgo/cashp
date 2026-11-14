@@ -8169,6 +8169,8 @@ _cache:
 
 ### Full Database Schema Summary
 
+**Table names:** the SQLite single-instance names are the unprefixed names (`admins`, `users`, `audit_log`), split across two files: tables in the Server list live in `server.db`, tables in the User list live in `users.db`. In a remote PostgreSQL/MySQL database (Cluster Mode) the same tables share one database and carry a prefix that follows the file they would live in: `srv_` for the Server list, `usr_` for the User list (`admins` becomes `usr_admins`, `audit_log` becomes `srv_audit_log`). There is no other prefix (never `server_`), and each table has exactly these two names, one per mode.
+
 **Server Tables (srv_* prefix in remote DB, or server.db in SQLite):**
 
 | Table | Purpose |
@@ -16831,7 +16833,7 @@ Repo-level (source-code) vulnerabilities are reported primarily via GitHub priva
 
 | Field | Type | Required | Notes | Max length |
 |-------|------|----------|-------|-------------|
-| Researcher GPG | URL OR pasted pubkey block | Optional | If supplied, server validates the key and uses it for the acknowledgment email. URL form: any `https://`, including keyservers (`https://keys.openpgp.org/vks/v1/by-fingerprint/...`); a URL longer than 2048 characters is rejected as a validation rule, not as part of `max_length`. | 16384 |
+| Researcher GPG | URL OR pasted pubkey block | Optional | If supplied, server validates the key and uses it for the acknowledgment email. URL form: any `https://`, including keyservers (`https://keys.openpgp.org/vks/v1/by-fingerprint/...`); a value starting with `https://` is capped at 2048 characters, published as `max_length_when`. | 16384 |
 | Affected component | Dropdown OR free text | Yes | Dropdown populated from project's `IDEA.md` features (auth, API, frontend, admin, etc.); "Other" allows free text. | 255 |
 | Affected endpoint / URL | Text | Optional | The exact URL or path where the issue surfaces. | 2048 |
 | Severity (researcher's self-assessment) | Critical / High / Medium / Low / Informational | Yes | Maintainers re-triage; this is the researcher's expectation. | null |
@@ -16842,11 +16844,20 @@ Repo-level (source-code) vulnerabilities are reported primarily via GitHub priva
 | CVE requested? | Checkbox | Optional | If yes, maintainers initiate CVE assignment after triage. | null |
 | Disclosure timeline preference | Number of days (default 90) | Optional | Researcher's preferred coordinated-disclosure window. Maintainers may negotiate. | null |
 | Credit preference | Yes (real name) / Yes (handle) / No / Anonymous | Yes | Drives `/server/security/thanks` listing on disclosure. | null |
-| Credit handle | Text | Only when Credit preference is "Yes (handle)" | Public handle shown on the thanks page; required for that choice, ignored for the others. "Yes (real name)" uses the Name field. | 100 |
+| Credit handle | Text | Only when Credit preference is "Yes (handle)" | Public handle shown on the thanks page; required for that choice (published as `required_when`), ignored for the others. "Yes (real name)" uses the Name field. | 100 |
 | Coordinated disclosure agreement | Checkbox | Yes | Researcher agrees to coordinated disclosure (no public release until coordinated date or 90 days, whichever first). | null |
 | Hidden auto-filled | — | — | `app_version`, `commit_hash`, `security_id`, `timestamp`, `request_user_agent`. Used for triage; never shown to researcher. | null |
 
-**Length limits:** `Max length` counts Unicode characters after trimming; `null` means no text limit (the field is an enum, checkbox, number or generated value). The same limits appear as `max_length` in the `GET /api/{api_version}/server/contact` field list (`null` where the table says `null`), and a longer value is rejected with a field-level `VALIDATION_FAILED` error. `max_length` is always one number or `null`; any narrower rule that depends on the value kind (the 2048-character cap on a GPG key URL) is a validation rule stated in the field notes, never a second `max_length`.
+**Length limits:** `Max length` counts Unicode characters after trimming; `null` means no text limit (the field is an enum, checkbox, number or generated value). The same limits appear as `max_length` in the `GET /api/{api_version}/server/contact` field list (`null` where the table says `null`), and a longer value is rejected with a field-level `VALIDATION_FAILED` error.
+
+**Field descriptors:** `name` is the lowercase snake_case of the Field column (`researcher_gpg`, `credit_preference`, `credit_handle`). `max_length` is always one number or `null`. Two optional properties carry the conditional rules, both `null` when the field has none:
+
+| Property | Shape | Meaning |
+|----------|-------|---------|
+| `required_when` | `{"field": "{name}", "equals": "{value}"}` | `required` is `false`, but the field becomes required when the named field has that value (`credit_handle`: `{"field": "credit_preference", "equals": "handle"}`) |
+| `max_length_when` | `[{"prefix": "{text}", "max_length": N}]` | A value that starts with the prefix uses that narrower limit instead of `max_length` (`researcher_gpg`: `[{"prefix": "https://", "max_length": 2048}]`) |
+
+The server enforces exactly what it publishes: the same descriptors drive the HTML form and the API validation, and a violated conditional rule returns `VALIDATION_FAILED` for that field.
 
 ### Submission Flow (POST `/api/{api_version}/server/contact` with `security_id` set)
 
@@ -21691,7 +21702,7 @@ tail -c 2 file.txt | od -An -tx1
 - Text browsers (lynx, w3m) → HTML without JavaScript (`renderNoJSHTML()`)
 - HTTP tools (curl, wget) → Formatted text (`HTML2TextConverter()`)
 - Accept: application/json → JSON (same data as the API route)
-- Accept: text/plain → Formatted text
+- Accept: text/plain → Formatted text (except `/server/{admin_path}/*`, which is always HTML for every client)
 
 **Frontend routes do NOT need `.txt` extension - smart detection handles it.**
 
@@ -22273,7 +22284,7 @@ func renderNoJSHTML(w http.ResponseWriter, data interface{}) {
 | Swagger theming | `src/swagger/theme.go` | `./theme.go`, `public/swagger-theme.css` |
 | Swagger annotations | `src/swagger/annotations.go` | `./docs/`, anywhere else |
 | GraphQL handler | `src/graphql/graphql.go` | `./graphql.go`, `graphql/graphql.go` |
-| GraphQL schema | `src/graphql/schema.go` | `./schema.graphql`, `graph/schema.graphqls` |
+| GraphQL schema | `src/graphql/schema.go` (code-first), or `src/graphql/schema.graphqls` (schema-first generators such as gqlgen) | `./schema.graphql`, `graph/schema.graphqls` |
 | GraphQL resolvers | `src/graphql/resolvers.go` | `./resolvers.go`, anywhere else |
 | GraphQL theming | `src/graphql/theme.go` | `./theme.go`, `public/graphql-theme.css` |
 
@@ -22288,7 +22299,7 @@ Build Process
          │
          ├──► src/swagger/swagger.go → Generate OpenAPI JSON from code annotations
          │
-         └──► src/graphql/schema.go → Generate GraphQL schema from code annotations
+         └──► src/graphql/schema.go → Build the GraphQL schema from code (code-first), or validate the embedded schema.graphqls against the resolvers (schema-first)
          │
          ▼
 Both specs automatically in sync with project
@@ -22297,7 +22308,7 @@ Both specs automatically in sync with project
 **Implementation:**
 - Use Go struct tags and comments for documentation
 - Generate OpenAPI spec at build time (e.g., swaggo/swag)
-- Generate GraphQL schema from same structs
+- Code-first: build the GraphQL schema from the same structs (for example graphql-go). Schema-first: keep ONE `src/graphql/schema.graphqls` as the only schema source and generate the Go types and resolver stubs from it (for example gqlgen). A project uses one approach, never both
 - Embed generated specs in binary
 - Serve at runtime from embedded files
 - All implementation files in `src/swagger/` and `src/graphql/`
@@ -22793,7 +22804,7 @@ Need additional compatible endpoints?"
 | `/server/docs/graphql` | GET | None | GraphiQL UI (interactive GraphQL explorer; POSTs to `/api/{api_version}/server/graphql`) |
 | `/server/metrics[/{service}]` | GET | Bearer token (per-service) | Prometheus/Grafana/Loki metrics (PART 21) |
 | `/metrics[/{service}]` | GET | Bearer token (per-service) | Root alias when `server.metrics.root.enabled: true` (default true); same handler, never a redirect |
-| `/server/{admin_path}` | GET | Session | Admin panel login |
+| `/server/{admin_path}` | GET | Session | Admin dashboard; an unauthenticated request redirects to `/server/auth/login` |
 | `/server/{admin_path}/*` | ALL | Session | Admin panel pages |
 | `/api/autodiscover` | GET | None | Server settings, config schema, and options for CLI/agent (non-versioned) |
 | `/api/swagger` | GET | None | OpenAPI JSON spec — direct alias for current `{api_version}` |
@@ -31136,7 +31147,7 @@ server:
 |-------|--------|-------------|
 | `/api/{api_version}/server/about` | GET | About information (JSON) |
 | `/api/{api_version}/server/privacy` | GET | Privacy policy (JSON) |
-| `/api/{api_version}/server/contact` | GET | Contact form description (JSON, no auth): `fields` (list of `{name, type, required, max_length}`), `captcha` (`{provider, site_key}` for `recaptcha`-style providers, `{provider, challenge_id, question}` for `simple`), `security_url`, `abuse_email`. Nothing else about recipients |
+| `/api/{api_version}/server/contact` | GET | Contact form description (JSON, no auth): `fields` (list of `{name, type, required, max_length, required_when, max_length_when}`, see "Length limits"), `captcha` (`{provider, site_key}` for `recaptcha`-style providers, `{provider, challenge_id, question}` for `simple`), `security_url`, `abuse_email`. Nothing else about recipients |
 | `/api/{api_version}/server/contact` | POST | Submit contact form |
 | `/api/{api_version}/server/auth/check` | GET | Token check (machine-only, no page; `Authorization: Bearer` required): `200` with `{kind}` when the token is valid (`kind` is `operator`, `owner` or, where the project has accounts, `user`), `401` otherwise. Side-effect free, rate-limited like other auth endpoints, never echoes the token |
 | `/api/{api_version}/server/help` | GET | Help content (JSON) |
@@ -31302,6 +31313,7 @@ Unauthenticated and non-admin requests both fall through the same admin-auth mid
 | **`/server/{admin_path}/{section}/*`** | ALL server management goes here; `{section}` is a fixed name from `validAdminRootPaths` (the admin section set) |
 | **No other direct children** | ONLY `{admin_username}` and the names in `validAdminRootPaths` under `/server/{admin_path}/`. There is NO `config` (or any other grouping) segment |
 | **Admin usernames never collide** | An admin username MUST NOT equal any name in `validAdminRootPaths`; the check runs when an admin is created (setup, invite, external-identity first login) and when a username changes. Adding a section name in a later spec version ships with a migration that renames any admin already using it (numeric suffix) and logs the rename |
+| **Project-specific sections** | A project with admin pages beyond the template sections declares each one in `IDEA.md` (name, purpose); it is then added to `validAdminRootPaths` and served at `/server/{admin_path}/{section}/*` like any template section, including the admin-username collision rule above. Such pages never go under `{admin_username}` and never at any other path; an undeclared name is rejected by the route validator |
 
 ### What Goes Where
 
@@ -31712,7 +31724,7 @@ func RegisterAdminRoutes(r *mux.Router) {
 
 | Feature | Description |
 |---------|-------------|
-| Login page | `/server/{admin_path}` (when not logged in) |
+| Login page | The shared `/server/auth/login`; an unauthenticated request to `/server/{admin_path}` redirects there |
 | Login form | Username/password, centered card |
 | Session | Cookie-based (30 days default, configurable) |
 | CSRF | Protection on all forms |
@@ -32347,7 +32359,7 @@ Admin Panel Header:
 
 | Route | Page | Description |
 |-------|------|-------------|
-| `/server/{admin_path}` | Login | Login form (if not authenticated) |
+| `/server/{admin_path}` | Dashboard | Admin dashboard; unauthenticated requests redirect to `/server/auth/login` (there is no separate admin login page) |
 | `/server/{admin_path}` | Dashboard | Overview, stats, quick actions |
 | `/server/{admin_path}/settings` | Server Settings | Port, mode, FQDN, etc. |
 | `/server/{admin_path}/branding` | Branding | Title, logo, favicon, colors |
@@ -59534,6 +59546,8 @@ Admin clicks "Invite New User"
 | No consecutive | `--` |
 | Uniqueness | Case-insensitive |
 
+**Which list applies:** the reserved-names list (PART 16 → "Reserved Names (MUST block from registration)") is the ONE list for every name kind (usernames, org and team slugs, resource slugs, vanity routes, short codes) and its matching rules are the only matching rules. The `UsernameBlocklist` below is an ADDITIONAL list for regular usernames only (impersonation, role and brand words); it is checked after the reserved list, with the same normalization (trim, lowercase, NFKC, one leading `@` removed), and never applies to slugs or routes.
+
 **Username Blocklist (case-insensitive):**
 
 ```go
@@ -59630,7 +59644,7 @@ var UsernameBlocklist = []string{
 ```
 
 **Blocklist Notes:**
-- Server admin accounts are exempt from this blocklist, including the initial/primary server admin
+- Server admin accounts are exempt from this additional username blocklist, including the initial/primary server admin; they are NOT exempt from the reserved-names list
 - Blocklist is checked case-insensitively
 - Also blocks usernames that contain blocklisted words as substrings for critical terms (admin, root, system, mod, official, verified)
 - The username blocklist MUST cover all reserved public and operational route names that would collide with top-level or server-owned paths
@@ -62027,7 +62041,7 @@ Organizations - only for projects with multi-user collaboration.
 |----------|--------|-------------|
 | `/api/{api_version}/server/about` | GET | About information |
 | `/api/{api_version}/server/privacy` | GET | Privacy policy |
-| `/api/{api_version}/server/contact` | GET | Contact form description (JSON, no auth): `fields` (list of `{name, type, required, max_length}`), `captcha` (`{provider, site_key}` for `recaptcha`-style providers, `{provider, challenge_id, question}` for `simple`), `security_url`, `abuse_email`. Nothing else about recipients |
+| `/api/{api_version}/server/contact` | GET | Contact form description (JSON, no auth): `fields` (list of `{name, type, required, max_length, required_when, max_length_when}`, see "Length limits"), `captcha` (`{provider, site_key}` for `recaptcha`-style providers, `{provider, challenge_id, question}` for `simple`), `security_url`, `abuse_email`. Nothing else about recipients |
 | `/api/{api_version}/server/contact` | POST | Submit contact form |
 | `/api/{api_version}/server/auth/check` | GET | Token check (machine-only, no page; `Authorization: Bearer` required): `200` with `{kind}` when the token is valid (`kind` is `operator`, `owner` or, where the project has accounts, `user`), `401` otherwise. Side-effect free, rate-limited like other auth endpoints, never echoes the token |
 | `/api/{api_version}/server/help` | GET | Help content |
@@ -62536,8 +62550,8 @@ mysql://[username[:password]@]host[:port]/database[?params]
 
 ```yaml
 # All tables go in same database with prefixes:
-# - srv_* tables (config, admins, admin_sessions, rate_limits, audit_log, scheduler_*, backups)
-# - usr_* tables (users, api_keys, password_resets, email_verifications, totp_secrets, passkeys, trusted_devices, user_sessions)
+# - srv_* tables (config, admin_sessions, rate_limits, audit_log, scheduler_*, backups)
+# - usr_* tables (admins, users, api_keys, password_resets, email_verifications, totp_secrets, passkeys, trusted_devices, user_sessions)
 ```
 
 ### Table Prefixes in Shared Database
