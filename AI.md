@@ -435,7 +435,7 @@ docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -
 
 | Container | Best For | Why |
 |-----------|----------|-----|
-| **Incus** (PREFERRED) | Full integration, systemd | Full OS, persistent, SSH-able, real services |
+| **Incus** (PREFERRED) | Full integration, systemd and OpenRC | Full OS, persistent, SSH-able, real services; Debian for systemd, Alpine for OpenRC |
 | **Docker** (fallback) | Quick checks | Ephemeral, fast startup, limited environment |
 
 ### AI as Beta Tester
@@ -4530,7 +4530,8 @@ When working on this project, the following roles are assumed based on the task:
 | **Building** | Docker `casjaysdev/go:latest` | ALWAYS - Go compilation |
 | **Unit tests** | Docker `casjaysdev/go:latest` | `go test` commands |
 | **Quick testing** | Docker `alpine:latest` | Fast, ephemeral |
-| **Full OS testing** | Incus `debian:latest` | PREFERRED - systemd, services |
+| **Full OS testing (systemd)** | Incus `debian:latest` | PREFERRED - systemd, services |
+| **Full OS testing (OpenRC)** | Incus `alpine:latest` (newest numbered release) | PREFERRED - OpenRC, services |
 | **Debugging** | Incus `debian:latest` | PREFERRED - persistent, SSH-able |
 
 ```bash
@@ -11571,6 +11572,7 @@ PHASE 5: Server startup (actual server start)
 | Start Method | Daemonize Behavior |
 |--------------|-------------------|
 | `--service start` (systemd) | Always foreground (ignores config) |
+| `--service start` (OpenRC) | Always foreground (the init script sets `command_background=true`, so OpenRC itself backgrounds and supervises the process; daemonizing would break the pidfile) |
 | `--service start` (launchd) | Always foreground (ignores config) |
 | `--service start` (runit/s6) | Always foreground (ignores config) |
 | `--service start` (container) | Always foreground (ignores config) |
@@ -11592,7 +11594,7 @@ PHASE 5: Server startup (actual server start)
 | cgroup | `/proc/1/cgroup` contains `docker`, `kubepods`, `lxc` |
 | Self wrapper | Parent process is `{project_name}` (entrypoint wrapper) |
 
-**Systemd system containers (Incus/LXC/LXD/systemd-nspawn):** these run a full init, so the table above does not make them "container" for service-manager purposes. When systemd launched the process (`INVOCATION_ID` set), the service manager is `systemd` and service install/start/stop/status work normally; "container" applies to application containers (Docker, Podman, Kubernetes) and to Incus/LXC containers without systemd. The systemd check runs before generic container detection.
+**System containers (Incus/LXC/LXD/systemd-nspawn):** these run a full init, so the table above does not make them "container" for service-manager purposes. When systemd launched the process (`INVOCATION_ID` set) the service manager is `systemd`; when OpenRC launched it (`RC_SVCNAME` set, or PPID 1 with `/run/openrc` present) the service manager is `openrc`. In both cases service install/start/stop/status work normally. "container" applies to application containers (Docker, Podman, Kubernetes) and to Incus/LXC containers whose init is neither systemd nor OpenRC. The systemd and OpenRC checks run before generic container detection.
 
 **Manual Start Priority Order:**
 1. `--daemon` CLI flag (highest)
@@ -11664,6 +11666,12 @@ func detectServiceManager() string {
         return "systemd"
     }
 
+    // OpenRC sets RC_SVCNAME for every init script it runs; like INVOCATION_ID it wins over
+    // generic container detection (an Alpine Incus system container is a normal OpenRC host)
+    if os.Getenv("RC_SVCNAME") != "" {
+        return "openrc"
+    }
+
     // Check for container environment
     if isContainer() {
         return "container"
@@ -11698,7 +11706,14 @@ func detectServiceManager() string {
         return "s6"
     }
 
-    // SysV init: /etc/init.d script, no systemd
+    // OpenRC: PPID=1 with OpenRC running. Checked BEFORE SysV: both use /etc/init.d
+    if ppid == 1 {
+        if _, err := os.Stat("/run/openrc"); err == nil {
+            return "openrc"
+        }
+    }
+
+    // SysV init: /etc/init.d script, no systemd, no OpenRC
     if ppid == 1 {
         if _, err := os.Stat("/etc/init.d"); err == nil {
             if _, err := os.Stat("/run/systemd/system"); os.IsNotExist(err) {
@@ -11738,7 +11753,7 @@ func shouldDaemonize(isServiceStart bool, daemonFlag bool, configDaemonize bool)
     if isServiceStart {
         // Service start - detect manager and ignore config
         switch detectServiceManager() {
-        case "systemd", "launchd", "runit", "s6", "docker", "container":
+        case "systemd", "openrc", "launchd", "runit", "s6", "docker", "container":
             // Always foreground
             return false
         case "sysv", "rcd":
@@ -11766,7 +11781,7 @@ func shouldDaemonize(isServiceStart bool, daemonFlag bool, configDaemonize bool)
 **When NOT to use `--daemon`:**
 - Any `--service start` scenario (auto-detected)
 - Docker/containers (use entrypoint)
-- systemd/launchd/runit/s6 (they manage it)
+- systemd/OpenRC/launchd/runit/s6 (they manage it)
 
 **Daemonization Process (Unix):**
 
@@ -13353,7 +13368,8 @@ func buildHealthResponse() *HealthResponse {
             Organizations: cfg.Features.Organizations,
             GeoIP:         cfg.Features.GeoIP.Enabled,
             Tor: TorInfo{
-                Enabled:  cfg.Features.Tor.Enabled,
+                // true when a tor binary was found (no toggle)
+                Enabled:  torManager.Enabled(),
                 Running:  torManager.IsRunning(),
                 // "disabled", "starting", "healthy" or "unavailable"
                 Status:   torManager.Status(),
@@ -13362,7 +13378,8 @@ func buildHealthResponse() *HealthResponse {
             },
             I2P: I2PInfo{
                 // OPT-IN: false unless server.i2p.enabled
-                Enabled:  cfg.Server.I2P.Enabled,
+                // true when opted in AND a provider was found
+                Enabled:  i2pManager.Enabled(),
                 Running:  i2pManager.IsRunning(),
                 // "disabled", "starting", "healthy" or "unavailable"
                 Status:   i2pManager.Status(),
@@ -38884,6 +38901,18 @@ directory setup, and permissions during NORMAL STARTUP (see Server Startup
 Sequence). The --service --install flag ONLY installs and starts the service.
 ```
 
+**Init system detection (install time).** `--service --install` and the other `--service` commands look at the HOST, not at how this process was started, and pick the FIRST match:
+
+| Order | Init system | Detected when |
+|-------|-------------|---------------|
+| 1 | systemd | `/run/systemd/system` exists (systemd is PID 1) |
+| 2 | OpenRC | `/sbin/openrc-run` exists AND `/run/openrc` exists (OpenRC is running; true in an Alpine Incus container) |
+| 3 | runit / s6 | `/etc/runit` or `sv` on `PATH` / `s6-svc` on `PATH` |
+| 4 | SysVinit | none of the above, `/etc/init.d/` exists, and `update-rc.d` or `chkconfig` works |
+| 5 | rc.d (BSD), launchd, Windows Service | by platform |
+
+An OpenRC host is NEVER treated as SysVinit: both use `/etc/init.d/{internal_name}`, and the OpenRC script (`#!/sbin/openrc-run`) is not a SysV script. A system container (Incus/LXC) that runs systemd or OpenRC as its init is a normal host for service installation; "container" is only for application containers (Docker, Podman, Kubernetes).
+
 ## Service Uninstall Logic
 
 ```
@@ -39780,6 +39809,8 @@ WantedBy=multi-user.target
 
 **Installation path:** `/etc/init.d/{internal_name}` (executable shell script)
 
+**Detection:** `/sbin/openrc-run` exists AND OpenRC is the running init (`/run/openrc` exists). This is checked BEFORE SysVinit, so an Alpine, Gentoo or Devuan host gets the OpenRC script, never the SysV one.
+
 ```sh
 #!/sbin/openrc-run
 # Service identity comes from {internal_name} so config_dir/data_dir paths stay
@@ -40644,7 +40675,7 @@ docker run --rm \
 |--------|-----------|----------|
 | `./tests/run_tests.sh` | Auto-detect | General testing (picks best available) |
 | `./tests/docker.sh` | Docker `alpine:latest` | Quick binary validation |
-| `./tests/incus.sh` | Incus `debian:latest` | **PREFERRED** - Full OS, systemd, realistic |
+| `./tests/incus.sh [systemd\|openrc\|all]` | Incus `debian/trixie` (systemd) and `alpine/{latest_stable}` (OpenRC) | **PREFERRED** - Full OS, both init systems, service lifecycle, reboot, Tor and I2P |
 | `./tests/e2e.sh` | Docker + Chromium | Browser E2E beta testing — frontend with and without JS (PART 29) |
 
 **Typical workflow:**
@@ -46593,7 +46624,8 @@ When a test or debug step requires `reboot`, `systemctl`, `iptables`, `mount`, p
 | Test Need | Run It Where |
 |-----------|--------------|
 | Run or test the compiled binary | `docker run --rm -v "$BUILD_DIR:/app" alpine:latest /app/{project_name}` or `./tests/docker.sh` / `./tests/incus.sh` |
-| Test systemd service install/start/stop | `incus exec test-{project_name} -- systemctl ...` |
+| Test systemd service install/start/stop | `incus exec test-{project_name} -- systemctl ...` (Debian container) |
+| Test OpenRC service install/start/stop | `incus exec test-{project_name} -- rc-service ...` (Alpine container) |
 | Test firewall integration | `docker run --rm --name "{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" --cap-add=NET_ADMIN ...` |
 | Test network interface behavior | `ip netns exec {ns} ...` or inside Incus |
 | Test package install / dependency setup | Inside the build container or test container |
@@ -46851,7 +46883,8 @@ rm -rf "${TMPDIR:-/tmp}/${PROJECT_ORG}/"
 |---------|------|-------|-------------|
 | **Building** | Docker | `casjaysdev/go:latest` | Compiling Go code |
 | **Container testing** | Docker | `alpine:latest` | Quick tests, CI/CD |
-| **Full OS testing** | Incus | `debian:latest` | Systemd, services, integration |
+| **Full OS testing (systemd)** | Incus | `debian:latest` | Systemd, services, integration |
+| **Full OS testing (OpenRC)** | Incus | `alpine:latest` (newest numbered release) | OpenRC, services, integration |
 
 ### Testing Strategy
 
@@ -47453,7 +47486,7 @@ fi
 |--------|---------|-----------|-------|
 | `tests/run_tests.sh` | Auto-detect runtime and run tests | Auto-detect | Runs incus.sh or docker.sh |
 | `tests/docker.sh` | Beta testing with Docker | `alpine:latest` | Full integration tests |
-| `tests/incus.sh` | Beta testing with Incus | `debian:latest` | Full integration + systemd tests |
+| `tests/incus.sh` | Beta testing with Incus (`[systemd\|openrc\|all]`) | `debian/trixie` + `alpine/{latest_stable}` | Full integration + systemd and OpenRC service tests + Tor and I2P |
 
 **docker.sh and incus.sh MUST:**
 1. Host cache dirs (`GO_CACHE`/`GO_BUILD`) provide persistent Go cache across builds
@@ -47722,7 +47755,7 @@ echo "Docker tests completed successfully"
 
 #### tests/incus.sh
 
-**Purpose:** Full integration + systemd testing in Incus Debian container
+**Purpose:** Full integration testing in Incus system containers, once per init system: **systemd** (Debian) and **OpenRC** (Alpine). Each run installs the service with the binary's own `--service` commands, exercises the full service lifecycle and a reboot, and tests Tor and I2P with both installed.
 
 ```bash
 #!/usr/bin/env bash
@@ -47734,15 +47767,33 @@ if ! command -v incus &>/dev/null; then
     exit 1
 fi
 
+# Usage: tests/incus.sh [systemd|openrc|all]   (default: all)
+# systemd runs in a Debian container, openrc in an Alpine container; each gets the full test run
+MODE="${1:-all}"
+case "$MODE" in
+    systemd|openrc) MODES="$MODE" ;;
+    all) MODES="systemd openrc" ;;
+    *) echo "Usage: $0 [systemd|openrc|all]"; exit 2 ;;
+esac
+
 # Detect project info
 PROJECT_NAME=$(basename "$PWD")
 PROJECT_ORG=$(basename "$(dirname "$PWD")")
-CONTAINER_NAME="test-${PROJECT_NAME}-$$"
+INTERNAL_NAME="${INTERNAL_NAME:-$PROJECT_NAME}"
+INTERNAL_ORG="${INTERNAL_ORG:-$PROJECT_ORG}"
+CONTAINER_PREFIX="test-${PROJECT_NAME}-$$"
+CONTAINERS=()
 
-# Incus image - use latest Debian stable (update when new stable releases)
-INCUS_IMAGE="images:debian/trixie"
+# Incus images, one per init system: systemd uses the latest Debian stable, OpenRC uses the
+# latest stable Alpine release (update both when new stable releases ship)
+INCUS_IMAGE_SYSTEMD="images:debian/trixie"
+INCUS_IMAGE_OPENRC="images:alpine/3.24"
 
-trap "incus delete $CONTAINER_NAME --force 2>/dev/null || true" EXIT
+cleanup() {
+    local c
+    for c in "${CONTAINERS[@]}"; do incus delete "$c" --force 2>/dev/null || true; done
+}
+trap cleanup EXIT
 
 # Build — use Makefile if present (standard for all bootstrapped projects)
 # Output always lands in binaries/
@@ -47783,214 +47834,369 @@ else
     fi
 fi
 
-echo "Launching Incus container (Debian + systemd)..."
-incus launch "$INCUS_IMAGE" "$CONTAINER_NAME"
+BIN_DIR="binaries"
 
-# Wait for container to be ready
-sleep 2
+REMOTE_LIB=$(cat <<'REMOTE_LIB_EOF'
+INTERNAL_NAME="${INTERNAL_NAME:-$PROJECT_NAME}"
+INTERNAL_ORG="${INTERNAL_ORG:-$PROJECT_ORG}"
+FAILURES=0
+fail() { echo "✗ FAILED: $*"; FAILURES=$((FAILURES + 1)); }
+pass() { echo "✓ $*"; }
+check() { local d="$1"; shift; if "$@" >/dev/null 2>&1; then pass "$d"; else fail "$d"; fi; }
+check_not() { local d="$1"; shift; if "$@" >/dev/null 2>&1; then fail "$d"; else pass "$d"; fi; }
+wait_for() { local n="$1" i; shift; for i in $(seq 1 "$n"); do "$@" >/dev/null 2>&1 && return 0; sleep 1; done; return 1; }
 
-echo "Copying binaries to container..."
-incus file push "binaries/${PROJECT_NAME}" "$CONTAINER_NAME/usr/local/bin/"
-incus exec "$CONTAINER_NAME" -- chmod +x "/usr/local/bin/${PROJECT_NAME}"
+API="http://localhost:80/api/{api_version}/server/healthz"
+healthz() { curl -q -LSsf --max-time 10 "$API"; }
+healthz_up() { healthz | jq -e '.status' >/dev/null; }
+overlay() { healthz | jq -r ".features.$1.$2"; }
 
-# Copy client if built
-if [ -f "binaries/${PROJECT_NAME}-cli" ]; then
-    incus file push "binaries/${PROJECT_NAME}-cli" "$CONTAINER_NAME/usr/local/bin/"
-    incus exec "$CONTAINER_NAME" -- chmod +x "/usr/local/bin/${PROJECT_NAME}-cli"
+# One set of service helpers per init system; the test steps are identical for both
+if [ "$INIT_MODE" = "systemd" ]; then
+    UNIT_FILE="/etc/systemd/system/${INTERNAL_NAME}.service"
+    svc_active()  { systemctl is-active --quiet "$INTERNAL_NAME"; }
+    svc_enabled() { systemctl is-enabled --quiet "$INTERNAL_NAME"; }
+    svc_pid()     { systemctl show -p MainPID --value "$INTERNAL_NAME"; }
+else
+    UNIT_FILE="/etc/init.d/${INTERNAL_NAME}"
+    svc_active()  { rc-service "$INTERNAL_NAME" status 2>&1 | grep -q started; }
+    svc_enabled() { rc-update show default | grep -qw "$INTERNAL_NAME"; }
+    svc_pid()     { cat "/var/run/${INTERNAL_ORG}/${INTERNAL_NAME}.pid"; }
+fi
+svc_stopped() { ! svc_active; }
+REMOTE_LIB_EOF
+)
+
+REMOTE_MAIN=$(cat <<'REMOTE_MAIN_EOF'
+echo "=== [$INIT_MODE] Init system identity ==="
+if [ "$INIT_MODE" = "systemd" ]; then
+    check "PID 1 is systemd" test "$(cat /proc/1/comm)" = "systemd"
+else
+    check "OpenRC is running" test -d /run/openrc
+    check "no systemd in this container" test ! -d /run/systemd/system
 fi
 
-# Copy agent if built
-if [ -f "binaries/${PROJECT_NAME}-agent" ]; then
-    incus file push "binaries/${PROJECT_NAME}-agent" "$CONTAINER_NAME/usr/local/bin/"
-    incus exec "$CONTAINER_NAME" -- chmod +x "/usr/local/bin/${PROJECT_NAME}-agent"
+echo "=== Version Check ==="
+${PROJECT_NAME} --version
+
+echo "=== Help Check ==="
+${PROJECT_NAME} --help
+
+echo "=== Binary Info ==="
+ls -lh /usr/local/bin/${PROJECT_NAME}
+file /usr/local/bin/${PROJECT_NAME}
+
+echo "=== [$INIT_MODE] Service install (--service --install also enables and starts) ==="
+${PROJECT_NAME} --service --install
+check "service file installed at ${UNIT_FILE}" test -f "$UNIT_FILE"
+if [ "$INIT_MODE" = "openrc" ]; then
+    check "init script starts with #!/sbin/openrc-run" sh -c "head -1 '$UNIT_FILE' | grep -q '^#!/sbin/openrc-run'"
+    check "init script is executable" test -x "$UNIT_FILE"
+    check_not "init script is not a SysV script" grep -q 'BEGIN INIT INFO' "$UNIT_FILE"
+fi
+check "service enabled at boot" svc_enabled
+check "service active after install" wait_for 30 svc_active
+check "health endpoint answers after install" wait_for 60 healthz_up
+
+echo "=== [$INIT_MODE] Service restart ==="
+OLD_PID=$(svc_pid)
+${PROJECT_NAME} --service restart
+check "service active after restart" wait_for 30 svc_active
+check "health endpoint answers after restart" wait_for 60 healthz_up
+check "restart replaced the process" test "$(svc_pid)" != "$OLD_PID"
+
+echo "=== [$INIT_MODE] Service stop and start ==="
+${PROJECT_NAME} --service stop
+check "service stopped" wait_for 30 svc_stopped
+check_not "health endpoint is down while stopped" curl -q -LSsf --max-time 3 "$API"
+${PROJECT_NAME} --service start
+check "service active after start" wait_for 30 svc_active
+check "health endpoint answers after start" wait_for 60 healthz_up
+
+echo "=== API Endpoint Tests ==="
+# JSON response (default)
+curl -q -LSsf http://localhost:80/api/{api_version}/server/healthz || fail "/api/{api_version}/server/healthz"
+# .txt extension (plain text)
+curl -q -LSsf http://localhost:80/api/{api_version}/server/healthz.txt || fail "/api/{api_version}/server/healthz.txt"
+# Accept: application/json
+curl -q -LSsf -H 'Accept: application/json' http://localhost:80/server/healthz || fail "Accept JSON"
+# Accept: text/plain
+curl -q -LSsf -H 'Accept: text/plain' http://localhost:80/server/healthz || fail "Accept text/plain"
+
+echo "=== Project-Specific Endpoint Tests ==="
+# MUST test ALL endpoints from IDEA.md - both API and frontend
+# Test FULL CRUD if project has CRUD operations
+#
+# Example for jokes API (API routes with .txt extension):
+#   curl -q -LSsf http://localhost:80/api/{api_version}/jokes/random || fail "API JSON"
+#   curl -q -LSsf http://localhost:80/api/{api_version}/jokes/random.txt || fail "API .txt"
+#   curl -q -LSsf -H 'Accept: text/plain' http://localhost:80/api/{api_version}/jokes/random || fail "API Accept text"
+#
+# Example for jokes frontend (smart detection, no .txt - test with text for simplicity):
+#   JOKE=$(curl -q -LSsf http://localhost:80/jokes/random)
+#   if echo "$JOKE" | grep -q "Why"; then pass "Frontend text works"; else fail "Frontend text"; fi
+#   curl -q -LSsfI -H 'Accept: text/html' http://localhost:80/jokes/random | grep -q 'text/html' || fail "Frontend HTML"
+#
+# Example for open data CRUD (full test suite):
+#   curl -q -LSsf http://localhost:80/api/{api_version}/items || fail "LIST items API"
+#   curl -q -LSsf http://localhost:80/api/{api_version}/items/1 || fail "GET item API JSON"
+#   curl -q -LSsf http://localhost:80/api/{api_version}/items/1.txt || fail "GET item API .txt"
+#   curl -q -LSsf -X POST -H 'Content-Type: application/json' -d '{"name":"test"}' http://localhost:80/api/{api_version}/items || fail "CREATE item API"
+#   ITEMS=$(curl -q -LSsf http://localhost:80/items)
+#
+# Test ALL project-specific endpoints defined in IDEA.md
+
+echo "=== Open API Smoke Test ==="
+# No auth required: all endpoints are publicly accessible
+if curl -q -LSsf http://localhost:80/server/healthz | grep -q '"status"'; then pass "Health endpoint works"; else fail "Health endpoint"; fi
+
+echo "=== Binary Rename Tests ==="
+# Binaries show the ACTUAL name in --help/--version (not hardcoded)
+cp /usr/local/bin/${PROJECT_NAME} /tmp/renamed-server
+chmod +x /tmp/renamed-server
+if /tmp/renamed-server --help 2>&1 | grep -q 'renamed-server'; then pass "Server binary rename works (--help shows actual name)"; else fail "Server --help does not show renamed binary name"; fi
+
+echo "=== Client Tests (if exists) ==="
+if [ -f /usr/local/bin/${PROJECT_NAME}-cli ]; then
+    ${PROJECT_NAME}-cli --version || fail "CLI --version"
+    ${PROJECT_NAME}-cli --help || fail "CLI --help"
+
+    cp /usr/local/bin/${PROJECT_NAME}-cli /tmp/renamed-cli
+    chmod +x /tmp/renamed-cli
+    if /tmp/renamed-cli --help 2>&1 | grep -q 'renamed-cli'; then pass "CLI binary rename works"; else fail "CLI --help does not show renamed binary name"; fi
+
+    echo '--- CLI Full Functionality Tests ---'
+    if [ -n "${API_TOKEN:-}" ]; then
+        ${PROJECT_NAME}-cli --server http://localhost:80 --token "$API_TOKEN" status || fail "CLI status"
+        # Project-specific CLI commands go here (IDEA.md)
+    else
+        ${PROJECT_NAME}-cli --server http://localhost:80 status || echo 'CLI status (no token) failed or not applicable'
+    fi
+else
+    echo 'client not installed - skipping'
 fi
 
-# Ensure curl is available for testing
-incus exec "$CONTAINER_NAME" -- bash -c "command -v curl || apt-get update && apt-get install -y curl" >/dev/null 2>&1
+echo "=== Agent Tests (if exists) ==="
 
-echo "Running tests in Incus..."
-incus exec "$CONTAINER_NAME" -- bash -c "
-    set -eo pipefail
+echo "=== [$INIT_MODE] Tor hidden service (tor is installed in this container) ==="
+DATA_ROOT="/var/lib/${INTERNAL_ORG}/${INTERNAL_NAME}"
+CONF_ROOT="/etc/${INTERNAL_ORG}/${INTERNAL_NAME}"
+check "tor binary is installed" command -v tor
+check "features.tor.enabled is true" test "$(overlay tor enabled)" = "true"
+case "$(overlay tor status)" in
+    disabled|starting|healthy|unavailable) pass "features.tor.status is one of the four contract words" ;;
+    *) fail "features.tor.status is not one of the four contract words" ;;
+esac
+# Bootstrap needs outbound network. REQUIRE_OVERLAY=1 makes a missing network a failure instead of a SKIP.
+for _ in $(seq 1 "${TOR_WAIT:-300}"); do [ "$(overlay tor status)" = "healthy" ] && break; sleep 1; done
+if [ "$(overlay tor status)" = "healthy" ]; then
+    if [[ "$(overlay tor hostname)" =~ ^[a-z2-7]{56}\.onion$ ]]; then pass "tor hostname is a v3 onion address"; else fail "tor hostname is not a v3 onion address"; fi
+    check "features.tor.running is true" test "$(overlay tor running)" = "true"
+    check "checks.tor is ok" test "$(healthz | jq -r '.checks.tor')" = "ok"
+    check "onion hostname file persisted" test -s "${DATA_ROOT}/tor/site/hostname"
+    for d in "${CONF_ROOT}/tor" "${DATA_ROOT}/tor" "${DATA_ROOT}/tor/site"; do
+        check "$d is mode 700" test "$(stat -c %a "$d")" = "700"
+    done
+elif [ "${REQUIRE_OVERLAY:-0}" = "1" ]; then
+    fail "Tor did not become healthy within ${TOR_WAIT:-300}s"
+else
+    echo "SKIP: Tor did not bootstrap within ${TOR_WAIT:-300}s (no outbound network?). The contract is still checked."
+    case "$(overlay tor status)" in
+        starting) check "starting maps to checks.tor ok" test "$(healthz | jq -r '.checks.tor')" = "ok" ;;
+        unavailable) check "unavailable maps to checks.tor degraded" test "$(healthz | jq -r '.checks.tor')" = "degraded" ;;
+        *) fail "Tor is neither starting nor unavailable while not healthy" ;;
+    esac
+fi
+if healthz | grep -Eq '/(etc|var|home|config|data)/'; then fail "health response leaks a filesystem path"; else pass "health response carries no filesystem path"; fi
 
-    echo '=== Version Check ==='
-    ${PROJECT_NAME} --version
+echo "=== [$INIT_MODE] Tor missing binary (must be disabled, never an error) ==="
+TOR_BIN=$(command -v tor)
+mv "$TOR_BIN" "${TOR_BIN}.hidden"
+${PROJECT_NAME} --service restart
+wait_for 60 healthz_up
+check "enabled is false without the binary" test "$(overlay tor enabled)" = "false"
+check "running is false" test "$(overlay tor running)" = "false"
+check "status is disabled" test "$(overlay tor status)" = "disabled"
+check "hostname is empty" test -z "$(overlay tor hostname)"
+check "checks.tor is omitted" test "$(healthz | jq '(.checks | has("tor"))')" = "false"
+mv "${TOR_BIN}.hidden" "$TOR_BIN"
+${PROJECT_NAME} --service restart
+wait_for 60 healthz_up
 
-    echo '=== Help Check ==='
-    ${PROJECT_NAME} --help
+echo "=== [$INIT_MODE] I2P (opt-in, i2pd is installed in this container) ==="
+check "i2pd binary is installed" command -v i2pd
+check "i2p is disabled by default" test "$(overlay i2p status)" = "disabled"
+check "features.i2p.enabled is false by default" test "$(overlay i2p enabled)" = "false"
+check "checks.i2p is omitted by default" test "$(healthz | jq '(.checks | has("i2p"))')" = "false"
+# Opt in through a yaml.d drop-in (this also exercises the drop-in directory)
+mkdir -p "${CONF_ROOT}/yaml.d"
+printf 'server:\n  i2p:\n    enabled: true\n' > "${CONF_ROOT}/yaml.d/50-i2p.yml"
+chmod 0644 "${CONF_ROOT}/yaml.d/50-i2p.yml"
+${PROJECT_NAME} --service restart
+wait_for 60 healthz_up
+check "features.i2p.enabled is true after opt-in" test "$(overlay i2p enabled)" = "true"
+check "features.i2p.provider is i2pd" test "$(overlay i2p provider)" = "i2pd"
+case "$(overlay i2p status)" in
+    starting|healthy|unavailable) pass "features.i2p.status is a contract word for an enabled network" ;;
+    *) fail "features.i2p.status is not valid for an enabled network" ;;
+esac
+for _ in $(seq 1 "${I2P_WAIT:-600}"); do [ "$(overlay i2p status)" = "healthy" ] && break; sleep 1; done
+if [ "$(overlay i2p status)" = "healthy" ]; then
+    if [[ "$(overlay i2p hostname)" =~ ^[a-z2-7]{52}\.b32\.i2p$ ]]; then pass "i2p hostname is a .b32.i2p address"; else fail "i2p hostname is not a .b32.i2p address"; fi
+    check "features.i2p.running is true" test "$(overlay i2p running)" = "true"
+    check "checks.i2p is ok" test "$(healthz | jq -r '.checks.i2p')" = "ok"
+    check "destination key persisted" sh -c "find '${DATA_ROOT}/i2p/site' -type f -size +0 | grep -q ."
+elif [ "${REQUIRE_OVERLAY:-0}" = "1" ]; then
+    fail "I2P did not become healthy within ${I2P_WAIT:-600}s"
+else
+    echo "SKIP: I2P did not build tunnels within ${I2P_WAIT:-600}s (no outbound network?). The contract is still checked."
+fi
+if healthz | grep -Eq '/(etc|var|home|config|data)/'; then fail "health response leaks a filesystem path"; else pass "health response carries no filesystem path"; fi
 
-    echo '=== Binary Info ==='
-    ls -lh /usr/local/bin/${PROJECT_NAME}
-    file /usr/local/bin/${PROJECT_NAME}
+echo "=== [$INIT_MODE] I2P missing provider (opted in, no i2pd: disabled, never an error) ==="
+I2PD_BIN=$(command -v i2pd)
+mv "$I2PD_BIN" "${I2PD_BIN}.hidden"
+${PROJECT_NAME} --service restart
+wait_for 60 healthz_up
+check "enabled is false without a provider" test "$(overlay i2p enabled)" = "false"
+check "status is disabled" test "$(overlay i2p status)" = "disabled"
+check "provider is none" test "$(overlay i2p provider)" = "none"
+check "checks.i2p is omitted" test "$(healthz | jq '(.checks | has("i2p"))')" = "false"
+mv "${I2PD_BIN}.hidden" "$I2PD_BIN"
+rm -f "${CONF_ROOT}/yaml.d/50-i2p.yml"
+${PROJECT_NAME} --service restart
+wait_for 60 healthz_up
 
-    echo '=== Service Install Test ==='
-    ${PROJECT_NAME} --service --install
+[ "$FAILURES" -eq 0 ] || { echo "$FAILURES check(s) failed"; exit 1; }
+echo "=== [$INIT_MODE] Main tests passed ==="
+REMOTE_MAIN_EOF
+)
 
-    echo '=== Service Status ==='
-    systemctl status ${PROJECT_NAME} || true
+REMOTE_AFTER=$(cat <<'REMOTE_AFTER_EOF'
+echo "=== [$INIT_MODE] Boot persistence (container was restarted) ==="
+check "service still enabled after reboot" svc_enabled
+check "service came back after reboot" wait_for 120 svc_active
+check "health endpoint answers after reboot" wait_for 120 healthz_up
 
-    echo '=== Service Start Test ==='
-    systemctl start ${PROJECT_NAME}
-    sleep 2
-    systemctl status ${PROJECT_NAME}
+echo "=== [$INIT_MODE] Service disable (keeps the service file) ==="
+${PROJECT_NAME} --service --disable
+check_not "service not enabled after --disable" svc_enabled
+check "service not active after --disable" wait_for 30 svc_stopped
+check "service file kept after --disable" test -f "$UNIT_FILE"
 
-    echo '=== API Endpoint Tests ==='
-    # Test JSON response (default)
-    curl -q -LSsf http://localhost:80/api/{api_version}/server/healthz || echo 'FAILED: /api/{api_version}/server/healthz'
+echo "=== [$INIT_MODE] Service re-install ==="
+${PROJECT_NAME} --service --install
+check "service enabled again" svc_enabled
+check "service active again" wait_for 30 svc_active
+check "health endpoint answers again" wait_for 60 healthz_up
 
-    # Test .txt extension (plain text)
-    curl -q -LSsf http://localhost:80/api/{api_version}/server/healthz.txt || echo 'FAILED: /api/{api_version}/server/healthz.txt'
+echo "=== [$INIT_MODE] Service uninstall (confirmation prompt answered with y) ==="
+printf 'y\n' | ${PROJECT_NAME} --service --uninstall
+check_not "service file removed" test -e "$UNIT_FILE"
+check_not "service not enabled" svc_enabled
+check "service not active" wait_for 30 svc_stopped
+check_not "data directory removed" test -d "/var/lib/${INTERNAL_ORG}/${INTERNAL_NAME}"
 
-    # Test Accept header: application/json
-    curl -q -LSsf -H 'Accept: application/json' http://localhost:80/server/healthz || echo 'FAILED: Accept JSON'
+[ "$FAILURES" -eq 0 ] || { echo "$FAILURES check(s) failed"; exit 1; }
+echo "=== [$INIT_MODE] All tests passed ==="
+REMOTE_AFTER_EOF
+)
 
-    # Test Accept header: text/plain
-    curl -q -LSsf -H 'Accept: text/plain' http://localhost:80/server/healthz || echo 'FAILED: Accept text/plain'
+# Run a script inside the container with the init mode and project names
+remote() {
+    local container="$1" init="$2" script="$3"
+    printf '%s\n' "$script" | incus exec "$container" -- env INIT_MODE="$init" PROJECT_NAME="$PROJECT_NAME" PROJECT_ORG="$PROJECT_ORG" \
+        INTERNAL_NAME="$INTERNAL_NAME" INTERNAL_ORG="$INTERNAL_ORG" REQUIRE_OVERLAY="${REQUIRE_OVERLAY:-0}" \
+        TOR_WAIT="${TOR_WAIT:-300}" I2P_WAIT="${I2P_WAIT:-600}" bash -s
+}
 
-    echo '=== Project-Specific Endpoint Tests ==='
-    # MUST test ALL endpoints from IDEA.md - both API and frontend
-    # Test FULL CRUD if project has CRUD operations
-    #
-    # Example for jokes API (API routes with .txt extension):
-    #   curl -q -LSsf http://localhost:80/api/{api_version}/jokes/random || echo 'FAILED: API JSON'
-    #   curl -q -LSsf http://localhost:80/api/{api_version}/jokes/random.txt || echo 'FAILED: API .txt'
-    #   curl -q -LSsf -H 'Accept: text/plain' http://localhost:80/api/{api_version}/jokes/random || echo 'FAILED: API Accept text'
-    #
-    # Example for jokes frontend (smart detection, no .txt - test with text for simplicity):
-    #   JOKE=\$(curl -q -LSsf http://localhost:80/jokes/random)  # CLI auto-detects text
-    #   if echo "\$JOKE" | grep -q "Why"; then echo '✓ Frontend text works'; else echo 'FAILED: Frontend text'; fi
-    #   # Optional: verify HTML is served to browsers
-    #   curl -q -LSsfI -H 'Accept: text/html' http://localhost:80/jokes/random | grep -q 'text/html' || echo 'FAILED: Frontend HTML'
-    #
-    # Example for user CRUD (full test suite):
-    #   # API - Current user
-    #   curl -q -LSsf http://localhost:80/api/{api_version}/users || echo 'FAILED: GET current user API'
-    #   curl -q -LSsf -X PATCH -H 'Content-Type: application/json' -d '{\"email\":\"new@test.com\"}' http://localhost:80/api/{api_version}/users || echo 'FAILED: UPDATE current user API'
-    #   # API - Public profile (by username)
-    #   curl -q -LSsf http://localhost:80/api/{api_version}/users/testuser || echo 'FAILED: READ public profile API JSON'
-    #   curl -q -LSsf http://localhost:80/api/{api_version}/users/testuser.txt || echo 'FAILED: READ public profile API .txt'
-    #   # API - Admin routes (by ID)
-    #   curl -q -LSsf http://localhost:80/api/{api_version}/server/{admin_path}/users || echo 'FAILED: LIST users admin API'
-    #   curl -q -LSsf http://localhost:80/api/{api_version}/server/{admin_path}/users/1 || echo 'FAILED: READ user admin API'
-    #   curl -q -LSsf -X DELETE http://localhost:80/api/{api_version}/server/{admin_path}/users/1 || echo 'FAILED: DELETE user admin API'
-    #   # Frontend (smart detection - test with text for simplicity)
-    #   USERS=\$(curl -q -LSsf http://localhost:80/users)  # CLI auto-detects text (current user)
-    #   USER=\$(curl -q -LSsf http://localhost:80/testuser)  # CLI auto-detects text (public profile)
-    #
-    # Test ALL project-specific endpoints defined in IDEA.md
-
-    echo '=== Admin Setup & API Token Creation ==='
-    # Get setup token from journal
-    SETUP_TOKEN=\$(journalctl -u ${PROJECT_NAME} --no-pager 2>/dev/null | grep -oP 'Setup Token.*:\\s*\\K[a-f0-9]+' | head -1 || echo '')
-
-    if [ -n \"\$SETUP_TOKEN\" ]; then
-        echo \"Setup token found: \${SETUP_TOKEN:0:8}...\"
-
-        # Create admin account
-        curl -q -LSsf -X POST \\
-            -H \"X-Setup-Token: \$SETUP_TOKEN\" \\
-            -H \"Content-Type: application/json\" \\
-            -d '{\"username\":\"testadmin\",\"password\":\"TestPass123!\"}' \\
-            http://localhost:80/api/{api_version}/server/{admin_path}/setup || echo 'Admin setup failed (may already exist)'
-
-        # Login and get session
-        SESSION=\$(curl -q -LSsf -X POST \\
-            -H \"Content-Type: application/json\" \\
-            -d '{\"username\":\"testadmin\",\"password\":\"TestPass123!\"}' \\
-            http://localhost:80/api/{api_version}/server/auth/login | grep -oP '\"session_token\":\\s*\"\\K[^\"]+' || echo '')
-
-        if [ -n \"\$SESSION\" ]; then
-            echo '✓ Admin login successful'
-
-            # Generate API token for CLI/Agent testing
-            API_TOKEN=\$(curl -q -LSsf -X POST \\
-                -H \"Authorization: Bearer \$SESSION\" \\
-                http://localhost:80/api/{api_version}/server/{admin_path}/{admin_username}/profile/token | grep -oP '\"token\":\\s*\"\\K[^\"]+' || echo '')
-
-            if [ -n \"\$API_TOKEN\" ]; then
-                echo \"✓ API token created: \${API_TOKEN:0:12}...\"
-            else
-                echo 'API token creation failed (continuing without token)'
-            fi
-        else
-            echo 'Admin login failed (continuing without session)'
-        fi
+# Wait until the container accepts commands, its init system finished booting and the network is up
+wait_boot() {
+    local container="$1" init="$2" i state
+    for i in $(seq 1 60); do incus exec "$container" -- true 2>/dev/null && break; sleep 1; done
+    if [ "$init" = "systemd" ]; then
+        # "degraded" is normal in a container; only "starting" means boot is unfinished
+        for i in $(seq 1 90); do
+            state=$(incus exec "$container" -- systemctl is-system-running 2>/dev/null || true)
+            [ -n "$state" ] && [ "$state" != "starting" ] && break
+            sleep 1
+        done
     else
-        echo 'No setup token found (server may already be configured)'
+        for i in $(seq 1 60); do incus exec "$container" -- test -d /run/openrc 2>/dev/null && break; sleep 1; done
+    fi
+    for i in $(seq 1 60); do incus exec "$container" -- sh -c 'ip route | grep -q "^default"' 2>/dev/null && break; sleep 1; done
+}
+
+run_mode() {
+    local init="$1" image container
+    if [ "$init" = "systemd" ]; then image="$INCUS_IMAGE_SYSTEMD"; else image="$INCUS_IMAGE_OPENRC"; fi
+    container="${CONTAINER_PREFIX}-${init}"
+    CONTAINERS+=("$container")
+
+    echo "=== [$init] Launching Incus container ($image) ==="
+    incus launch "$image" "$container"
+    wait_boot "$container" "$init"
+
+    echo "=== [$init] Installing test tools, tor and i2pd ==="
+    if [ "$init" = "systemd" ]; then
+        incus exec "$container" -- bash -c 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl jq file tor i2pd' >/dev/null
+        # The distro tor/i2pd services are NOT what is tested: the server runs its own dedicated, isolated instances (PART 31)
+        incus exec "$container" -- systemctl disable --now tor.service tor@default.service i2pd.service 2>/dev/null || true
+    else
+        incus exec "$container" -- sh -c 'apk add --no-cache bash curl jq file tor i2pd' >/dev/null
+        incus exec "$container" -- sh -c 'rc-service tor stop; rc-service i2pd stop; rc-update del tor; rc-update del i2pd' 2>/dev/null || true
     fi
 
-    echo '=== Binary Rename Tests ==='
-    # Test that binaries show ACTUAL name in --help/--version (not hardcoded)
-    cp /usr/local/bin/${PROJECT_NAME} /tmp/renamed-server
-    chmod +x /tmp/renamed-server
-    if /tmp/renamed-server --help 2>&1 | grep -q 'renamed-server'; then
-        echo '✓ Server binary rename works (--help shows actual name)'
-    else
-        echo '✗ FAILED: Server --help does not show renamed binary name'
+    echo "=== [$init] Copying binaries to container ==="
+    incus file push "${BIN_DIR}/${PROJECT_NAME}" "$container/usr/local/bin/"
+    incus exec "$container" -- chmod +x "/usr/local/bin/${PROJECT_NAME}"
+    if [ -f "${BIN_DIR}/${PROJECT_NAME}-cli" ]; then
+        incus file push "${BIN_DIR}/${PROJECT_NAME}-cli" "$container/usr/local/bin/"
+        incus exec "$container" -- chmod +x "/usr/local/bin/${PROJECT_NAME}-cli"
     fi
 
-    echo '=== Client Tests (if exists) ==='
-    if [ -f /usr/local/bin/${PROJECT_NAME}-cli ]; then
-        ${PROJECT_NAME}-cli --version || echo 'FAILED: CLI --version'
-        ${PROJECT_NAME}-cli --help || echo 'FAILED: CLI --help'
+    echo "=== [$init] Running tests in Incus ==="
+    remote "$container" "$init" "${REMOTE_LIB}${REMOTE_MAIN}"
 
-        # Test binary rename
-        cp /usr/local/bin/${PROJECT_NAME}-cli /tmp/renamed-cli
-        chmod +x /tmp/renamed-cli
-        if /tmp/renamed-cli --help 2>&1 | grep -q 'renamed-cli'; then
-            echo '✓ CLI binary rename works'
-        else
-            echo '✗ FAILED: CLI --help does not show renamed binary name'
-        fi
+    echo "=== [$init] Restarting the container (boot persistence) ==="
+    incus restart "$container"
+    wait_boot "$container" "$init"
+    remote "$container" "$init" "${REMOTE_LIB}${REMOTE_AFTER}"
+}
 
-        # Full CLI functionality tests against server
-        echo '--- CLI Full Functionality Tests ---'
-        if [ -n \"\${API_TOKEN:-}\" ]; then
-            # Test with API token
-            ${PROJECT_NAME}-cli --server http://localhost:80 --token \"\$API_TOKEN\" status || echo 'CLI status failed'
-            # Project-specific CLI commands go here (IDEA.md)
-        else
-            # Test without token (anonymous if allowed)
-            ${PROJECT_NAME}-cli --server http://localhost:80 status || echo 'CLI status (no token) failed or not applicable'
-        fi
-    else
-        echo 'client not installed - skipping'
-    fi
+# One container per init system, run one after the other (never in parallel)
+run_mode_list() {
+    local init
+    for init in $MODES; do
+        run_mode "$init"
+    done
+}
+run_mode_list
 
-    echo '=== Agent Tests (if exists) ==='
-    if [ -f /usr/local/bin/${PROJECT_NAME}-agent ]; then
-        ${PROJECT_NAME}-agent --version || echo 'FAILED: Agent --version'
-        ${PROJECT_NAME}-agent --help || echo 'FAILED: Agent --help'
-
-        # Test binary rename
-        cp /usr/local/bin/${PROJECT_NAME}-agent /tmp/renamed-agent
-        chmod +x /tmp/renamed-agent
-        if /tmp/renamed-agent --help 2>&1 | grep -q 'renamed-agent'; then
-            echo '✓ Agent binary rename works'
-        else
-            echo '✗ FAILED: Agent --help does not show renamed binary name'
-        fi
-
-        # Full Agent functionality tests against server
-        echo '--- Agent Full Functionality Tests ---'
-        if [ -n \"\${API_TOKEN:-}\" ]; then
-            # Test agent registration/status with API token
-            ${PROJECT_NAME}-agent --server http://localhost:80 --token \"\$API_TOKEN\" status || echo 'Agent status failed'
-            # Project-specific agent commands go here (IDEA.md)
-        else
-            echo 'Agent tests skipped (no API token)'
-        fi
-    else
-        echo 'Agent not installed - skipping'
-    fi
-
-    echo '=== Service Stop Test ==='
-    systemctl stop ${PROJECT_NAME}
-
-    echo '=== All tests passed ==='
-"
-
-echo "Incus tests completed successfully"
+echo "Incus tests completed successfully ($MODES)"
 ```
+
+**Init-system matrix (both modes are REQUIRED; `./tests/incus.sh` with no argument runs both, one after the other):**
+
+| Mode | Image | Service file | Native commands used to VERIFY (the binary's own `--service` commands do the ACTING) |
+|------|-------|--------------|--------------------------------------------------------------------------------------|
+| `systemd` | `images:debian/trixie` (latest Debian stable) | `/etc/systemd/system/{internal_name}.service` | `systemctl is-active`, `is-enabled`, `show -p MainPID` |
+| `openrc` | `images:alpine/{latest_stable}` (the newest numbered Alpine release, for example `3.24`; never `edge`) | `/etc/init.d/{internal_name}` (`#!/sbin/openrc-run`) | `rc-service {internal_name} status`, `rc-update show default`, the pid file |
+
+**Every mode runs the same steps, in this order:** init identity (PID 1, and no foreign init) → `--service --install` (file exists, enabled, active, health answers) → `--service restart` (new PID) → `--service stop` (stopped, port closed) → `--service start` → API, project-specific, rename and client tests → Tor tests → I2P tests → `incus restart` of the container (service still enabled and back by itself, health answers) → `--service --disable` (not enabled, not active, file kept) → `--service --install` again → `--service --uninstall` (file removed, not enabled, not active, data removed).
+
+**Tor and I2P are tested with both installed.** The script installs `tor` and `i2pd` in the container (`apt-get install tor i2pd` on Debian, `apk add tor i2pd` on Alpine) and disables the distro's own `tor` and `i2pd` services, because the server runs its own dedicated, isolated instances (PART 31):
+
+| Test | Expected |
+|------|----------|
+| Tor with the binary present | `features.tor.enabled: true`; `status` is one of the four contract words; within `TOR_WAIT` seconds (default 300) it becomes `healthy` with a v3 `.onion` hostname, `checks.tor: ok`, a persisted `hostname` file, and mode `0700` on the config, data and `site` directories |
+| Tor with the binary removed | `enabled: false`, `status: disabled`, empty hostname, NO `checks.tor` key (never `error`, never `unavailable`) |
+| I2P before opt-in | `enabled: false`, `status: disabled`, no `checks.i2p` key |
+| I2P opted in through a `yaml.d/50-i2p.yml` drop-in | `enabled: true`, `provider: i2pd`; within `I2P_WAIT` seconds (default 600) it becomes `healthy` with a `.b32.i2p` hostname, `checks.i2p: ok` and a persisted destination key |
+| I2P opted in, `i2pd` removed | `enabled: false`, `status: disabled`, `provider: none`, no `checks.i2p` key |
+| Any state | the health response never contains a filesystem path |
+
+Bootstrapping Tor and I2P needs outbound network access from the container. When the network is missing, the `healthy` checks print `SKIP` and the contract checks still run; `REQUIRE_OVERLAY=1` turns a missing bootstrap into a failure (use it for the release run). The script exits non-zero when any check failed; a failure is never printed and then ignored.
 
 #### tests/run_tests.sh
 
@@ -48417,6 +48623,12 @@ incus launch images:debian/trixie test-{project_name}
 incus file push binaries/{project_name} test-{project_name}/usr/local/bin/
 incus exec test-{project_name} -- {project_name} --help
 incus delete test-{project_name} --force
+
+# Test in Incus (full OS with OpenRC) - PREFERRED, newest numbered Alpine release
+incus launch images:alpine/3.24 test-{project_name}-openrc
+incus file push binaries/{project_name} test-{project_name}-openrc/usr/local/bin/
+incus exec test-{project_name}-openrc -- {project_name} --help
+incus delete test-{project_name}-openrc --force
 ```
 
 ### Testing with Config/Data
@@ -52990,6 +53202,7 @@ func enforcePrivate(path string, mode os.FileMode) error {
 | **Ownership** | Set once by startup (as root: `chown -R` to the service user, step 8c; as a normal user: the running user creates the directories). `enforcePrivate` never chowns and never fails because of ownership alone |
 | **Enforce on exist** | Call `enforcePrivate` on every Tor directory and file at every start. It runs `chmod` only when the mode differs. A permission error from `chmod` is tolerated ONLY when the path is already private (no group or other bits), which is the normal case for a container volume owned by another uid. It then verifies the server can write there. A path that is neither private nor fixable is a hard error with an actionable log message (never in the health response) |
 | **Idempotent** | Safe to call multiple times |
+| **Tests** | Table-driven unit tests with a temp directory: wrong mode gets fixed; `chmod` denied on an already private path passes; `chmod` denied on a group- or world-accessible path fails; a directory the server cannot write to fails. The tests assert the error text stays out of the health response (see PART 13 → "Overlay Network Health") |
 | **Windows** | chmod/chown skipped; Windows uses inherited ACLs from user profile |
 
 **Tor File Permissions (Unix - Windows uses inherited ACLs):**
