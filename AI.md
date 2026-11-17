@@ -127,11 +127,11 @@ AI reads AI.md for the first time
 
 **See `IDEA.md` for features, data models, and business rules.**
 
-IDEA.md is the project PLAN. AI.md (this file) is the SOURCE OF TRUTH.
+IDEA.md is the project PLAN. AI.md (this file) is the SOURCE OF TRUTH for the template baseline; only a SPEC.md override can differ from it.
 
 | File | Role | Update When |
 |------|------|-------------|
-| **AI.md** | SOURCE OF TRUTH - implementation rules (readonly template copy) | No — use SPEC.md for project-specific rule overrides |
+| **AI.md** | SOURCE OF TRUTH for the template baseline - implementation rules (readonly template copy) | No — use SPEC.md for project-specific rule overrides |
 | **SPEC.md** | Project-specific rule overrides — created only when a rule must contradict the template or global. May be empty. SPEC.md wins over AI.md. | When a project rule must differ from the template or global |
 | **IDEA.md** | PROJECT PLAN - must follow AI.md | Features change, project variables change |
 
@@ -702,7 +702,7 @@ if cacheSize > 1024*1024*1024 {
 | **Unsafe PR triggers forbidden by default** | Do NOT use `pull_request_target` for untrusted code execution, build, test, or artifact upload paths |
 | **Secrets never exposed to forks** | Fork PR workflows run without repo secrets, write tokens, publish steps, or deployment credentials |
 | **Dependency updates are automated** | Public repos include dependency update automation for every ecosystem in use |
-| **Secret scanning is mandatory** | Public repos run `truffleHog` (`trufflesecurity/trufflehog`, Apache-2.0, no license key) on push/PR via `ci.yml`; blocking statuses: `verified` always; `unknown` (unverified) only in push/PR range scans, never in a full-history scan (scheduled runs and new-branch pushes), where unverified noise is reported but does not fail the run. Every `unknown` finding is reviewed and true false positives are allowlisted. Never use `gitleaks` — requires a commercial license for org repos |
+| **Secret scanning is mandatory** | Public repos run `truffleHog` (`trufflesecurity/trufflehog`, Apache-2.0, no license key) on push/PR via `ci.yml`; blocking statuses: `verified` always; `unknown` (unverified) only in push/PR range scans, never in a full-history scan (scheduled runs and new-branch pushes), where unverified noise is reported but does not fail the run. Every `unknown` finding is reviewed and true false positives are allowlisted in place with truffleHog's inline `trufflehog:ignore` comment on that line (no root config file exists for it). Never use `gitleaks` — requires a commercial license for org repos |
 | **Release outputs are verifiable** | Releases publish checksums, SBOM, release notes, and provenance/attestation when the host platform supports it |
 
 ### Workflow Permissions
@@ -1258,6 +1258,9 @@ Quick reference: Accept `yes/no`, `true/false`, `1/0`, `on/off`, `enable/disable
 | `.dockerignore` | ✓ | Docker ignore rules |
 | `.gitattributes` | Optional | Git attributes |
 | `Jenkinsfile` | ✓ | Jenkins pipeline — required on every project per `cicd_conventions.md` |
+| `.gitlab-ci.yml` | ✓ | GitLab CI pipeline — required on every project (PART 27: all five CI/CD providers ship) |
+| `.golangci.yml` | Optional | golangci-lint configuration, only when the project tunes the default linters |
+| `.trivyignore` | Optional | Trivy ignore list for the required image scan: one finding per line, each with a comment naming the reviewed reason |
 | `mkdocs.yml` | ✓ | MkDocs configuration |
 | `.readthedocs.yaml` | ✓ | ReadTheDocs configuration |
 | `.editorconfig` | Optional | Editor configuration |
@@ -2020,8 +2023,9 @@ Instructions for how this agent should behave...
 | `scripts/` | ✓ | Production/install scripts | No |
 | `tests/` | ✓ | Repository-root executable integration test scripts (`run_tests.sh`, `docker.sh`, `incus.sh`, `e2e.sh`, optional helpers). Go unit tests live alongside code as `*_test.go` | No |
 | `deps/` | | Optional, committed, project-specific support files not part of build/release output (e.g. scripts or Dockerfiles for building a dependency) — never a cache or temp/output dir | No |
-| `.github/` | If GitHub / public repo | GitHub Actions, community files, templates | No |
-| `.gitea/` | If Gitea | Gitea Actions, templates | No |
+| `.github/` | ✓ | GitHub Actions workflows (PART 27: every project ships all five providers' files); on a public GitHub repo also community files and templates | No |
+| `.gitea/` | ✓ | Gitea Actions workflows (PART 27) | No |
+| `.forgejo/` | ✓ | Forgejo Actions workflows (PART 27) | No |
 | `.claude/` | Auto | Claude Code config — team config (rules, agents, hooks, `settings.json`) committed; personal/runtime files gitignored | Partial (see AI-Specific Files table) |
 | `.cursor/` | Auto | Cursor AI config — `rules/`, `mcp.json` committed; personal settings gitignored | Partial (see AI-Specific Files table) |
 | `.aider/` | Auto | Aider AI config (regenerated) | **Yes** |
@@ -2906,7 +2910,7 @@ resize_for_context() {
 | "Skip the security headers, this is an internal tool" | A waiver of a mandatory requirement | Remove; mandatory parts are built exactly as AI.md defines them |
 | "Publishes a raw TCP paste port 9999" | WHAT (AI.md says such a port is documented in IDEA.md) | Keep |
 
-**IDEA.md may declare only what AI.md explicitly lets it declare:** the product's features, data models, business rules and audience; the template's explicitly OPTIONAL capabilities the project uses; and the specific items AI.md names as "declared in IDEA.md" (for example a custom build image, owner tokens, a custom raw port, a data class or compliance profile). Everything else IDEA.md says about HOW is either a copy of AI.md (remove it: duplicated rules drift when AI.md changes) or a contradiction (fix it). IDEA.md refers to AI.md by PART number instead of restating a rule.
+**IDEA.md may declare only what AI.md explicitly lets it declare:** the product's features, data models, business rules and audience; the template's explicitly OPTIONAL capabilities the project uses; and the specific items AI.md names as "declared in IDEA.md" (for example a custom build image, a custom raw port, a data class or compliance profile). Everything else IDEA.md says about HOW is either a copy of AI.md (remove it: duplicated rules drift when AI.md changes) or a contradiction (fix it). IDEA.md refers to AI.md by PART number instead of restating a rule.
 
 **When to check (every time, not only at setup):**
 
@@ -3102,7 +3106,7 @@ See IDEA.md for the full project breakdown.
 
 | File | Purpose | Update When |
 |------|---------|-------------|
-| **AI.md** | Implementation spec (HOW) - SOURCE OF TRUTH, readonly template copy | No — use SPEC.md for project-specific rule overrides |
+| **AI.md** | Implementation spec (HOW) - SOURCE OF TRUTH for the template baseline, readonly template copy | No — use SPEC.md for project-specific rule overrides |
 | **SPEC.md** | Project-specific rule overrides (optional, may be empty) | When a project rule must contradict the template or global; also used to activate optional PARTS 34-36 |
 | **IDEA.md** | Project plan (WHAT) - must follow AI.md | Features change |
 | **TODO.AI.md** | Task tracking (AI-owned) | Tasks added/completed |
@@ -3200,7 +3204,7 @@ Getting code correct on the first try is much harder than iterating with feedbac
 
 **Subagents:** do not write COMMIT_MESS or call gitcommit — complete your edits and report back to the parent instance to handle the commit. Subagents also never run `make`, tests, lint, or any build/test gate — the parent runs them once after reviewing the full diff.
 
-1. **Remove all completed items from TODO.AI.md** - delete each item only after it is fully resolved and committed; never truncate the whole file at once
+1. **Remove each completed item from TODO.AI.md** only after the commit that resolved it succeeded (see "Commit sequence" below); never truncate the whole file at once
 2. **Write COMMIT_MESS** with the following format:
 
 **Title Format:**
@@ -3237,8 +3241,7 @@ Implemented core server functionality and API.
 - The ✅ emoji MUST be used for todo completion commits
 - Title is EXACTLY: `✅ all todo items have been completed ✅`
 - Body MUST summarize what was accomplished
-- Remove completed items from TODO.AI.md as each one is fully resolved and committed — do not empty the file before writing COMMIT_MESS
-- The file should be empty only after every item has been individually removed
+- **Commit sequence (one order, no alternatives):** (1) implement a task and commit it normally; its item is still in TODO.AI.md. (2) After that commit succeeds, delete the item from TODO.AI.md. (3) The deletion is committed together with the next task. (4) The commit that deletes the LAST item uses the ✅ title and body above, so the file is empty only in that commit and an item never disappears before the commit that resolved it
 
 **Format Rules:**
 - Title line: max 64 characters (including emojis)
@@ -3260,6 +3263,8 @@ Implemented core server functionality and API.
 | Defects found while doing other work, including the exploratory pass | Fixed immediately, otherwise `TODO.AI.md` | Never left only in conversation |
 | Findings from an explicit audit (the user said "audit") with more than 5 issues | Temporary `AUDIT.AI.md` | Not `TODO.AI.md`; deleted when every issue is resolved. Five or fewer are fixed directly with no tracking file |
 | Defects or contradictions in `AI.md` itself | The local decision (follow `AI.md` as written when the project has no `SPEC.md`; record it in `SPEC.md` only when the project must deviate), plus a report appended as one bullet under `## {project_name} AI.md issues` in the `TODO.{TEMPLATE}.md` of the project's parent directory, where `{TEMPLATE}` is the template the project's `AI.md` was copied from (`API`, `SERVER` or `HYBRID`) — the shared template-maintainers' inbox; for apimgr projects (API template) `~/Projects/github/apimgr/TODO.API.md`, for webappsgo projects (SERVER template) `~/Projects/github/webappsgo/TODO.SERVER.md` | `AI.md` is read-only: never edit it, and never log its defects in `TODO.AI.md`. Maintainers clear the inbox once the template is fixed |
+
+**`TODO.AI.md` holds THIS project's implementation work only.** A defect or contradiction in the template (`AI.md`) is never an item in it: it follows the `AI.md` row of the table above, so it never blocks, delays or reopens a `TODO.AI.md` completion.
 
 ## Project Audit
 
@@ -4527,7 +4532,7 @@ Every feature MUST work via:
 - Every public page has a corresponding public API
 - Project-specific features (IDEA.md) follow same pattern
 
-**Rule:** For every web page, there's a corresponding API endpoint. For every API endpoint, the data can be displayed in a web page.
+**Rule (the pairing rule):** every web page has a corresponding API endpoint, and every USER-FACING API endpoint (project features and public server pages) has a web page that shows the same data. **Exception, system-only endpoints:** an endpoint that only programs call, never a person in a browser (the token check `/api/{api_version}/server/auth/check`, the MCP endpoint, `/api/autodiscover`, and any route whose route-table row says "machine-only"), is API-only: it has no page, and that is never a defect. PART 14 → "Frontend-Backend Integration" and the FINAL checklist apply this rule; they neither widen nor narrow it.
 
 ---
 
@@ -9307,6 +9312,9 @@ server:
       challenge: http-01
       # Use staging server for testing
       staging: false
+      # DNS-01 only: provider name and its credentials (PART 15 → DNS-01 Provider Configuration)
+      dns_provider: ""
+      dns_credentials: {}
 
   # Scheduler - manages all background tasks
   scheduler:
@@ -9384,6 +9392,14 @@ server:
       # per minute per IP (per token when authenticated) (health/status endpoints)
       requests: 120
       window: 60
+    strict:
+      # token reveal, rotate and restore (PART 8), per IP or per owner; every attempt, valid or not, counts
+      requests: 10
+      window: 900
+    auth_failures:
+      # failed authentication (invalid, revoked or expired token), per IP; at the limit the IP is locked out until the window passes
+      requests: 5
+      window: 900
     # per minute per IP (per token when authenticated) (absolute ceiling across all endpoint types)
     global_burst: 240
     # Auth endpoints — stricter limits, applied independently of the general limits above
@@ -10158,7 +10174,7 @@ data:
   # GeoIP config lives under server.geoip — see PART 20: GEOIP
 
   # Blocklists: stored in {data_dir}/security/blocklists/
-  # Config is under server.security.blocklists (see Blocklists Section)
+  # Config is under server.security.blocklists (see "Update Contract and Sources" below)
 
   cve:
     # NVD (NIST National Vulnerability Database)
@@ -10171,6 +10187,8 @@ data:
     # error surfaced. Default to the full unfiltered feed; every CVE stays
     # relevant until an actual, verified dependency-to-CPE mapping exists.
     filter_by_cpe: false
+    # Optional NVD API key: raises the request rate limit; a secret like every other key
+    api_key: ""
 
   trivy:
     # Aqua Trivy vulnerability database (optional, for container scanning)
@@ -10192,16 +10210,47 @@ data:
 ├── geoip/                        # see PART 20: GEOIP for file list
 │   └── .last_updated
 ├── blocklists/
-│   ├── firehol_level1.txt
-│   ├── spamhaus_drop.txt
+│   ├── {id}.txt                  # one file per source (the default source is firehol_level1)
 │   └── .last_updated
 ├── cve/
 │   ├── nvd.json
 │   └── .last_updated
 └── trivy/
-    ├── db.tar.gz
+    ├── trivy.db
+    ├── metadata.json
     └── .last_updated
 ```
+
+### Update Contract and Sources
+
+**Blocklist sources** (`server.security.blocklists`, file-only, hot-reloaded):
+
+```yaml
+server:
+  security:
+    blocklists:
+      enabled: true
+      sources:
+        - id: firehol_level1
+          type: ip
+          url: "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset"
+          enabled: true
+```
+
+| Field | Rule |
+|-------|------|
+| `id` | Unique, `a-z0-9_`. The stored file is `{data_dir}/security/blocklists/{id}.txt` and the health check is `blocklist_{id}` |
+| `type` | `ip` (an address or a CIDR per line, IPv4 or IPv6) or `domain` (a lowercase hostname per line; a leading `*.` matches subdomains) |
+| `url` | `https://` only; any other scheme fails config validation |
+| `enabled` | Default `true` |
+| Line format | One entry per line. Blank lines and lines starting with `#` or `;` are ignored; anything after the first whitespace or `;` on a line is ignored. A line that does not parse as the source's `type` is skipped and counted; a file with no valid entry is rejected |
+| Defaults | Exactly one source ships enabled: `firehol_level1` (type `ip`). There is no default domain source |
+
+**NVD (`cve_update`):** the API is paged. Request `resultsPerPage=2000` and advance `startIndex` until `totalResults` is reached. The first run downloads everything; later runs ask only for changes (`lastModStartDate` and `lastModEndDate`, a window of at most 120 days; a longer gap is walked in 120-day windows). Stay at or below 5 requests per 30 seconds without a key and 50 with `data.cve.api_key` set. Records are stored as the API's `cve` objects in `nvd.json` (a JSON array); an incremental update replaces records with the same CVE `id`. A `403` or `429` backs off and retries on the next run and never fails startup.
+
+**Trivy DB (`cve_update`, when `data.trivy.enabled`):** pull `data.trivy.source` with an OCI registry client, read the `application/vnd.aquasec.trivy.db.layer.v1.tar+gzip` layer and extract its `trivy.db` and `metadata.json` into `trivy/`. The pull is skipped while `NextUpdate` in the stored `metadata.json` is still in the future.
+
+**Atomic update (every data set in this section):** download or extract into a temporary file or directory beside the final path, validate it (non-empty, parses, at least one valid entry or record), then rename it over the old one; a directory is swapped by renaming the old one aside and deleting it afterwards. On any failure the previous data stays untouched and in use, a warning is logged, and the data set's health check reports it as stale (PART 13). `.last_updated` holds one line: the UTC RFC 3339 time of the last SUCCESSFUL update of that directory.
 
 ## Display Environment Detection
 
@@ -13269,7 +13318,6 @@ var restartRequiredSettings = []string{
     "ssl.min_version",
     "server.daemonize",
     "database.path",
-    "tor.enabled",
 }
 
 func categorizeChanges(changes []string) (hotReload, needsRestart []string) {
@@ -13841,6 +13889,8 @@ All templates, Swagger/OpenAPI, GraphQL, email links, etc. MUST use these resolv
 | 5 | **Public IPv6** | First public IPv6 (excludes private/link-local) |
 | 6 | **Public IPv4** | First public IPv4 (excludes 10/8, 172.16/12, 192.168/16) |
 | 7 | **localhost** | Last resort |
+
+**The request `Host` header (between priorities 1 and 2).** Priority 1 applies only when the TCP peer is a trusted proxy (PART 12 → "Trusted Proxies"); forwarded headers from any other peer are ignored. When no usable forwarded host exists, the request's own `Host` header is used when it is a valid hostname (RFC 1123, optional port) AND either `DOMAIN` is empty or the host is an entry of the `DOMAIN` list (or matches its inferred wildcard). A `Host` that is not in a non-empty `DOMAIN` list is NEVER copied into a URL, redirect, sitemap, feed, `robots.txt` or email link: the first `DOMAIN` entry is used instead (host-header injection defense). Priorities 2-7 apply when no request exists (the startup banner) or when this rule found nothing.
 
 **Public IP Detection (latest stable Go):**
 - Uses `ip.IsGlobalUnicast() && !ip.IsPrivate()`
@@ -15695,6 +15745,16 @@ The root secret all other derived material hangs off. Without it, in-flight HMAC
 |-----|--------|---------|---------|----------|
 | `server.security.encryption_key` | 32 bytes (AES-256-GCM) | `server.yml` (auto-generated on first run), alongside a companion `server.security.encryption_key_version` integer (starts at 1) | At-rest encryption for ALL sensitive server data: 2FA secrets, security report bodies (used as the AES fallback when no PGP keypair exists or when an admin has no personal pubkey, see PART 11 → "Security Reports"), and any future at-rest encrypted data. | Manual via admin panel (`/server/{admin_path}/security/encryption` → "Rotate Encryption Key"). Sensitive-operation flow (PART 5 → "Sensitive Operations"): re-prompt admin password, log to `audit.log` as `security.encryption_key_rotated`. 30-day grace for in-flight encrypted data. `encryption_key_version` is incremented on every rotation and distributed to cluster nodes via the same propagation mechanism as the key itself. |
 
+**Rotation contract (`installation_secret`, `encryption_key` and `cookie_signing_key`):**
+
+| Rule | Detail |
+|------|--------|
+| Previous value | Kept in `server.db` as the rows `app_secrets.{name}_previous` and `app_secrets.{name}_previous_until` (a UTC timestamp: the rotation time plus the grace period: 7 days for `installation_secret` and `cookie_signing_key`, 30 days for `encryption_key`). A previous `encryption_key` is stored AES-256-GCM-wrapped under the new key, never in plaintext. In a cluster the previous-value rows travel with the key through the same propagation as `encryption_key_version` |
+| Order | (1) write the previous-value rows, (2) generate the new value and persist it (a config file is written to a temp file and atomically renamed), (3) re-encrypt or re-base every dependent row EAGERLY, in batches, (4) write the audit event. A row is decrypted with the current key first and the previous key second, so a re-run skips rows that are already done |
+| Failure | The previous value is stored before the new one is used, so a crash or a failed step loses nothing. At the next start the server finishes any unfinished re-encryption: a row readable only with the previous key is re-encrypted then. A second rotation while a previous value still exists is refused until every row is readable under the current key |
+| Reads during grace | A value that fails under the current key is tried with the previous key; a success also re-encrypts that row under the current key |
+| Retirement | The daily cleanup task deletes `{name}_previous` and `{name}_previous_until` once `_until` has passed. A row that still needs the retired value fails closed and logs `security.decrypt_failed` with the table and row id, never any content |
+
 **Note on consolidation:** `server.security.encryption_key` is the canonical at-rest AES key — every place the spec talks about "encrypt this sensitive data at rest" resolves to this one key, including security report bodies. It is NOT duplicated in `app_secrets`. The three `app_secrets` rows above are HMAC keys (not AES) and a root-secret for HMAC derivation; they are stored in the DB rather than `server.yml` because they have independent rotation lifecycles and need to be visible to cluster replicas via shared DB read. `encryption_key`'s own version is instead tracked via the `encryption_key_version` field written alongside it in `server.yml` (see "Pre-existing key" above) — used to populate `server_security_encryption_key_version` in the cluster heartbeat below.
 
 **All secrets above:**
@@ -15979,6 +16039,8 @@ Server-Timing: db;dur=12.4, render;dur=3.1, total;dur=18.7
 
 ### Default Policy (per-directive)
 
+**`upgrade-insecure-requests` is conditional:** the `upgrade-insecure-requests` line below is sent only when the effective request is HTTPS (TLS on the listener, or a trusted proxy reported `https`). On plain HTTP, and for Tor and I2P responses, it is omitted, because it would upgrade same-origin CSS, scripts and forms to an HTTPS port that does not exist.
+
 ```
 default-src 'self';
 script-src 'self';
@@ -16017,7 +16079,7 @@ report-uri /api/{api_version}/server/reports/csp
 | `base-uri` | `'self'` | Prevents `<base>` tag injection redirecting relative URLs. |
 | `form-action` | `'self'` | Forms can only submit back to the app. Operator extends for OAuth providers via `csp.form_action_extra`. |
 | `object-src` | `'none'` | Blocks `<object>`, `<embed>`, `<applet>` — legacy plugin attack surface. |
-| `upgrade-insecure-requests` | enabled | Browsers auto-upgrade `http://` references to `https://` when SSL is on, eliminating mixed-content warnings. |
+| `upgrade-insecure-requests` | when HTTPS | Sent only when the effective request is HTTPS; browsers then upgrade `http://` references to `https://`, eliminating mixed-content warnings. Omitted on plain HTTP and for Tor and I2P |
 | `report-to` | `default` group | Modern Reporting API. Group definition is in the `Report-To` header above. |
 | `report-uri` | `/api/{api_version}/server/reports/csp` | Legacy CSP-report fallback for browsers that don't support `report-to` yet. |
 
@@ -16104,7 +16166,7 @@ The middleware substitutes `{request_nonce}` per response and adds the same nonc
 | Clickjacking via `<iframe src="https://victim/...">` | ✓ Yes (frame-ancestors `'self'`) |
 | `<base href="https://evil/">` redirecting all relative URLs | ✓ Yes (base-uri `'self'`) |
 | Form-action hijack to `https://evil/login` | ✓ Yes (form-action `'self'`) |
-| Mixed-content `http://` references | ✓ Yes (upgrade-insecure-requests when SSL on) |
+| Mixed-content `http://` references | ✓ Yes (upgrade-insecure-requests on HTTPS requests) |
 | Stolen session cookie replay | ✗ No (CSP can't help — session/CSRF problem) |
 | Server-side template injection | ✗ No (CSP runs in the browser; SSTI is server-side) |
 
@@ -16798,7 +16860,9 @@ web:
 
 #### Tools
 
-- **One tool per public API operation** (`{api_version}` routes), generated from the same route definitions that feed Swagger and `llms.txt` — never a hand-maintained second list.
+- **One tool per API operation the project defines** (`{api_version}` routes): the public reads AND every authenticated operation, create / read / list / update / delete included, for every resource the project defines. Everything the REST API lets a caller do, that caller can do as a tool; nothing authenticated is REST-only and nothing is added that REST lacks. Generated from the same route definitions that feed Swagger and `llms.txt` — never a hand-maintained second list.
+- **Annotations come from the HTTP method** (MCP tool annotations, so a client can ask its user before a risky call): `GET` → `readOnlyHint: true`; `DELETE` → `destructiveHint: true`; `PUT` and `DELETE` → `idempotentHint: true`; `POST` and `PATCH` → `readOnlyHint: false`.
+- **Never a tool:** the MCP endpoint itself, and every route that signs a caller in or hands out a secret: login, logout, registration, password reset, 2FA, OAuth, and any token reveal, rotate or create. MCP clients authenticate with their Bearer token, and tool results enter the model's context.
 - Tool `name` = the OpenAPI `operationId`; `description` and `inputSchema` come from the OpenAPI definition; `tools/list` returns only the tools the caller's token may use.
 - A tool call dispatches **in-process into the existing handler** with the caller's `Authorization` header — no second implementation, no loopback HTTP request, no bypass of middleware (validation, rate limits, audit, the project's ownership checks).
 - Handler errors map to the MCP tool result with `isError: true` and the API's normal error body (`ok: false`, `error`, `message`); secrets are never included in a tool result any more than in an API response.
@@ -16922,7 +16986,7 @@ The server enforces exactly what it publishes: the same descriptors drive the HT
 
 ### Security Report Storage & Operator Workflow
 
-**Table `security_reports`** lives in the application database (created by the schema migration that ships with this feature, PART 10 → "Migrations"). It is the only place report state is kept.
+**Table `security_reports`** lives in the application database (created by the idempotent startup schema, PART 10 → "Schema Updates (Idempotent Approach)"). It is the only place report state is kept.
 
 ```sql
 CREATE TABLE IF NOT EXISTS security_reports (
@@ -16934,6 +16998,8 @@ CREATE TABLE IF NOT EXISTS security_reports (
     body_enc           BLOB NOT NULL,
     body_alg           VARCHAR(16) NOT NULL,
     contact_enc        BLOB,
+    credit_pref        VARCHAR(8) NOT NULL DEFAULT 'no',
+    credit_name        VARCHAR(100),
     researcher_comment TEXT NOT NULL DEFAULT '',
     disclosure_date    DATE,
     cve_requested      BOOLEAN NOT NULL DEFAULT FALSE,
@@ -16944,20 +17010,30 @@ CREATE TABLE IF NOT EXISTS security_reports (
     closed_at          TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_security_reports_status ON security_reports(status, created_at);
+
+CREATE TABLE IF NOT EXISTS security_thanks (
+    tracking_id  VARCHAR(32) PRIMARY KEY,
+    credit       VARCHAR(120) NOT NULL,
+    severity     VARCHAR(16) NOT NULL,
+    disclosed_on DATE NOT NULL
+);
 ```
 
 | Field | Rule |
 |-------|------|
 | `tracking_id` | `sec_` + 16 random hex chars (Submission Flow step 2) |
 | `status` | `received` (default), `triaged`, `confirmed`, `patching`, `disclosed`, `wont_fix`. Shown to the researcher as Received / Triaged / Confirmed / Patching / Disclosed / Won't Fix. Moves forward, or to `wont_fix`, never backward; `disclosed` and `wont_fix` set `closed_at` |
-| `body_enc`, `body_alg`, `contact_enc` | The report body and the researcher's contact (email and optional pubkey) are encrypted exactly as Submission Flow step 3 says (PGP, or AES-256-GCM with `server.security.encryption_key`); `body_alg` is `pgp` or `aes-256-gcm`. Plaintext is never stored. `BLOB` is `BYTEA` on PostgreSQL |
+| `severity` | `critical`, `high`, `medium`, `low` or `informational` (lowercase). Starts as the researcher's self-assessment; a maintainer re-triages it (`severity` in the update). The hall of fame shows the value at disclosure |
+| `body_enc`, `body_alg`, `contact_enc` | `body_enc` is encrypted exactly as Submission Flow step 3 says (PGP, or AES-256-GCM with `server.security.encryption_key`), and `body_alg` (`pgp` or `aes-256-gcm`) describes `body_enc` ONLY. `contact_enc` (the researcher's email and optional pubkey) is ALWAYS AES-256-GCM under `server.security.encryption_key`, whatever the body uses, because the server itself must decrypt it to send status notices (a PGP blob addressed to the project key could not be read by the server); it is re-encrypted on key rotation (PART 11 → "Rotation contract"). Plaintext is never stored. `BLOB` is `BYTEA` on PostgreSQL |
 | `researcher_comment` | Plain text, at most 2000 characters, shown on the researcher status page. Never contains report content. Output-escaped when rendered |
 | `disclosure_date` | Optional expected disclosure date (ISO 8601 date), shown on the researcher status page |
+| `credit_pref`, `credit_name` | Set at submission from "Credit preference". `credit_pref` is `name` ("Yes (real name)": `credit_name` is the Name field), `handle` ("Yes (handle)": `credit_name` is the Credit handle), `anon` ("Anonymous") or `no` ("No"); `credit_name` is NULL for `anon` and `no` |
+| Hall of fame (`security_thanks`) | When an operator sets the status to `disclosed` and `credit_pref` is not `no`, one `security_thanks` row is written in the same transaction (idempotent on `tracking_id`): `credit` is `credit_name`, or `Anonymous Researcher #n` for `anon` (n is the number of existing `anon` rows plus one, fixed once written), `severity` is the report's severity at that moment, `disclosed_on` is today (UTC). The row holds no contact data and is NOT removed by report retention, so the hall of fame outlives the report |
 | `token_hash`, `token_last_used` | SHA-256 of the one-shot status token, compared in constant time; `token_last_used` enforces single use per day |
 | Retention | The daily cleanup task deletes a report row, including `body_enc` and `contact_enc`, `server.security.reports.retention_days` (default `365`) after `closed_at`. Open reports are never purged. The status link stops working 30 days after `closed_at` |
 | Backup | The table lives in the database, so every backup and restore includes it |
 
-**Operator workflow.** Maintainers manage reports in the admin panel at `/server/{admin_path}/security/reports`: a list filtered by status, a detail view with the metadata, the researcher comment, the disclosure date and the decrypted report body (decrypted on the server for the authenticated admin session, never written to a log; every view writes a `security.report_viewed` audit entry with `tracking_id` and the admin username, no content), and an update form for `status`, `researcher_comment` and `disclosure_date`. An update bumps `updated_at`, logs `security.report_updated` (`tracking_id`, old and new status, no content) to `security.log`, and, when SMTP works and `contact_enc` exists, emails the researcher a status-change notice that carries no report content. The page requires an authenticated admin session; there is no API mirror.
+**Operator workflow.** Maintainers manage reports in the admin panel at `/server/{admin_path}/security/reports`: a list filtered by status, a detail view with the metadata, the researcher comment, the disclosure date and the decrypted report body (decrypted on the server for the authenticated admin session, never written to a log; every view writes a `security.report_viewed` audit entry with `tracking_id` and the admin username, no content), and an update form for `status`, `severity`, `researcher_comment` and `disclosure_date`. An update bumps `updated_at`, logs `security.report_updated` (`tracking_id`, old and new status, no content) to `security.log`, and, when SMTP works and `contact_enc` exists, emails the researcher a status-change notice that carries no report content. The page requires an authenticated admin session; there is no API mirror.
 
 ### Public Pages
 
@@ -16967,7 +17043,7 @@ CREATE INDEX IF NOT EXISTS idx_security_reports_status ON security_reports(statu
 | `/.well-known/pgp-key.asc` | GET | None | Project's PGP public key (ASCII-armored). 404 if no keypair generated yet. |
 | `/server/security` | GET | None | Security overview page (HTML). Human-readable rendering of everything in `/.well-known/security.txt` — contact channels in RFC 9116 preference order (GitHub private vulnerability reporting, `/server/contact?security_id={id}`, `mailto:` CC address), `Expires`, and the `Encryption` key when a keypair exists — plus plain-language instructions for reporting a vulnerability. Links to `/server/security/policy`, `/server/security/thanks`, `/.well-known/pgp-key.asc`, and the machine-readable `/.well-known/security.txt`. Rendered from live config — nothing to edit. |
 | `/server/security/policy` | GET | None | Disclosure policy page (HTML). Default content provided; editable from admin panel. Lists the coordinated-disclosure window, in-scope domains, out-of-scope behaviors, safe-harbor language. |
-| `/server/security/thanks` | GET | None | Acknowledgments page. Lists researchers who opted in (real name, handle, or anonymized "Anonymous Researcher #n") with the year and short credit. |
+| `/server/security/thanks` | GET | None | Acknowledgments page. Lists researchers who opted in (real name, handle, or anonymized "Anonymous Researcher #n") with the year and severity: the `security_thanks` entries, newest first (the same entries as the API mirror). |
 | `/server/security/report/{tracking_id}` | GET | One-shot token in URL (no API mirror: explicit exception to the API-for-every-page rule, because the one-shot emailed link must not be duplicated onto the API surface) | Researcher status page — shows triage state (Received / Triaged / Confirmed / Patching / Disclosed / Won't Fix), maintainer comments visible to researcher, expected disclosure date. Token is single-use-per-day; expires after the report is closed for 30 days. |
 
 ### Admin Panel — `/server/{admin_path}/security/`
@@ -19008,6 +19084,14 @@ server:
       # per minute per IP (per token when authenticated) (health/status endpoints)
       requests: 120
       window: 60
+    strict:
+      # token reveal, rotate and restore (PART 8), per IP or per owner; every attempt, valid or not, counts
+      requests: 10
+      window: 900
+    auth_failures:
+      # failed authentication (invalid, revoked or expired token), per IP; at the limit the IP is locked out until the window passes
+      requests: 5
+      window: 900
     # per minute per IP (per token when authenticated) (absolute ceiling across all endpoint types)
     global_burst: 240
     # Auth endpoints — stricter limits, applied independently of the general limits above
@@ -19032,6 +19116,8 @@ server:
 | Write (POST, PUT, PATCH, DELETE) | 10 req/min | 60s | Per IP (anonymous) or per token (authenticated), sliding window |
 | Health / status | 120 req/min | 60s | `/server/healthz` (and the optional `/healthz` root alias) |
 | Global burst | 240 req/min | 60s | Absolute ceiling across all types |
+| Strict (token reveal, rotate, restore) | 10 / 15 min | 900s | Per IP (anonymous restore) or per owner (authenticated reveal and rotate). Every attempt, valid or not, consumes it |
+| Failed authentication | 5 failures / 15 min | 900s | Per IP, sliding window. At the limit every request from that IP, even one with a valid token, gets `429` until the oldest failure leaves the window; a success never resets the count |
 | Login | 5 req / 15 min | 900s | Per IP + per identifier |
 | Password reset | 3 req / 1 hr | 3600s | Per IP, no email hint on exceed |
 | Registration | 5 req / 1 hr | 3600s | Per IP |
@@ -21305,12 +21391,13 @@ Plain text, no color. The first line is always `{project_name} {project_version}
 
 ### Frontend-Backend Integration
 
-**API is the source of truth. Frontend consumes the API. Not every API needs a frontend route.**
+**API is the source of truth. Frontend consumes the API. Not every API needs a frontend route (PART 1 → "Endpoint Pattern" defines which).**
 
 | API Type | Frontend Required | Example |
 |----------|-------------------|---------|
 | **User-facing features** | Yes | `/api/{api_version}/users` → `/users` page |
 | **Admin features** | Yes | `/api/{api_version}/server/{admin_path}/*` → `/server/{admin_path}/*` pages |
+| **System-only (machine) endpoints** | No (API-only, marked "machine-only" in its route row) | `/api/{api_version}/server/auth/check`, the MCP endpoint, `/api/autodiscover` |
 | **Health/status** | Yes | `/server/healthz` has HTML frontend (with emojis), `/api/{api_version}/server/healthz` is JSON, `/api/healthz` is direct alias JSON |
 | **Agent endpoints** | No | `/api/{api_version}/*/agents/*` - CLI/agent only |
 | **Cluster nodes** | No | `/api/{api_version}/server/{admin_path}/nodes/*` - node-to-node only |
@@ -24044,7 +24131,7 @@ Startup (for configured FQDN)
 
 | Requirement | Description |
 |-------------|-------------|
-| **Fully Functional** | ALL features work in browser - not just API |
+| **Fully Functional** | ALL user-facing features work in browser - not just API (system-only endpoints are API-only, PART 1 → "Endpoint Pattern") |
 | **Professional UI/UX** | Clean, modern, polished design |
 | **Mobile Support** | Full responsive design with touch-friendly targets |
 | **HTML5** | Full web standards compliance |
@@ -26119,10 +26206,10 @@ textarea:user-invalid,
 | **Installable** | Meets PWA install criteria | Add to home screen |
 | **HTTPS** | Required for service workers | Non-negotiable |
 | **Push Notifications** | Web Push API via Service Worker | User opt-in required |
-| **Geolocation** | GPS access via Geolocation API | User permission required |
+| **Geolocation** | GPS access via Geolocation API | OPTIONAL: only when IDEA.md defines a feature that needs it; user permission required |
 | **User Sessions** | HttpOnly session cookie (server-side) | Persists across restarts |
-| **Background Sync** | Queue actions when offline, sync when online | Seamless offline |
-| **App Updates** | Detect new SW version, prompt user | Keep app current |
+| **Background Sync** | Queue actions when offline, sync when online | OPTIONAL: only when IDEA.md defines a feature that must work offline |
+| **App Updates** | Detect the new SW version, prompt the user, activate it only on their approval (a first install activates at once) | Keep app current |
 
 ### Service Worker Registration
 
@@ -26164,7 +26251,7 @@ if ('serviceWorker' in navigator) {
 | **Reconnect with backoff** | Every long-lived client connection (EventSource, WebSocket, polling loop) reconnects with exponential backoff (1 s -> 30 s) + jitter; every `fetch` has an `AbortController` timeout (30 s) |
 | **Restart window** | While the server is down or starting, the client shows a non-blocking "reconnecting" banner (not a frozen page) and retries; `503` + `Retry-After` is honored |
 | **New build detected** | Every API/SSE response carries the build stamp in `X-Build` (public value). When it differs from the stamp the page was rendered with, the client finishes the current action, then does ONE `location.reload()` (guarded by the `{project_name}_recovered` flag) - never mid-form-edit: if a form is dirty, show an "Update available - reload" button instead |
-| **Service worker handover** | New worker: `skipWaiting()` + `clients.claim()` (already above); the page listens for `controllerchange` and reloads once, not repeatedly |
+| **Service worker handover** | First install: the worker activates by itself and `clients.claim()` runs in `activate`. Update (a controller already exists): the new worker WAITS, the page shows the update prompt, and only after the user accepts it the page posts `SKIP_WAITING`, the worker calls `skipWaiting()`, and the page reloads once on `controllerchange`, never repeatedly |
 
 ### Service Worker Lifecycle
 
@@ -26208,8 +26295,7 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(PRECACHE_ASSETS))
-      // Activate immediately
-      .then(() => self.skipWaiting())
+      // No skipWaiting() here: an UPDATED worker waits for the user to accept the update prompt (SKIP_WAITING message); a first install has no waiting state and activates by itself
   );
 });
 
@@ -26320,7 +26406,7 @@ function offlineFallbackResponse() {
 1. User visits app
 2. Browser checks for new sw.js
 3. If changed → install event fires
-4. New SW waits until old SW's pages close (or skipWaiting)
+4. New SW waits until the user accepts the update prompt (the page sends `SKIP_WAITING`) or the old SW's pages close; a first install has nothing to wait for
 5. activate event fires → clean old caches
 6. New SW controls all pages
 ```
@@ -26533,6 +26619,8 @@ self.addEventListener('notificationclick', event => {
 
 ### Background Sync
 
+**OPTIONAL: implemented only when IDEA.md defines a feature that must work offline.** IDEA.md names each action that may be queued. Only idempotent actions (a replay is safe) are queued; a queued request never contains a credential (the replay goes through an open page that attaches the token), so the generic `/api/data` below is an illustration, never a real route; a queued request is discarded after success, after any `4xx` response, or after 24 hours; and the UI shows how many changes are waiting, with a control to discard them. A project without such a feature ships no Background Sync code.
+
 **Queue actions when offline, automatically sync when back online:**
 
 ```javascript
@@ -26592,6 +26680,8 @@ async function syncPendingData() {
 | Final | ~1 hour | Browser may give up |
 
 ### Geolocation (GPS Access)
+
+**OPTIONAL: implemented only when IDEA.md defines a feature that needs the device position.** The permission prompt appears only after a user action that needs it, never on load; the position is sent for that one request and is never stored or logged by the server beyond it; the privacy page lists it as data collected. A project without such a feature ships no Geolocation code.
 
 **Access device GPS like a native app:**
 
@@ -26823,7 +26913,7 @@ Preferences aren't tied to identity — any two guests who set the same `theme`/
 | 14 | **Import field** | An always-visible field named `code` (textarea or text input, accepts a pasted full URL, query string or short code) inside the single preferences form (rule 15) — no separate Import form or button. On save, a non-empty `code` is resolved per rule 5 and its valid values override the form's submitted values key by key (the visitor pasted it on purpose); an empty `code` is ignored. `GET /server/preferences/import` stays for shared links and API parity (rule 5 unchanged). JS may enhance (clipboard paste) but never changes the request |
 | 15 | **Page layout and buttons** | `/server/preferences` is ONE `<form method="POST" action="/server/preferences">` carrying the CSRF token and every section: appearance (`theme`), language (`lang`), cookie-consent and CCPA controls, every `{project_name}_pref_{key}` control, and a Data Management section (export block, rule 13; import field, rule 14) — all sections always visible, none collapsed or revealed by a button. The form has exactly three action buttons (the header theme toggle is a separate mini-form on other pages and is not part of this page's form): **Save** (submit; applies every changed field plus `code`, then `303` per rules 9–10), **Cancel** (a link to the rule 10 redirect target; discards unsaved edits, sends no write) and **Reset** (a `type="button"` with `popovertarget` that opens a native HTML `popover` — no JS; the popover holds the warning, an **Erase everything** submit with `action=reset`, and a dismiss control using `popovertargetaction="hide"`; those two belong to Reset, not to the page's button set; forgets the visitor completely: every noncredential cookie this app set — `theme`, `lang`, `{project_name}_pref_*`, `cookie_consent`, `ccpa_opt_out`, `{project_name}_build`, plus any other noncredential cookie the project defines (announcement dismissals, flash messages, age-verification or content-acknowledgment cookies, forwarding preferences) — is deleted (`Max-Age=0`, same `Path`/attributes as rule 8), and the `303` carries `Clear-Site-Data: "storage"` to wipe localStorage/sessionStorage/IndexedDB without JS. Defaults apply and the consent banner returns on the next page. Never deletes session, CSRF or other credential cookies — signing out is a separate action. The popover warning states exactly what is erased. Only Reset confirms — Save and Cancel never ask for confirmation. The popover is styled with CSS, and a direct `POST action=reset` behaves identically on the server). No per-section save buttons, no "Sync", "Export", "Import" or "Show" buttons; Copy controls (rule 13) are the only other controls. Owner-token management (PART 12) is NOT part of this form: it lives on its own page, `GET /server/preferences/tokens`, reached from a plain link on this page (rendered only when the project defines owner tokens), and that page's per-action mini-forms are exempt from this button limit. Reset never deletes credential cookies: session, CSRF and, when the project defines owner tokens, the owner-token cookie |
 | 16 | **Web save never `400`** | `400 VALIDATION_FAILED` (rule 11) is API-only. A web `POST /server/preferences` always answers `303` (rule 9) — including empty submits, unchecked checkboxes (absent fields), invalid values (dropped) and a bad `code`. The only `4xx` is a missing/invalid CSRF token (`403`), so the page form MUST always render the token and post only to the canonical route, never to the `/api/{api_version}/…` mirror |
-| 17 | **Consent and CCPA controls** | The page form's cookie-consent toggles (`consent_preferences`, `consent_analytics`; `essential` is always on and not a field) and CCPA opt-out toggle (`ccpa_opt_out`) are web-form-only controls handled by `POST /server/preferences`, with a hidden `consent_form=1` marker rendered inside the form. They are applied only when `consent_form=1` is present — an unchecked checkbox then means off, while a POST without the marker (the header theme toggle) never touches consent or CCPA. Applying writes `cookie_consent` (JSON per PART 16 consent state, with a fresh timestamp in Unix seconds) and `ccpa_opt_out` with the rule 8 attributes. Import and the API mirror never write them, Reset deletes them (rule 15), and they are never exported (rule 1) |
+| 17 | **Consent and CCPA controls** | The page form's cookie-consent toggles (`consent_preferences`, `consent_analytics`; `essential` is always on and not a field) and the CCPA opt-out toggle (`ccpa_opt_out`, rendered only when `server.privacy.data.sold` is `true`; otherwise absent and never written) are web-form-only controls handled by `POST /server/preferences`, with a hidden `consent_form=1` marker rendered inside the form. They are applied only when `consent_form=1` is present — an unchecked checkbox then means off, while a POST without the marker (the header theme toggle) never touches consent or CCPA. Applying writes `cookie_consent` (JSON per PART 16 consent state, with a fresh timestamp in Unix seconds) and `ccpa_opt_out` with the rule 8 attributes. Import and the API mirror never write them, Reset deletes them (rule 15), and they are never exported (rule 1) |
 
 **Page layout (`/server/preferences`) — one form, one Save, always visible:**
 ```
@@ -27508,6 +27598,8 @@ ERROR: VALIDATION_FAILED: email must be valid
 | Health (`/api/{api_version}/server/healthz`) | The flat `key: value` layout defined with the health endpoint, no `OK:` line (its JSON is the bare health object) |
 
 A route opts into bare-value output only by declaring a primary value; there is no per-request switch. Clients that need the structure use JSON.
+
+**Where the pieces come from:** `{message}` is the response's `message` when the handler set one; otherwise the default for the operation: `Retrieved successfully` (GET), `Created successfully` (POST that creates), `Updated successfully` (PUT, PATCH), `Deleted successfully` (DELETE), `OK` (anything else). `message` is optional in a JSON success body, so these defaults exist only for the text output. A route declares its primary value (`Primary`: the JSON field name, empty when there is none) once, in the same route definition that feeds Swagger and `llms.txt`. Field order is the order of the fields in the Go response struct (the order `encoding/json` writes); a `map` is written with its keys sorted alphabetically, so a response whose order matters is a struct, never a map.
 
 ## Server Response Rules
 
@@ -29287,7 +29379,7 @@ server:
 - Split into multiple sitemap files: `/sitemap-1.xml`, `/sitemap-2.xml`, etc.
 - Each sitemap file max 50,000 URLs
 
-**Absolute URLs (sitemap, feeds, `robots.txt`):** every URL these files emit is ABSOLUTE and built per request with `BuildURL(r, path)`, that is `{proto}://{fqdn}[:{port}]/path`, resolved from the request context (PART 8 → "Resolution Order"). In these files `{app_url}` means exactly that value. Never relative paths, never a value cached at startup: `<loc>`, feed `<link>`, `<id>`, `rel="self"`, `<guid>` permalinks and the `Sitemap:` line must match the host and scheme the client used (a `.onion` request gets `.onion` URLs).
+**Absolute URLs (sitemap, feeds, `robots.txt`):** every URL these files emit is ABSOLUTE and built per request with `BuildURL(r, path)`, that is `{proto}://{fqdn}[:{port}]/path`, resolved from the request context (PART 8 → "Resolution Order"). In these files `{app_url}` means exactly that value. Never relative paths, never a value cached at startup: `<loc>`, feed `<link>`, `<id>`, `rel="self"`, `<guid>` permalinks and the `Sitemap:` line must match the host and scheme the client used, as accepted by PART 8 → "Resolution Order" (a `.onion` request gets `.onion` URLs; an unlisted `Host` is replaced by the primary `DOMAIN` entry).
 
 ### Feeds (/feed.xml and /rss.xml)
 
@@ -30920,13 +31012,42 @@ func trackingScript(r *http.Request) template.HTML {
 | Value | Behavior |
 |-------|----------|
 | `simple` (default) | Built-in, self-hosted challenge: no third party, no keys, works over Tor and with JavaScript disabled. The server generates a question and stores only the hashed answer; each challenge is single-use, expires after 10 minutes and is rate-limited |
-| `recaptcha` | Google reCAPTCHA v2 checkbox. Needs `pages.contact.captcha_site_key` (public, rendered in the page) and `pages.contact.captcha_secret_key` (server-side only, kept in `server.yml` like other secrets, never returned in a response or written to a log). The server verifies by POSTing `secret`, `response` and `remoteip` to `https://www.google.com/recaptcha/api/siteverify` and accepts only `"success": true` |
-| `hcaptcha` | hCaptcha. Same two keys; verified by POSTing `secret` and `response` to `https://api.hcaptcha.com/siteverify` and accepting only `"success": true` |
+| `recaptcha` | Google reCAPTCHA v2 checkbox. Needs `pages.contact.captcha_site_key` (public, rendered in the page) and `pages.contact.captcha_secret_key` (server-side only, kept in `server.yml` like other secrets, never returned in a response or written to a log). The server verifies by POSTing `secret`, `response` and `remoteip` to `https://www.google.com/recaptcha/api/siteverify` and accepts only `"success": true`; the widget needs JavaScript, so the no-JavaScript fallback below applies |
+| `hcaptcha` | hCaptcha. Same two keys; verified by POSTing `secret` and `response` to `https://api.hcaptcha.com/siteverify` and accepting only `"success": true`; the widget needs JavaScript, so the no-JavaScript fallback below applies |
 
 - **Validation:** `recaptcha` or `hcaptcha` with an empty site key or secret key fails config validation with a clear error; the keys are ignored for `simple`
 - **Fail closed:** if the provider cannot be reached, the submission is rejected with a retryable error — never accepted unverified
 - **CSP:** only the selected provider's hosts are added to `script-src`, `frame-src` and `connect-src` (for example `https://www.google.com/recaptcha/` and `https://www.gstatic.com/recaptcha/`, or `https://hcaptcha.com` and `https://*.hcaptcha.com`)
 - **Tor and I2P:** requests served through the onion or I2P address always use `simple`, whatever `captcha` is set to — clearnet providers are never called from there (PART 16 → Tor). The same challenge protects the security-report form
+
+#### No-JavaScript fallback and the simple challenge
+
+**Every form that carries a CAPTCHA works with JavaScript disabled (PART 16).** The `recaptcha` and `hcaptcha` widgets need JavaScript, so a provider is never the only way to pass:
+
+- **Fallback:** when `captcha` is `recaptcha` or `hcaptcha`, the form renders the provider widget AND, inside `<noscript>`, the built-in simple challenge (the question text, a visible answer field and a hidden `captcha_id`). A browser with JavaScript never shows the fallback; a browser without it shows only the fallback. The fallback involves no provider script, key or request
+- **API clients** cannot solve a provider widget either, so the `GET` descriptor for a provider also carries a `fallback` object (the simple challenge): a program can always pass with the simple answer
+- **What the server accepts:** exactly one proof per submission. A provider token (`captcha_response`; browser forms post the provider's own field, `g-recaptcha-response` or `h-captcha-response`) is verified with the provider; otherwise `captcha_id` + `captcha_answer` is verified as the simple challenge. When both are present only the provider token is checked, and a failure is final (no second try with the other proof)
+- **Fail closed:** a missing, wrong, expired or already used proof rejects the submission with `VALIDATION_FAILED` (`400`) on the field `captcha`, and the error response carries a fresh `captcha` descriptor, so a retry never needs another `GET`
+
+**The simple challenge contract:**
+
+| Rule | Detail |
+|------|--------|
+| Question | Plain text only, never an image or audio, so screen readers, text browsers and Tor Browser at its strictest level all work. A short arithmetic question (two integers from 1 to 20 joined by `+` or `-`, never a negative result) phrased through the translation keys of the visitor's language; the answer is always an integer written in digits |
+| Answer check | The submitted answer is trimmed, then compared in constant time against the stored hash. The answer itself is never stored or logged |
+| Storage | Table `captcha_challenges` in the application database (idempotent startup schema), shown below |
+| Lifetime | Single-use and valid for 10 minutes. A challenge is deleted when it is used or when it expires (the `token_cleanup` task removes the leftovers) |
+| Issuing | A new challenge for every render of the form page, every `GET /api/{api_version}/server/contact` (and the security-report equivalent) and every failed submission. An issued challenge never changes |
+| Rate limit | Issuing and verifying both count against the caller's rate limiter (PART 12) |
+
+```sql
+CREATE TABLE IF NOT EXISTS captcha_challenges (
+    id          VARCHAR(32) PRIMARY KEY,
+    answer_hash VARCHAR(64) NOT NULL,
+    expires_at  TIMESTAMP NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_captcha_challenges_expires ON captcha_challenges(expires_at);
+```
 
 ### /server/help
 
@@ -31106,7 +31227,7 @@ When `server.mcp.enabled` is `false`, both routes return `404` and no link to th
 
 | Anchor | Section | Content |
 |--------|---------|---------|
-| `#overview` | What this is | One short paragraph: this application is an MCP server over Streamable HTTP (remote only); every public API operation is available to an assistant as a tool |
+| `#overview` | What this is | One short paragraph: this application is an MCP server over Streamable HTTP (remote only); every API operation the project defines, authenticated create, read, update and delete included, is available to an assistant as a tool; the token decides which ones it sees (anonymous callers see only the public ones) |
 | `#endpoint` | Endpoint | The full MCP URL resolved for this request (PART 8 → "Resolution Order", never hardcoded) with the two aliases (`/api/mcp`, `/mcp`) and a copy control; the URL text uses CSS `user-select: all` so it works without JS |
 | `#authentication` | Authentication | Requests authenticate with `Authorization: Bearer {token}` — the same tokens as the REST API, no MCP-specific token. Anonymous access works for public tools. Create a dedicated named token for the client in the account's token settings (`/users/tokens`, multi-user projects) with scope `read` or `read-write` and an expiry, so it can be revoked alone. Use an `adm_` token only for a server-admin tool, never for a general MCP client. |
 | `#connect` | Connect a client | Copy-paste snippets using the resolved URL and the project name: a Claude Code command (`claude mcp add --transport http {project_name} {url} --header "Authorization: Bearer $MCP_TOKEN"`), a generic JSON client config (`mcpServers` with `type`, `url`, `headers`), and a `curl` `initialize` request that verifies the connection. The token is the only value the page cannot know, so it appears as the shell variable `$MCP_TOKEN` — no other placeholders |
@@ -31216,18 +31337,18 @@ server:
 
 | Route | Method | Description |
 |-------|--------|-------------|
-| `/api/{api_version}/server/about` | GET | About information (JSON) |
+| `/api/{api_version}/server/about` | GET | About page (JSON, no auth): `title`, `content` (the Markdown source of `pages.about.content` after placeholder substitution, never rendered HTML) and `format` (always `markdown`) |
 | `/api/{api_version}/server/privacy` | GET | Privacy policy (JSON) |
-| `/api/{api_version}/server/contact` | GET | Contact form description (JSON, no auth): `fields` (list of `{name, type, required, max_length, required_when, max_length_when}`, see "Length limits"), `captcha` (`{provider, site_key}` for `recaptcha`-style providers, `{provider, challenge_id, question}` for `simple`), `security_url`, `abuse_email`. Nothing else about recipients |
-| `/api/{api_version}/server/contact` | POST | Submit contact form |
+| `/api/{api_version}/server/contact` | GET | Contact form description (JSON, no auth): `fields` (list of `{name, type, required, max_length, required_when, max_length_when}`, see "Length limits"), `captcha` (`{provider: "simple", challenge_id, question}` for `simple`; `{provider, site_key, fallback}` for `recaptcha` and `hcaptcha`, where `fallback` is the same `{provider: "simple", challenge_id, question}` object; a new challenge on every call), `security_url`, `abuse_email`. Nothing else about recipients |
+| `/api/{api_version}/server/contact` | POST | Submit contact form: the fields above plus ONE captcha proof (`captcha_response`, or `captcha_id` + `captcha_answer`; see "No-JavaScript fallback and the simple challenge") |
 | `/api/{api_version}/server/auth/check` | GET | Token check (machine-only, no page; `Authorization: Bearer` required): `200` with `{kind}` when the token is valid (`kind` is `operator`, `owner` or, where the project has accounts, `user`), `401` otherwise. Side-effect free, rate-limited like other auth endpoints, never echoes the token |
-| `/api/{api_version}/server/help` | GET | Help content (JSON) |
-| `/api/{api_version}/server/help/mcp` | GET | MCP help content (JSON); `404` when MCP is disabled |
-| `/api/{api_version}/server/terms` | GET | Terms of service (JSON) |
+| `/api/{api_version}/server/help` | GET | Help page (JSON, no auth): `title`, `content` (Markdown source of `pages.help.content`) and `format` (always `markdown`) |
+| `/api/{api_version}/server/help/mcp` | GET | MCP help (JSON, no auth): `title`, `endpoint` (the resolved MCP URL) and `sections` (the `/server/help/mcp` sections in page order, each `{id, title, content}` with Markdown `content`); `404` when MCP is disabled |
+| `/api/{api_version}/server/terms` | GET | Terms of service (JSON, no auth): `title`, `content` (Markdown source of `pages.terms.content`) and `format` (always `markdown`) |
 | `/api/{api_version}/server/dpo` | GET | DPO contact (JSON): `name`, `email`, `privacy_url` |
-| `/api/{api_version}/server/security` | GET | Security overview (JSON, no auth): `contacts` (ordered list of `{type, url or address}`), `expires`, `pgp` (`{available, url, fingerprint}`), `policy_url`, `thanks_url` |
+| `/api/{api_version}/server/security` | GET | Security overview (JSON, no auth): `contacts` (ordered list of `{type, value}` in RFC 9116 preference order: `github` with the private-vulnerability-reporting URL, `contact_form` with the absolute `/server/contact?security_id={id}` URL for the current id, `email` with the CC address; a channel that is not configured is omitted), `expires`, `pgp` (`{available, url, fingerprint}`: `url` is the absolute `/.well-known/pgp-key.asc` URL and `fingerprint` the 40-character uppercase hex v4 fingerprint without spaces; `available: false` with both `null` when no keypair exists), `policy_url`, `thanks_url` |
 | `/api/{api_version}/server/security/policy` | GET | Disclosure policy (JSON, no auth): `policy` (Markdown) |
-| `/api/{api_version}/server/security/thanks` | GET | Hall of fame (JSON, no auth): `entries` (list of `{credit, date, severity}`; `credit` honors each researcher's credit preference) |
+| `/api/{api_version}/server/security/thanks` | GET | Hall of fame (JSON, no auth): `entries` (list of `{credit, date, severity}`; `credit` is the stored credit string, `date` is `disclosed_on` as an ISO 8601 date `YYYY-MM-DD`, `severity` is `critical`, `high`, `medium`, `low` or `informational`; newest first, `[]` when empty) |
 | `/api/{api_version}/server/healthz` | GET | Health check (JSON default; text via API rules) |
 | `/api/{api_version}/server/swagger` | GET | OpenAPI JSON spec |
 | `/api/{api_version}/server/graphql` | POST | GraphQL endpoint |
@@ -31898,7 +32019,7 @@ func RegisterAdminRoutes(r *mux.Router) {
 **What Setup Wizard Provides:**
 - Custom admin username/password (instead of generated)
 - Customize app name/branding
-- Review HTTPS/certificate configuration if customization is needed, and enable optional features like multi-user - Note: Tor is auto-enabled if the binary is found; admins can toggle it later via the Tor settings (`config/network/tor`)
+- Review HTTPS/certificate configuration if customization is needed, and enable optional features like multi-user - Note: Tor is auto-enabled if the binary is found; there is no toggle (its status and address are on the Tor settings page, `network/tor`)
 - Receive API token for programmatic access
 
 ### Setup Flow
@@ -32729,7 +32850,6 @@ Admin Panel Header:
 
 | Setting | Control | Default | Restart | Description |
 |---------|---------|---------|---------|-------------|
-| `tor.enabled` | Toggle | (auto) | No | Enable hidden service |
 | `tor.onion_address` | Readonly | - | - | `.onion` address |
 | `tor.status` | Readonly | - | - | Running/Stopped |
 | `[Copy Address]` | Button | - | - | Copy onion to clipboard |
@@ -35050,7 +35170,7 @@ Do not reply to this email.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Toast position | `top-right` | Corner for toast notifications |
-| Toast duration | `5` seconds | Auto-dismiss time (0 = manual) |
+| Toast duration | `duration: 3` seconds (success/info), `warning_duration: 5` (warning); errors are always manual | Auto-dismiss time under `server.notifications.webui` (0 = manual) |
 | Error dismiss | `manual` | Errors require manual dismiss |
 | Notification retention | `30` days | How long to keep in center |
 | Max notifications | `100` | Per user/admin limit |
@@ -35175,8 +35295,10 @@ server:
     webui:
       position: top-right
       # top-right, top-left, bottom-right, bottom-left
-      duration: 5
-      # seconds (0 = manual dismiss)
+      # success and info toasts auto-dismiss after this many seconds (0 = manual dismiss)
+      duration: 3
+      # warning toasts auto-dismiss after this many seconds (0 = manual dismiss); error toasts never auto-dismiss and have no setting
+      warning_duration: 5
 
     # Email notifications
     # enabled is auto-set based on SMTP availability (no manual toggle)
@@ -35318,7 +35440,7 @@ Every project MUST include these scheduled tasks:
 | `cve_update` | Daily at 05:00 | Download/update CVE (NVD) and Trivy vulnerability databases — trivy has no separate scheduled task despite its own directory/config; this task owns it too | Yes |
 | `update_check` | Daily at 06:00 | Check release channel for a newer version — notify-only unless `update.auto_install: true` (default false); honors `update.defer_days` | Yes |
 | `session_cleanup` | Every 15 minutes | Remove expired sessions | No |
-| `token_cleanup` | Every 15 minutes | Remove expired tokens | No |
+| `token_cleanup` | Every 15 minutes | Remove expired tokens, and used or expired simple-captcha challenges | No |
 | `log_rotation` | Daily at 00:00 | Rotate and compress old logs | No |
 | `backup_daily` | Daily at 02:00 | Full backup + daily incremental (default: 2 files) | Yes |
 | `backup_hourly` | Hourly | Hourly incremental (disabled by default) | Yes |
@@ -36253,7 +36375,7 @@ server:
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `tor_enabled` | Gauge | - | 1 if Tor is enabled, 0 otherwise |
+| `tor_enabled` | Gauge | - | 1 if a `tor` binary was found (the hidden service is active on this instance), 0 otherwise |
 | `tor_running` | Gauge | - | 1 if Tor process is running, 0 otherwise |
 | `tor_circuit_established` | Gauge | - | 1 if circuit established, 0 otherwise |
 | `tor_requests_total` | Counter | - | Total requests via Tor hidden service |
@@ -36398,7 +36520,7 @@ server:
 # TYPE {project_name}_cluster_is_primary gauge
 {project_name}_cluster_is_primary 1
 
-# HELP {project_name}_tor_enabled 1 if Tor is enabled
+# HELP {project_name}_tor_enabled 1 if a tor binary was found
 # TYPE {project_name}_tor_enabled gauge
 {project_name}_tor_enabled 1
 
@@ -53520,7 +53642,7 @@ func ValidateTorConfig(config *TorConfig) []ValidationError {
 
 **Search algorithm:** the built-in search brute-forces v3 onion keypairs in-process — the same approach as `mkp224o`, with no external tool dependency: each worker generates a random ed25519 keypair, derives the v3 onion address per rend-spec-v3 (`base32(pubkey ‖ checksum ‖ 0x03)` where `checksum = SHA3-256(".onion checksum" ‖ pubkey ‖ 0x03)[0:2]`), compares the prefix, and repeats until a worker finds a match. A vanity key is an ordinary random ed25519 keypair merely *selected* by its address — the search does not weaken key security.
 
-**Parameters** (JSON body of POST `…/config/network/tor/vanity`):
+**Parameters** (JSON body of POST `…/network/tor/vanity`):
 
 | Field | Default | Rules |
 |-------|---------|-------|
@@ -53529,9 +53651,9 @@ func ValidateTorConfig(config *TorConfig) []ValidationError {
 
 - **One search at a time** — POST while a search is running returns 409 naming the running search's prefix
 - A running search does NOT survive a server restart; found candidates on disk do
-- DELETE `…/config/network/tor/vanity` cancels the running search; candidates already written to disk are kept
+- DELETE `…/network/tor/vanity` cancels the running search; candidates already written to disk are kept
 
-**Status** (GET `…/config/network/tor/vanity`):
+**Status** (GET `…/network/tor/vanity`):
 
 ```json
 {
@@ -55062,16 +55184,26 @@ update:
 
 **Why CLI download default is unauthenticated:** the CLI is the entry point for new users. Forcing auth on the download means they need a token before they can install the tool that obtains the token. Operators who run a private deployment can flip `cli.binary_download.require_auth` to `true`.
 
+**Configuration (server `server.yml`):**
+
+```yaml
+cli:
+  binary_download:
+    # false (default): the CLI binary download is public; true: it needs an Authorization: Bearer token
+    require_auth: false
+```
+
 **Audit events (added to PART 11 taxonomy):**
 
-| Event | Description |
-|-------|-------------|
-| `cli.update_started` | CLI began an auto-update download |
-| `cli.update_completed` | CLI restarted on new version |
-| `cli.update_checksum_invalid` | SHA-256 didn't match the published checksum |
-| `cli.update_forced` | CLI below `cli_min_version`; refused to make further requests until updated |
-| `cli.token_revoked_detected` | CLI received `401 TOKEN_REVOKED`, exited / cleared cached token |
-| `cli.cluster_failover` | CLI failed over from primary to cluster URL |
+| Event | Producer | Description |
+|-------|----------|-------------|
+| `cli.update_started` | Server | A CLI binary download was served: logged with the OS-arch, the served version and the client IP |
+| `cli.token_revoked_detected` | Server | The server answered `401 TOKEN_REVOKED` to a CLI request (User-Agent `{project_name}-cli/...`): logged with the token prefix, never the token |
+| `cli.update_completed` | CLI | The CLI restarted on the new version (old version, new version, OS-arch) |
+| `cli.update_checksum_invalid` | CLI | The SHA-256 did not match the published checksum (versions, OS-arch) |
+| `cli.update_forced` | CLI | The CLI is below `cli_min_version` and refuses further requests (current version, minimum) |
+
+**Where they are recorded:** server events go to the server audit log (PART 11). CLI events are written to the CLI's own `cli.log` as audit-format lines (timestamp, event, the fields above) and printed to stderr. The CLI sends no telemetry and no endpoint exists to report them, so the server audit log never contains them.
 
 ## User/Org Context (Smart Detection, NON-NEGOTIABLE)
 
@@ -55656,6 +55788,10 @@ Why CLI needs a setup wizard:
 | **Accessibility** | Platform a11y support | Screen reader compatible |
 | **Theming** | Follow system theme | Follow terminal colors |
 
+**What "100% of server functionality" means:** the feature inventory is the CLI command tree (`{project_name}-cli --help`). Every CLI command and subcommand that talks to the server has exactly one screen in the GUI and one view in the TUI, reached from the main menu in the same order as the help output. Machine-only endpoints (the token check, MCP, autodiscover) and server-binary actions (`--service`, `--maintenance`) are not client features in the CLI, the GUI or the TUI. A CLI command that lacks either its GUI screen or its TUI view is a defect, and the test suite lists the screen and the view for every CLI command.
+
+**Interaction contract:** every control is reachable with Tab and Shift+Tab, activated with Enter or Space, and dialogs close with Escape; the focused control is always visible; an error opens a modal dialog (TUI: a status line) whose text is the API `message`, which takes focus and returns it to the control that triggered it; an action that changes data on the server shows its result the same way. Where the GUI toolkit has no accessibility API for a control, the TUI and CLI are the accessible path and the gap is stated in the README.
+
 **GUI must NOT be:**
 - Electron or web-based (use native toolkits only)
 - Feature-incomplete compared to TUI
@@ -55975,15 +56111,13 @@ func LaunchGUI(config *Config) error {
             }
             cw, ch = w, h
         }
-        sv := dc.SurfaceView()
-        sw, sh := dc.SurfaceSize()
         canvas.Draw(func(cc *gg.Context) {
             cc.SetRGBA(0.94, 0.94, 0.94, 1)
             cc.DrawRectangle(0, 0, float64(cw), float64(ch))
             cc.Fill()
             uiApp.Window().DrawTo(render.NewCanvas(cc, cw, ch))
         })
-        if err := canvas.RenderDirect(sv, sw, sh); err != nil {
+        if err := canvas.Render(dc.RenderTarget()); err != nil {
             log.Printf("render: %v", err)
         }
     })
@@ -62063,7 +62197,7 @@ func AutodiscoverHandler(w http.ResponseWriter, r *http.Request) {
             },
             "features": map[string]interface{}{
                 "clustering": cfg.Cluster.Enabled,
-                "tor":        cfg.Tor.Enabled,
+                "tor":        torManager.Enabled(),
                 "webauthn":   cfg.Auth.WebAuthn.Enabled,
                 "oauth":      cfg.Auth.OAuth.EnabledProviders(),
             },
@@ -62307,8 +62441,8 @@ Organizations - only for projects with multi-user collaboration.
 |----------|--------|-------------|
 | `/api/{api_version}/server/about` | GET | About information |
 | `/api/{api_version}/server/privacy` | GET | Privacy policy |
-| `/api/{api_version}/server/contact` | GET | Contact form description (JSON, no auth): `fields` (list of `{name, type, required, max_length, required_when, max_length_when}`, see "Length limits"), `captcha` (`{provider, site_key}` for `recaptcha`-style providers, `{provider, challenge_id, question}` for `simple`), `security_url`, `abuse_email`. Nothing else about recipients |
-| `/api/{api_version}/server/contact` | POST | Submit contact form |
+| `/api/{api_version}/server/contact` | GET | Contact form description (JSON, no auth): `fields` (list of `{name, type, required, max_length, required_when, max_length_when}`, see "Length limits"), `captcha` (`{provider: "simple", challenge_id, question}` for `simple`; `{provider, site_key, fallback}` for `recaptcha` and `hcaptcha`, where `fallback` is the same `{provider: "simple", challenge_id, question}` object; a new challenge on every call), `security_url`, `abuse_email`. Nothing else about recipients |
+| `/api/{api_version}/server/contact` | POST | Submit contact form: the fields above plus ONE captcha proof (`captcha_response`, or `captcha_id` + `captcha_answer`; see "No-JavaScript fallback and the simple challenge") |
 | `/api/{api_version}/server/auth/check` | GET | Token check (machine-only, no page; `Authorization: Bearer` required): `200` with `{kind}` when the token is valid (`kind` is `operator`, `owner` or, where the project has accounts, `user`), `401` otherwise. Side-effect free, rate-limited like other auth endpoints, never echoes the token |
 | `/api/{api_version}/server/help` | GET | Help content |
 
@@ -66571,11 +66705,11 @@ make docker
 - [ ] Multi-word routes use hyphens (`saved-searches`, not `saved_searches`)
 - [ ] No trailing slashes on routes
 - [ ] No verbs in routes (use HTTP methods)
-- [ ] Every API route has corresponding frontend route
+- [ ] Every user-facing API route has a corresponding frontend route (system-only routes are documented machine-only, PART 1 → "Endpoint Pattern")
 - [ ] Frontend routes match API structure (`/users` ↔ `/api/{api_version}/users`)
 - [ ] Frontend is fully functional (not just display)
 - [ ] All CRUD operations work from both frontend and API
-- [ ] No orphan routes (frontend-only or API-only)
+- [ ] No orphan routes (a frontend-only or API-only route that is not a documented exception)
 - [ ] Routes follow scope rules (`/server/`, `/server/auth/`, `/users/`, `/orgs/`, `/server/{admin_path}/`)
 
 ### REST API (`/api/{api_version}/`)
