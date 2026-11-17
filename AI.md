@@ -8506,7 +8506,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | **Validation** | The MERGED result goes through the normal config validation. An error names the file, line and key; a duplicate scalar key inside one file is an error |
 | **Reload** | The file watcher watches `server.yml` and `yaml.d/`. A change, add or remove re-merges everything. If the merged result is invalid, the last good config stays active and the error is logged |
 | **Generated values** | The server writes generated values (the saved random port, `server.token`) only to `server.yml`, never to a drop-in. If a drop-in sets the same key, the drop-in wins and the startup log says which file did |
-| **Permissions** | `server.yml` and every drop-in follow the same rules (`0600` when they hold secrets; PART 11); a drop-in that is group or world writable is refused |
+| **Permissions** | `server.yml` and every drop-in are ALWAYS `0600` and `yaml.d/` is `0700` (PART 8 → "Directory Validation Rules": private paths); a wrong mode is fixed at start, and a drop-in that is group or world writable and cannot be fixed is refused |
 | **Backup** | `{config_dir}/yaml.d/` is included in backups whenever it exists (PART 21 → "Backup Contents") |
 - **Admin panel:** the panel writes only `server.yml`. A setting that a drop-in file sets is shown read-only with the file name (`set by yaml.d/20-mail.yml`) and cannot be changed in the panel; edit that file instead.
 - **Cluster Mode:** drop-ins belong to the file layer. The database layer stays above it (PART 5 priority), and the `server.yml` cache sync never touches `yaml.d/`.
@@ -11136,8 +11136,10 @@ Run '{project_name} <flag> --help' (for example `--service --help`) for detailed
 | Rule | Description |
 |------|-------------|
 | **Create if missing** | All directories are created with proper permissions if they don't exist |
-| **Permissions (root)** | Directories: `0755`, Files: `0644`, PID: `0644` |
+| **Permissions (root)** | Directories: `0755`, Files: `0644`, PID: `0644`, except the private paths below |
 | **Permissions (user)** | Directories: `0700`, Files: `0600`, PID: `0600` |
+| **Private paths (root AND user mode)** | Directories `0700` and files `0600`, whoever runs the server, on: `{config_dir}/server.yml`, `{config_dir}/yaml.d/` and its drop-ins, `{config_dir}/ssl/`, `{config_dir}/tor/`, `{config_dir}/i2p/`, `{data_dir}/security/` and `{data_dir}/tor/` INCLUDING `tor/site/`, each with EVERYTHING below it. `server.yml` holds `server.token` and the encryption key, so it is private even when it contains no other secret. Files and directories are CREATED with these modes (never created `0644`/`0755` and fixed later) |
+| **Private path enforcement** | `enforcePrivate` runs on every private path at every start, BEFORE the first read of `server.yml` and BEFORE any child process (tor, i2pd) is spawned. A wrong mode is FIXED, never reported as a config load failure; only a path that is neither private nor fixable stops the start, with an error naming the path and its mode (never any content). The unit test builds the tree at `0755`/`0644` and asserts every private path ends `0700`/`0600`, `tor/site` and `server.yml` included |
 | **Parent dirs** | Create parent directories as needed (`mkdir -p` equivalent) |
 | **Validate writable** | Fail fast if directory is not writable |
 | **Log on create** | Log directory creation at INFO level |
@@ -11436,7 +11438,7 @@ PHASE 5: Server startup (actual server start)
       ├─ {log_dir}/
       └─ {backup_dir}/
    c. Set ownership: chown -R {internal_name}:{internal_name} on all dirs
-   d. Set permissions: 0755 general dirs, 0700 sensitive (security/, ssl/, tor/)
+   d. Set permissions: 0755 general dirs; 0700 dirs and 0600 files on every private path with everything below it (PART 8 → "Directory Validation Rules": security/, ssl/, tor/ INCLUDING tor/site/, i2p/, server.yml, yaml.d/)
    e. Determine ports (see PART 5 for full port rules):
       ├─ Format 1: --port {port} (single port)
       │   ├─ HTTP by default
@@ -48187,9 +48189,12 @@ check "checks.i2p is omitted by default" test "$(healthz | jq '(.checks | has("i
 # Opt in through a yaml.d drop-in (this also exercises the drop-in directory)
 mkdir -p "${CONF_ROOT}/yaml.d"
 printf 'server:\n  i2p:\n    enabled: true\n' > "${CONF_ROOT}/yaml.d/50-i2p.yml"
-chmod 0644 "${CONF_ROOT}/yaml.d/50-i2p.yml"
+chown "${INTERNAL_NAME}:${INTERNAL_NAME}" "${CONF_ROOT}/yaml.d" "${CONF_ROOT}/yaml.d/50-i2p.yml"
+chmod 0700 "${CONF_ROOT}/yaml.d"
+chmod 0600 "${CONF_ROOT}/yaml.d/50-i2p.yml"
 ${PROJECT_NAME} --service restart
 wait_for 60 healthz_up
+check "server.yml is 0600 after start" test "$(stat -c %a "${CONF_ROOT}/server.yml")" = "600"
 check "features.i2p.enabled is true after opt-in" test "$(overlay i2p enabled)" = "true"
 check "features.i2p.provider is i2pd" test "$(overlay i2p provider)" = "i2pd"
 case "$(overlay i2p status)" in
@@ -53315,8 +53320,8 @@ func ensureTorFile(path string, content []byte) error {
     return enforcePrivate(path, 0600)
 }
 
-// enforcePrivate makes a Tor or I2P directory (mode 0700) or file (mode 0600) private to
-// the server. A chmod that fails with a permission error is tolerated ONLY when the path
+// enforcePrivate makes a private path (a directory 0700 or a file 0600: server.yml, drop-ins, ssl,
+// security, Tor and I2P) private to the server. A chmod that fails with a permission error is tolerated ONLY when the path
 // is already private (no group or other bits): that is a container volume owned by another
 // uid and it must not disable Tor. The path must then be usable by the server.
 func enforcePrivate(path string, mode os.FileMode) error {
