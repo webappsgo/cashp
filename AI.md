@@ -17123,15 +17123,18 @@ All three coexist under the admin tree. The admin-panel UI groups them under a s
 
 ### Health-Check Log Suppression
 
-Successful health-check requests are excluded from `access.log` by default — a 10-second Docker healthcheck otherwise writes ~8,640 identical lines per day of pure noise.
+Successful health-check requests are excluded from EVERY request log output (`access.log` AND the console/stdout request line) by default — a 10-second Docker healthcheck otherwise writes ~8,640 identical lines per day of pure noise.
 
 **Suppressed by default (successful 2xx responses only):**
-- `GET /api/{api_version}/server/healthz`
+- `GET /server/healthz` (the frontend route; this is the one Docker and compose healthchecks usually call)
+- `GET /api/{api_version}/server/healthz` and its alias `GET /api/healthz`
 - `GET /healthz` (root alias, when enabled)
 - The internal health request made by `{project_name} --status`
 
 **Never suppressed:**
-- Any non-2xx health-check response — failures always log to `access.log` and `error.log`
+- Any non-2xx health-check response: failures always log to `access.log` and `error.log` (and the console as an error)
+
+**Debug and development mode do NOT lift the suppression:** a successful health request is never logged, in any mode.
 - All health-check requests when debug is enabled
 
 **`--status` stays silent server-side:** it reports via exit code (0 healthy, 1 unhealthy) and its own stdout; a successful poll writes no server log entry.
