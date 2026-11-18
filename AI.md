@@ -846,10 +846,10 @@ CI workflows reference the image directly: `container: image: casjaysdev/go:late
 - Secret scan (truffleHog) — always runs; full git history required
 - Workflow policy (SHA/digest pinning check) — always runs
 - `vuln-scan` (govulncheck) — conditional on `go.sum` present
-- `image-scan` (Trivy) — conditional on Dockerfile present; runs after image build
+- `image-scan` (Trivy) — conditional on Dockerfile present; builds its own image first (host-runner job, no `needs`)
 
 **GitHub Actions job ordering (`needs:`):**
-- `ci.yml`: `lint`, `test`, `secret-scan`, `workflow-policy`, `vuln-scan` in parallel → `build` (needs lint + test) → `coverage`, `image-scan`, `upload-artifacts` (need build); all jobs run inside `container: image: casjaysdev/go:latest`; security jobs also run on weekly schedule via `if:` conditions
+- `ci.yml`: `lint`, `test`, `secret-scan`, `workflow-policy`, `vuln-scan` in parallel → `build` (needs lint + test) → `coverage`, `upload-artifacts` (need build); `image-scan` has no `needs` (it builds its own image, so the weekly schedule still runs it); every job except `secret-scan` and `image-scan` runs inside `container: image: casjaysdev/go:latest` (those two are host-runner jobs: they need the host Docker daemon); security jobs also run on weekly schedule via `if:` conditions
 - `release.yml`: `build` → `release` (needs: build); all build jobs run inside `container: image: casjaysdev/go:latest`
 - Cross-workflow ordering via branch protection; never `workflow_run`
 
@@ -1241,6 +1241,7 @@ Quick reference: Accept `yes/no`, `true/false`, `1/0`, `on/off`, `enable/disable
 | `AI.md` | ✓ | Project specification (HOW - implementation patterns) |
 | `IDEA.md` | ✓ | Project idea (WHAT - business logic, features) |
 | `CLAUDE.md` | ✓ | Claude Code quick loader - critical rules + references into `AI.md` |
+| `AGENTS.md` | ✓ | Exact real-file copy of `CLAUDE.md` for non-Claude agents (never a symlink) |
 | `SPEC.md` | Optional | Project-specific rule overrides — SPEC.md > AI.md > global CLAUDE.md; created only when a rule must differ from the template or global; may be empty |
 | `PLAN.md` | Optional | Project plan — human edits/owns. AI reads, interprets, executes, and marks items done in place. Never rewrite or restructure |
 | `PLAN.AI.md` | Optional | Project plan — AI creates/updates. If it exists, this is THE plan |
@@ -1258,7 +1259,8 @@ Quick reference: Accept `yes/no`, `true/false`, `1/0`, `on/off`, `enable/disable
 | `.dockerignore` | ✓ | Docker ignore rules |
 | `.gitattributes` | Optional | Git attributes |
 | `Jenkinsfile` | ✓ | Jenkins pipeline — required on every project per `cicd_conventions.md` |
-| `.gitlab-ci.yml` | ✓ | GitLab CI pipeline — required on every project (PART 27: all five CI/CD providers ship) |
+| `.gitlab-ci.yml` | ✓ | GitLab CI pipeline — required on every project (PART 28: all five CI/CD providers ship) |
+| `renovate.json` | ✓ | Renovate configuration covering every ecosystem the project uses (the only supported dependency updater) |
 | `.golangci.yml` | Optional | golangci-lint configuration, only when the project tunes the default linters |
 | `.trivyignore` | Optional | Trivy ignore list for the required image scan: one finding per line, each with a comment naming the reviewed reason |
 | `mkdocs.yml` | ✓ | MkDocs configuration |
@@ -2023,9 +2025,9 @@ Instructions for how this agent should behave...
 | `scripts/` | ✓ | Production/install scripts | No |
 | `tests/` | ✓ | Repository-root executable integration test scripts (`run_tests.sh`, `docker.sh`, `incus.sh`, `e2e.sh`, optional helpers). Go unit tests live alongside code as `*_test.go` | No |
 | `deps/` | | Optional, committed, project-specific support files not part of build/release output (e.g. scripts or Dockerfiles for building a dependency) — never a cache or temp/output dir | No |
-| `.github/` | ✓ | GitHub Actions workflows (PART 27: every project ships all five providers' files); on a public GitHub repo also community files and templates | No |
-| `.gitea/` | ✓ | Gitea Actions workflows (PART 27) | No |
-| `.forgejo/` | ✓ | Forgejo Actions workflows (PART 27) | No |
+| `.github/` | ✓ | GitHub Actions workflows (PART 28: every project ships all five providers' files); on a public GitHub repo also community files and templates | No |
+| `.gitea/` | ✓ | Gitea Actions workflows (PART 28) | No |
+| `.forgejo/` | ✓ | Forgejo Actions workflows (PART 28) | No |
 | `.claude/` | Auto | Claude Code config — team config (rules, agents, hooks, `settings.json`) committed; personal/runtime files gitignored | Partial (see AI-Specific Files table) |
 | `.cursor/` | Auto | Cursor AI config — `rules/`, `mcp.json` committed; personal settings gitignored | Partial (see AI-Specific Files table) |
 | `.aider/` | Auto | Aider AI config (regenerated) | **Yes** |
@@ -2170,7 +2172,7 @@ See the single authoritative table earlier in this file (search: `### Allowed Ro
 | `{log_dir}` | `/var/log/{internal_org}/{internal_name}` | `/Library/Logs/{internal_org}/{internal_name}` | `%PROGRAMDATA%\{internal_org}\{internal_name}\logs` |
 | `{cache_dir}` | `/var/cache/{internal_org}/{internal_name}` | `/Library/Caches/{internal_org}/{internal_name}` | `%PROGRAMDATA%\{internal_org}\{internal_name}\cache` |
 | `{backup_dir}` | `/mnt/Backups/{internal_org}/{internal_name}` | `/Library/Application Support/{internal_org}/{internal_name}/backups` | `%PROGRAMDATA%\{internal_org}\{internal_name}\backups` |
-| `{pid_file}` | `/var/run/{internal_org}/{internal_name}.pid` | `/var/run/{internal_org}/{internal_name}.pid` | N/A (Windows uses SCM) |
+| `{pid_file}` | `/var/run/{internal_org}/{internal_name}/{internal_name}.pid` | `/var/run/{internal_org}/{internal_name}/{internal_name}.pid` | N/A (Windows uses SCM) |
 
 **Note:** In Docker containers, `{db_dir}` is `/data/db/sqlite` (see Docker paths section).
 
@@ -7199,7 +7201,7 @@ Before proceeding, confirm you understand:
 | Logs | `/var/log/{internal_org}/{internal_name}/` |
 | Log File | `/var/log/{internal_org}/{internal_name}/server.log` |
 | Backup | `/mnt/Backups/{internal_org}/{internal_name}/` |
-| PID File | `/var/run/{internal_org}/{internal_name}.pid` |
+| PID File | `/var/run/{internal_org}/{internal_name}/{internal_name}.pid` |
 | SSL | `/etc/{internal_org}/{internal_name}/ssl/` (letsencrypt/, local/) |
 | Security | `/var/lib/{internal_org}/{internal_name}/security/` (geoip/, blocklists/, cve/, trivy/) |
 | SQLite DB | `/var/lib/{internal_org}/{internal_name}/db/` (server.db, users.db) |
@@ -7238,7 +7240,7 @@ Before proceeding, confirm you understand:
 | Logs | `/Library/Logs/{internal_org}/{internal_name}/` |
 | Log File | `/Library/Logs/{internal_org}/{internal_name}/server.log` |
 | Backup | `/Library/Backups/{internal_org}/{internal_name}/` |
-| PID File | `/var/run/{internal_org}/{internal_name}.pid` |
+| PID File | `/var/run/{internal_org}/{internal_name}/{internal_name}.pid` |
 | SSL | `/Library/Application Support/{internal_org}/{internal_name}/ssl/` (letsencrypt/, local/) |
 | Security | `/Library/Application Support/{internal_org}/{internal_name}/data/security/` (geoip/, blocklists/, cve/, trivy/) |
 | SQLite DB | `/Library/Application Support/{internal_org}/{internal_name}/db/` (server.db, users.db) |
@@ -7278,7 +7280,7 @@ Before proceeding, confirm you understand:
 | Logs | `/var/log/{internal_org}/{internal_name}/` |
 | Log File | `/var/log/{internal_org}/{internal_name}/server.log` |
 | Backup | `/var/backups/{internal_org}/{internal_name}/` |
-| PID File | `/var/run/{internal_org}/{internal_name}.pid` |
+| PID File | `/var/run/{internal_org}/{internal_name}/{internal_name}.pid` |
 | SSL | `/usr/local/etc/{internal_org}/{internal_name}/ssl/` (letsencrypt/, local/) |
 | Security | `/var/db/{internal_org}/{internal_name}/security/` (geoip/, blocklists/, cve/, trivy/) |
 | SQLite DB | `/var/db/{internal_org}/{internal_name}/db/` (server.db, users.db) |
@@ -11125,7 +11127,7 @@ Run '{project_name} <flag> --help' (for example `--service --help`) for detailed
 | `--cache` | Directory | `/var/cache/{internal_org}/{internal_name}/` | `~/.cache/{internal_org}/{internal_name}/` |
 | `--log` | Directory | `/var/log/{internal_org}/{internal_name}/` | `~/.local/log/{internal_org}/{internal_name}/` |
 | `--backup` | Directory | `/mnt/Backups/{internal_org}/{internal_name}/` (if writable, else `{data_dir}/backup/`) | `/mnt/Backups/{internal_org}/{internal_name}/` if writable, else `~/.local/share/Backups/{internal_org}/{internal_name}/` |
-| `--pid` | File | `/var/run/{internal_org}/{internal_name}.pid` | `~/.local/share/{internal_org}/{internal_name}/{internal_name}.pid` |
+| `--pid` | File | `/var/run/{internal_org}/{internal_name}/{internal_name}.pid` | `~/.local/share/{internal_org}/{internal_name}/{internal_name}.pid` |
 
 **Note:** `--backup` prefers the system backup dir if writable. Fallback is mode-aware: system mode (started as root) falls back to `{data_dir}/backup/` — never a `$HOME`-derived path; user mode falls back to the user dir. See `GetBackupDir()` in PART 8.
 
@@ -11140,6 +11142,7 @@ Run '{project_name} <flag> --help' (for example `--service --help`) for detailed
 | **Permissions (user)** | Directories: `0700`, Files: `0600`, PID: `0600` |
 | **Private paths (root AND user mode)** | Directories `0700` and files `0600`, whoever runs the server, on: `{config_dir}/server.yml`, `{config_dir}/yaml.d/` and its drop-ins, `{config_dir}/ssl/`, `{config_dir}/tor/`, `{config_dir}/i2p/`, `{data_dir}/security/` and `{data_dir}/tor/` INCLUDING `tor/site/`, each with EVERYTHING below it. `server.yml` holds `server.token` and the encryption key, so it is private even when it contains no other secret. Files and directories are CREATED with these modes (never created `0644`/`0755` and fixed later) |
 | **Private path enforcement** | `enforcePrivate` runs on every private path at every start, BEFORE the first read of `server.yml` and BEFORE any child process (tor, i2pd) is spawned. A wrong mode is FIXED, never reported as a config load failure; only a path that is neither private nor fixable stops the start, with an error naming the path and its mode (never any content). The unit test builds the tree at `0755`/`0644` and asserts every private path ends `0700`/`0600`, `tor/site` and `server.yml` included |
+| **PID directory (root)** | `/var/run/{internal_org}/{internal_name}/`, one directory per service, `0755`, owned by `{internal_name}:{internal_name}`, created in the root phase (PART 8 startup step 8b) or by the init script before the start. Never a directory shared between services of one org: a service account can then remove only its own PID file on shutdown and can never touch another service's |
 | **Parent dirs** | Create parent directories as needed (`mkdir -p` equivalent) |
 | **Validate writable** | Fail fast if directory is not writable |
 | **Log on create** | Log directory creation at INFO level |
@@ -11436,7 +11439,9 @@ PHASE 5: Server startup (actual server start)
       ├─ {data_dir}/ and subdirs (db/, security/, tor/, tor/site/)
       ├─ {cache_dir}/
       ├─ {log_dir}/
-      └─ {backup_dir}/
+      ├─ {backup_dir}/
+      ├─ {db_dir}/ (when it is not already under {data_dir})
+      └─ /var/run/{internal_org}/{internal_name}/ (the per-service PID directory, owned by {internal_name}:{internal_name})
    c. Set ownership: chown -R {internal_name}:{internal_name} on all dirs
    d. Set permissions: 0755 general dirs; 0700 dirs and 0600 files on every private path with everything below it (PART 8 → "Directory Validation Rules": security/, ssl/, tor/ INCLUDING tor/site/, i2p/, server.yml, yaml.d/)
    e. Determine ports (see PART 5 for full port rules):
@@ -11448,8 +11453,8 @@ PHASE 5: Server startup (actual server start)
       │   ├─ First port = HTTP
       │   └─ Second port = HTTPS
       ├─ No --port? → check PORT env var (same format)
-      ├─ No env var? → read from config file (server.port)
-      └─ No config? → random port in 64000-64999 range (single, HTTP)
+      ├─ No env var? → EARLY CONFIG PEEK: read ONLY `server.port` from {config_dir}/server.yml (read-only, as root, after the step 8d permission fix; no other key is read or validated here; the full load is step 13)
+      └─ No file, or no `server.port` in it? → random port in 64000-64999 range (single, HTTP); step 13 writes it to the new config
    f. Bind ALL privileged ports (< 1024) NOW while still root:
       ├─ For each port < 1024: create and bind socket, store fd
       ├─ If ANY privileged port fails: exit with error
@@ -11475,7 +11480,7 @@ PHASE 5: Server startup (actual server start)
     ├─ Set default log level (info)
     └─ Log "Server starting, version X.Y.Z"
 
-11. Check PID file (root: /var/run/{internal_org}/{internal_name}.pid, user: {data_dir}/{internal_name}.pid):
+11. Check PID file (root: /var/run/{internal_org}/{internal_name}/{internal_name}.pid, user: {data_dir}/{internal_name}.pid):
     ├─ PID file exists AND process running → exit 1 "already running"
     ├─ PID file exists AND process dead → remove stale PID, continue
     └─ No PID file → continue
@@ -12823,8 +12828,6 @@ CREATE TABLE IF NOT EXISTS admins (
     -- superadmin, admin, readonly
     role        TEXT NOT NULL DEFAULT 'admin',
     enabled     INTEGER NOT NULL DEFAULT 1,
-    -- SHA-256 hash of API token (prefix: adm_)
-    api_token_hash TEXT,
     created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     updated_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     last_login  INTEGER,
@@ -22435,7 +22438,7 @@ func renderNoJSHTML(w http.ResponseWriter, data interface{}) {
 | **Never manual** | NEVER manually edit OpenAPI JSON or GraphQL schema |
 | **Build-time generation** | Specs regenerated on every build |
 | **JSON only** | OpenAPI spec uses JSON format only (NO YAML) |
-| **Single source of truth** | Code is the source, specs are generated output |
+| **Source of truth** | AI.md (template) and IDEA.md (project) define the API CONTRACT: routes, methods, auth and shapes. The code and its annotations implement that contract, and the specs are GENERATED from the code, so they are artifacts, never edited by hand. Drift is detected by a test that compares the generated OpenAPI route and method list with the router's registered routes and with the routes the spec and IDEA.md define; any difference fails the build. A deliberate change is made in AI.md or IDEA.md first, then the code, then the specs are regenerated |
 | **Match site theme** | Both UIs styled to match site theme (light/dark/auto) |
 | **Standardized locations** | ALWAYS `src/swagger/` and `src/graphql/` (NEVER in root `.`) |
 
@@ -23174,26 +23177,30 @@ Before proceeding, confirm you understand:
 4. On success, credentials are **encrypted** and stored for reuse
 5. Certificate requests use stored encrypted credentials
 
-**Provider Credential Storage:**
+**DNS-01 credential contract:**
 
-| Field | Description |
-|-------|-------------|
-| `provider` | Provider identifier (e.g., `cloudflare`, `route53`) |
-| `credentials_encrypted` | AES-256-GCM encrypted JSON of provider credentials |
-| `validated_at` | Timestamp of last successful validation |
+| Rule | Detail |
+|------|--------|
+| YAML shape | `server.ssl.letsencrypt.dns_provider` is the lego provider name (the lowercase identifier on the lego DNS provider list, e.g. `cloudflare`). `dns_credentials` is ONE flat map of that provider's lego environment variable names to string values, e.g. `CF_DNS_API_TOKEN: "..."`; no nesting |
+| Encryption at rest | A plaintext value an operator writes is accepted at load and rewritten in place, atomically and `0600` (PART 8 private paths), as `enc:v1:{base64 of nonce + AES-256-GCM ciphertext}` under `server.security.encryption_key`. A value that starts with `enc:v1:` is decrypted in memory only. A value is never logged, never returned by the API, and shown as `********` in every view and bundle |
+| Field discovery | The server hardcodes no field list. For one `dns.NewDNSChallengeProviderByName` call it sets the map as the provider's environment (under a mutex), then restores the environment. lego's error names a missing or invalid variable; the server reports the variable NAME only, never a value |
+| Passing to lego | Only through that constructor call: the resulting provider object is given to the ACME client as its DNS-01 solver. Credentials are never written to a file or kept in the process environment |
+| Validation | At startup and before every certificate request the provider is constructed (no DNS record is touched). A failure makes the request fail with the variable name and logs at ERROR; no other challenge type is tried silently. Real proof of the credentials is a successful issuance |
+| `validated_at` | Server-written, never in YAML: the row `app_secrets.dns_validated_at` in `server.db` (UTC ISO 8601), set when a certificate was issued or renewed through the provider and cleared when `dns_provider` or any `dns_credentials` value changes |
+| Key rotation | `dns_credentials` values depend on `server.security.encryption_key`; the rotation re-encrypts them (PART 11 → "Rotation contract") |
 
-**Common Providers (examples):**
+**Common Providers (examples; the variable names are lego's, and the lego page for a provider is authoritative):**
 
 | Provider | Required Fields |
 |----------|-----------------|
-| `cloudflare` | `api_token` OR (`api_key` + `email`) |
-| `route53` | `access_key_id`, `secret_access_key`, `region` |
-| `digitalocean` | `auth_token` |
-| `godaddy` | `api_key`, `api_secret` |
-| `namecheap` | `api_user`, `api_key`, `client_ip` |
-| `rfc2136` | `nameserver`, `tsig_key`, `tsig_secret`, `tsig_algorithm` |
+| `cloudflare` | `CF_DNS_API_TOKEN` OR (`CF_API_EMAIL` + `CF_API_KEY`) |
+| `route53` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` |
+| `digitalocean` | `DO_AUTH_TOKEN` |
+| `godaddy` | `GODADDY_API_KEY`, `GODADDY_API_SECRET` |
+| `namecheap` | `NAMECHEAP_API_USER`, `NAMECHEAP_API_KEY` |
+| `rfc2136` | `RFC2136_NAMESERVER`, `RFC2136_TSIG_KEY`, `RFC2136_TSIG_SECRET`, `RFC2136_TSIG_ALGORITHM` |
 
-**Note:** Full provider list from [lego DNS providers](https://go-acme.github.io/lego/dns/). Fields are determined dynamically at runtime.
+**Note:** Full provider list from [lego DNS providers](https://go-acme.github.io/lego/dns/).
 
 **See PART 36: CUSTOM DOMAINS for user/org custom domain support (optional per-project feature).**
 
@@ -29814,6 +29821,8 @@ web:
 | `cors: "https://a.com,https://b.com"` | Allow listed origins, credentials allowed |
 | `cors: ""` | No CORS headers (same-origin only) |
 | Preflight (OPTIONS) | Return CORS headers, 204 No Content |
+
+**One policy for every route:** API routes follow this same policy (there is no separate API policy). `allow_credentials` takes effect only for a request whose `Origin` matches an explicitly listed origin; with `*` the `Access-Control-Allow-Credentials` header is never sent, whatever `allow_credentials` says. A browser client that needs cookies or credentialed requests therefore needs its origin in `allowed_origins`.
 
 ### CORS Allow-list Resolution Order
 
@@ -39993,10 +40002,17 @@ StandardError=journal
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
-ReadWritePaths=/etc/{internal_org}/{internal_name}
-ReadWritePaths=/var/lib/{internal_org}/{internal_name}
-ReadWritePaths=/var/cache/{internal_org}/{internal_name}
-ReadWritePaths=/var/log/{internal_org}/{internal_name}
+# Complete writable set: config, data (which holds {db_dir} and the fallback backup dir), cache, log, the per-service PID directory and the system backup dir.
+# A leading "-" makes a path OPTIONAL, so a path that does not exist yet never fails the namespace setup.
+# ExecStartPre runs with the "+" prefix (full privileges, OUTSIDE the sandbox) and creates the missing directories BEFORE ProtectSystem=strict applies.
+# A project whose effective config moves {db_dir} or {backup_dir} elsewhere gets that path added here by the service installer, in the same "-" form.
+ExecStartPre=+/usr/bin/install -d -m 0755 /etc/{internal_org}/{internal_name} /var/lib/{internal_org}/{internal_name} /var/cache/{internal_org}/{internal_name} /var/log/{internal_org}/{internal_name} /var/run/{internal_org}/{internal_name}
+ReadWritePaths=-/etc/{internal_org}/{internal_name}
+ReadWritePaths=-/var/lib/{internal_org}/{internal_name}
+ReadWritePaths=-/var/cache/{internal_org}/{internal_name}
+ReadWritePaths=-/var/log/{internal_org}/{internal_name}
+ReadWritePaths=-/var/run/{internal_org}/{internal_name}
+ReadWritePaths=-/mnt/Backups/{internal_org}/{internal_name}
 
 [Install]
 WantedBy=multi-user.target
@@ -40020,7 +40036,7 @@ command="/usr/local/bin/{project_name}"
 command_args=""
 # No command_user: the service starts as root so the binary can bind privileged ports, then drops to
 # {internal_name}:{internal_name} in-process (PART 8). start_pre creates the pid and log directories for that user.
-pidfile="/var/run/{internal_org}/{internal_name}.pid"
+pidfile="/var/run/{internal_org}/{internal_name}/{internal_name}.pid"
 command_background=true
 output_log="/var/log/{internal_org}/{internal_name}/server.log"
 error_log="/var/log/{internal_org}/{internal_name}/error.log"
@@ -40032,7 +40048,7 @@ depend() {
 }
 
 start_pre() {
-    checkpath -d -m 0755 -o {internal_name}:{internal_name} /var/run/{internal_org}
+    checkpath -d -m 0755 -o {internal_name}:{internal_name} /var/run/{internal_org}/{internal_name}
     checkpath -d -m 0755 -o {internal_name}:{internal_name} /var/log/{internal_org}/{internal_name}
 }
 ```
@@ -40073,7 +40089,7 @@ sudo rc-update del {internal_name} default
 NAME={internal_name}
 DAEMON=/usr/local/bin/{project_name}
 DAEMON_USER={internal_name}
-PIDFILE=/var/run/{internal_org}/{internal_name}.pid
+PIDFILE=/var/run/{internal_org}/{internal_name}/{internal_name}.pid
 LOGFILE=/var/log/{internal_org}/{internal_name}/server.log
 
 case "$1" in
@@ -41531,10 +41547,10 @@ exec $APP_BIN $FLAGS "$@"
 | `container_name:` | **Always set**, one fixed name per service, the same in production, dev, and test: `{project_name}-app`, `{project_name}-db`, `{project_name}-cache` (only the services that file includes). Dev and test never run on a production host, so a clash fails `docker compose up` instead of replacing production; their compose `name:` and network stay identical to production (no `-dev` / `-test` suffix); the fixed container names are what make a clash fail |
 | Main service name | `{project_name}` (matches project name) |
 | `pull_policy:` | `always` |
-| `restart:` | `always` |
+| `restart:` | `always` in the production and dev compose files. Exception: `docker-compose.test.yml` uses `restart: "no"`, because a test stack runs once and exits |
 | `x-logging:` | Anchor for consistent logging (see below) |
 | Network | Custom `{project_name}` with `external: false` |
-| Environment variables | **Hardcode with sane defaults, map style (`KEY: value`)** (NEVER use .env files, NEVER list style) |
+| Environment variables | **Hardcode sane defaults**; use a `${VAR:-default}` fallback ONLY for values an operator is expected to change (port, domain, paths, image tag). The project never creates or commits a `.env*` file and uses no `env_file:` key; always YAML map style (`KEY: value`), never list style (`- KEY=value`) |
 | **environment: MODE/DEBUG** | **NEVER set in production compose** — binary defaults to production; only `docker-compose.dev.yml` and `docker-compose.test.yml` set these |
 | Cache service | Production compose includes a `{project_name}-cache` (valkey) service — see Multi-Service Example |
 
@@ -42723,7 +42739,7 @@ networks:
 
 # PART 28: CI/CD WORKFLOWS
 
-**All projects MUST have CI/CD workflows appropriate for their git hosting platform.**
+**Every project ships CI/CD workflow files for ALL five providers (GitHub, GitLab, Gitea, Forgejo, Jenkins); the provider that hosts the repository is the one that runs them.**
 
 ## CI/CD vs Local Development (IMPORTANT)
 
@@ -42797,7 +42813,9 @@ All workflows MUST set these environment variables:
 
 **File:** `.github/workflows/ci.yml`
 
-Runs on push and pull requests; security jobs (`secret-scan`, `workflow-policy`, `vuln-scan`, `image-scan`) also run on the weekly schedule. All jobs run inside `container: image: casjaysdev/go:latest` — never installs tools inline. No `ensure-build-image` gate, no `build-toolchain.yml`.
+Runs on push and pull requests; security jobs (`secret-scan`, `workflow-policy`, `vuln-scan`, `image-scan`) also run on the weekly schedule. Every job except `secret-scan` and `image-scan` runs inside `container: image: casjaysdev/go:latest` — never installs tools inline. No `ensure-build-image` gate, no `build-toolchain.yml`.
+
+**Host-runner jobs:** `secret-scan` and `image-scan` run directly on the host runner (`runs-on: ubuntu-26.04`, NO `container:`): the docker-based truffleHog action and the image build need the host Docker daemon, which a job inside the Go container does not have. They install no tool inline either (pinned actions only). `image-scan` has no `needs`: it builds its own image, so the weekly schedule, where `build` is skipped, still runs it.
 
 ```yaml
 name: CI
@@ -42877,8 +42895,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: govulncheck ./...
 
-  # Additional jobs (same pattern — container: image: casjaysdev/go:latest):
-  # secret-scan, workflow-policy, image-scan (needs: build), coverage (needs: test), upload-artifacts (needs: build)
+  # Additional jobs. Container jobs follow the pattern above: workflow-policy, coverage (needs: test), upload-artifacts (needs: build).
+  # Host-runner jobs (no container:, no needs): secret-scan, image-scan
 ```
 
 > **Note:** Security jobs (`secret-scan`, `workflow-policy`, `vuln-scan`, `image-scan`) are defined within `ci.yml`. They run on push, PR, and weekly schedule (`cron: '0 6 * * 1'`). Add `if: github.event_name != 'schedule'` to build/test/coverage/artifact jobs to skip non-security work on scheduled runs. Secret scanning is mandatory on every public repo via truffleHog (Apache-2.0). Use `github.event.before` / `github.event.after` for the scan range — never `default_branch`, which after a push resolves to the same commit as HEAD and silently skips the scan.
@@ -43949,6 +43967,94 @@ For self-hosted runners, change `runs-on: ubuntu-26.04` to your runner label.
 | `devel.yml` | Daily at 3am UTC + push to main/master | Devel builds |
 | `docker.yml` | Any push (all branches) + version tags + daily at 4am UTC | Standard Docker image (`build-standard` job) + development image (`build-devel` job, `:devel`) |
 | `docker-aio.yml` | Any push (all branches) + version tags | All-in-one Docker image (`-aio` tags) — the only image type with its own dedicated workflow file |
+
+## CI Workflow (Gitea/Forgejo Actions)
+
+**File:** `.gitea/workflows/ci.yml`
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ gitea.workflow }}-${{ gitea.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    if: gitea.event_name != 'schedule'
+    runs-on: ubuntu-26.04
+    container:
+      image: casjaysdev/go:latest
+      options: "--user 0:0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - run: go vet ./...
+      - run: staticcheck ./...
+
+  test:
+    if: gitea.event_name != 'schedule'
+    runs-on: ubuntu-26.04
+    container:
+      image: casjaysdev/go:latest
+      options: "--user 0:0"
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Run tests with coverage
+        run: |
+          mkdir -p "/tmp/${{ gitea.repository_owner }}"
+          COVDIR=$(mktemp -d "/tmp/${{ gitea.repository_owner }}/$(basename "${{ gitea.repository }}")-XXXXXX")
+          echo "COVDIR=$COVDIR" >> "$GITEA_ENV"
+          go test -cover -coverprofile="$COVDIR/coverage.out" ./...
+      - name: Enforce coverage threshold
+        run: |
+          THRESHOLD=60
+          PCT=$(go tool cover -func="$COVDIR/coverage.out" | awk '/^total:/ {gsub("%","",$3); print int($3)}')
+          if [ "$PCT" -lt "$THRESHOLD" ]; then
+            echo "::error::coverage $PCT% < threshold $THRESHOLD%"
+            exit 1
+          fi
+
+  build:
+    if: gitea.event_name != 'schedule'
+    needs: [lint, test]
+    runs-on: ubuntu-26.04
+    container:
+      image: casjaysdev/go:latest
+      options: "--user 0:0"
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - run: go build -buildvcs=false ./...
+
+  vuln-scan:
+    runs-on: ubuntu-26.04
+    container:
+      image: casjaysdev/go:latest
+      options: "--user 0:0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - run: govulncheck ./...
+
+  # Additional jobs. Container jobs follow the pattern above: workflow-policy, coverage (needs: test), upload-artifacts (needs: build).
+  # Host-runner jobs (no container:, no needs): secret-scan, image-scan
+```
+
+**Forgejo:** `.forgejo/workflows/ci.yml` has the same content with `forgejo.*` and `FORGEJO_ENV` (Variable Mapping below). The `secret-scan` and `image-scan` host-runner rule of the GitHub CI Workflow applies unchanged.
 
 ## Release Workflow — Stable (Gitea/Forgejo Actions)
 
