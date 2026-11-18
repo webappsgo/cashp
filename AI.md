@@ -621,7 +621,7 @@ if cacheSize > 1024*1024*1024 {
 | **Multi-stage Dockerfile** | Builder stage (casjaysdev/go:latest) + Runtime stage (alpine:latest) |
 | **Dockerfile location** | `docker/Dockerfile` - NEVER in project root |
 | **Default timezone** | `America/New_York` (override with `TZ` env var) |
-| **Internal port** | Default `80` - app listens on `0.0.0.0:80` (override with `PORT` env var) |
+| **Internal port** | Default `80` - app listens on `[::]:80` (override with `PORT` env var; IPv4-only hosts fall back to `0.0.0.0`) |
 | **External port** | Random `64xxx` port mapped to internal 80: `172.17.0.1:64580:80` (production); `64580:80` is dev-only (binds all interfaces) |
 | **STOPSIGNAL** | `SIGRTMIN+3` |
 | **ENTRYPOINT** | `["tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh"]` |
@@ -633,24 +633,24 @@ if cacheSize > 1024*1024*1024 {
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  CONTAINER DEFAULT: 0.0.0.0:80                                          │
+│  CONTAINER DEFAULT: [::]:80                                             │
 │                                                                         │
-│  Inside container:  app --address 0.0.0.0 --port 80                    │
-│  Docker mapping:    -p 172.17.0.1:{randomport}:80  (prod)              │
-│                     -p {randomport}:80  (dev only, all interfaces)     │
+│  Inside container:  app --address "[::]" --port 80                      │
+│  Docker mapping:    -p 172.17.0.1:{randomport}:80  (prod)               │
+│                     -p {randomport}:80  (dev only, all interfaces)      │
 │                                                                         │
 │  Override with env vars:                                                │
-│    - PORT=8080      (change internal port, update docker-compose too)  │
-│    - LISTEN=...     (rarely needed, default 0.0.0.0 is correct)        │
+│    - PORT=8080      (change internal port, update docker-compose too)   │
+│    - LISTEN=...     (rarely needed, default [::] is correct)            │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 | Context | Address | Port | Example |
 |---------|---------|------|---------|
-| **Container (default, prod)** | `0.0.0.0` | `80` | `-p 172.17.0.1:64580:80` |
-| **Container (default, dev)** | `0.0.0.0` | `80` | `-p 64580:80` (all interfaces, dev only) |
-| **Container (custom, prod)** | `0.0.0.0` | `PORT` env | `PORT=8080` + `-p 172.17.0.1:64580:8080` |
-| **Local (dev)** | `0.0.0.0` | Random `64xxx` | `--address 0.0.0.0 --port 64580` |
+| **Container (default, prod)** | `[::]` | `80` | `-p 172.17.0.1:64580:80` |
+| **Container (default, dev)** | `[::]` | `80` | `-p 64580:80` (all interfaces, dev only) |
+| **Container (custom, prod)** | `[::]` | `PORT` env | `PORT=8080` + `-p 172.17.0.1:64580:8080` |
+| **Local (dev)** | `[::]` | Random `64xxx` | `--address "[::]" --port 64580` |
 | **Local (prod)** | Specific IP | Random `64xxx` | `--address 192.168.1.100 --port 64580` |
 
 ### Raw Protocol Ports (Non-HTTP Listeners)
@@ -8840,9 +8840,9 @@ ENTRYPOINT [ "tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh" ]
    //go:build !windows
    // +build !windows
 
-   // Unix: bind privileged port while still root, then drop privileges
+   // Unix: bind privileged port while still root, then drop privileges; listenAddr is the resolved --address/LISTEN/peek value
    if isElevated() && port < 1024 {
-       listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+       listener, err := net.Listen("tcp", net.JoinHostPort(listenAddr, strconv.Itoa(port)))
        // Store listener, drop privileges later
    }
    ```
@@ -9254,7 +9254,7 @@ server:
   port: {random}
   # Auto-detected from host
   fqdn: {hostname}
-  # [::] = all interfaces IPv4/IPv6
+  # [::] = all interfaces IPv4/IPv6 (dual-stack). Always quote it: a bare [::] is a YAML flow sequence
   address: "[::]"
   # production or development
   mode: production
@@ -11101,7 +11101,7 @@ Server Configuration:
 --log DIR                              - Log directory
 --backup DIR                           - Backup directory
 --pid FILE                             - PID file path
---address ADDR                         - Listen address (default: 0.0.0.0)
+--address ADDR                         - Listen address (default: [::], dual-stack; 0.0.0.0 if the host has no IPv6)
 --port PORT                            - Listen port (default: random 64xxx, 80 in container)
 --baseurl PATH                         - URL path prefix (default: /)
 --daemon                               - Run as daemon (detach from terminal)
@@ -11457,7 +11457,7 @@ PHASE 5: Server startup (actual server start)
       ├─ No --port? → check PORT env var (same format)
       ├─ No env var? → EARLY CONFIG PEEK: read ONLY `server.port` and `server.address` from {config_dir}/server.yml (read-only, as root, after the step 8d permission fix; no other key is read or validated here; the full load is step 13)
       └─ No file, or no `server.port` in it? → random port in 64000-64999 range (single, HTTP); step 13 writes it to the new config
-      Listen address (resolved in the same early step): `--address` flag > `LISTEN` env > the early peek of `server.address` > default `0.0.0.0`. Privileged sockets are bound to THIS address and never to a broader one; step 13 never rebinds (`server.address` needs a restart, PART 12)
+      Listen address (resolved in the same early step): `--address` flag > `LISTEN` env > the early peek of `server.address` > default `[::]` (IPv4 `0.0.0.0` fallback when the kernel has no IPv6, logged once as a warning). Privileged sockets are bound to THIS address and never to a broader one; step 13 never rebinds (`server.address` needs a restart, PART 12)
    f. Bind ALL privileged ports (< 1024) NOW while still root:
       ├─ For each port < 1024: create and bind a socket on the resolved listen address, store fd
       ├─ If ANY privileged port fails: exit with error
@@ -13233,7 +13233,7 @@ CREATE INDEX IF NOT EXISTS idx_trusted_devices_expires ON trusted_devices(expire
 -- Flat key-value pairs (dot notation matches YAML structure)
 INSERT INTO config (key, value, type) VALUES
     ('server.port', '8080', 'number'),
-    ('server.address', '"0.0.0.0"', 'string'),
+    ('server.address', '"[::]"', 'string'),
     ('ssl.enabled', 'true', 'bool'),
     -- Empty = auto-detect
     ('ssl.cert', '""', 'string'),
@@ -14323,7 +14323,7 @@ The resolved client IP feeds access logs, rate limiting, blocklists, and GeoIP �
 
 **Memory bound:** the IPv6 address space is effectively unbounded, so per-IP rate-limit state MUST be a bounded, expiring structure (a fixed-size LRU or a time-windowed map) whose entries are dropped when their window ends. A host that holds a large IPv6 prefix can rotate source addresses; the defense is the per-identifier and global limits plus explicit operator CIDR bans, never silent prefix grouping.
 
-**Dual-stack:** the default listen address `[::]` serves IPv4 and IPv6 on one socket (`IPV6_V6ONLY` off). Any URL or log field that embeds an IPv6 literal with a port uses brackets (`[2001:db8::1]:443`).
+**Dual-stack:** the default listen address `[::]` serves IPv4 and IPv6 on one socket (`IPV6_V6ONLY` off, set explicitly so a `net.ipv6.bindv6only=1` host does not break IPv4). If the kernel has no IPv6 (socket creation fails with "address family not supported"), the server falls back to `0.0.0.0` and logs one warning; an explicit `0.0.0.0` is an IPv4-only choice and is never widened. Any URL or log field that embeds an IPv6 literal with a port uses brackets (`[2001:db8::1]:443`).
 
 **Test vectors (REQUIRED):**
 
@@ -21841,7 +21841,7 @@ This is the response text.
 ```yaml
 # 2-space indentation, single trailing newline
 server:
-  address: 0.0.0.0
+  address: "[::]"
   port: 80
 
   users:
@@ -32856,7 +32856,7 @@ Admin Panel Header:
 | `port` | Number | `64580` | ⚠️ Yes | Server listen port |
 | `mode` | Dropdown | `production` | ⚠️ Yes | `production` / `development` / `debug` |
 | `fqdn` | Text | (auto) | No | Fully qualified domain name |
-| `address` | Text | `[::]` | ⚠️ Yes | Listen address |
+| `address` | Text | `[::]` | ⚠️ Yes | Listen address (`[::]` dual-stack, `0.0.0.0` IPv4 only) |
 
 #### Process Section
 
@@ -41615,15 +41615,15 @@ trap cleanup SIGTERM SIGINT SIGQUIT
 # =============================================================================
 log "Starting ${APP_NAME}..."
 
-# Build flags from environment
-FLAGS="--address ${LISTEN:-0.0.0.0} --port ${PORT:-80}"
+# Build flags from environment (the address is passed quoted so "[::]" is never glob-expanded)
+FLAGS="--port ${PORT:-80}"
 # DEBUG accepts all truthy values: true/yes/1/on/enable (case-insensitive)
 case "$(echo "${DEBUG:-false}" | tr '[:upper:]' '[:lower:]')" in
     true|yes|1|on|enable) FLAGS="$FLAGS --debug" ;;
 esac
 
 # Start binary (binary handles ALL setup: dirs, perms, user/group, Tor, etc.)
-exec $APP_BIN $FLAGS "$@"
+exec $APP_BIN --address "${LISTEN:-[::]}" $FLAGS "$@"
 ```
 
 ### Entrypoint Features
@@ -41661,7 +41661,7 @@ exec $APP_BIN $FLAGS "$@"
 | `TZ` | `America/New_York` | Timezone for app and scheduler |
 | `MODE` | `development` | `production` (`prod`) strict · `development` (`dev`/`devel`) relaxed · `debug` explicit-only |
 | `DEBUG` | `false` | Enable ALL debug features (pprof, expvar, detailed logging) |
-| `LISTEN` | `0.0.0.0` | Listen address |
+| `LISTEN` | `[::]` | Listen address (`[::]` = IPv4 + IPv6; `0.0.0.0` = IPv4 only) |
 | `PORT` | `80` | Listen port (update docker-compose ports: to match) |
 
 **MODE vs DEBUG:**
@@ -49892,7 +49892,7 @@ Default location: `{config_dir}/server.yml` (see PART 4 for platform-specific pa
 
 ```yaml
 server:
-  address: 0.0.0.0
+  address: "[::]"
   port: 80
 
 database:
