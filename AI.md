@@ -26256,7 +26256,7 @@ if ('serviceWorker' in navigator) {
 | **Reconnect with backoff** | Every long-lived client connection (EventSource, WebSocket, polling loop) reconnects with exponential backoff (1 s -> 30 s) + jitter; every `fetch` has an `AbortController` timeout (30 s) |
 | **Restart window** | While the server is down or starting, the client shows a non-blocking "reconnecting" banner (not a frozen page) and retries; `503` + `Retry-After` is honored |
 | **New build detected** | Every API/SSE response carries the build stamp in `X-Build` (public value). When it differs from the stamp the page was rendered with, the client finishes the current action, then does ONE `location.reload()` (guarded by the `{project_name}_recovered` flag) - never mid-form-edit: if a form is dirty, show an "Update available - reload" button instead |
-| **Service worker handover** | First install: the worker activates by itself and `clients.claim()` runs in `activate`. Update (a controller already exists): the new worker WAITS, the page shows the update prompt, and only after the user accepts it the page posts `SKIP_WAITING`, the worker calls `skipWaiting()`, and the page reloads once on `controllerchange`, never repeatedly |
+| **Service worker handover** | First install: the worker activates by itself and `clients.claim()` runs in `activate`. Update (a controller already exists): the new worker WAITS, the page shows the update prompt, and only after the user accepts it the page posts `SKIP_WAITING`, the worker calls `skipWaiting()`, and the page reloads once on `controllerchange`, never repeatedly. The `controllerchange` listener is registered once at page load (not inside the click handler) and reloads only after the user accepted the update; if no worker is waiting, or no takeover arrives within 5 s, the page reloads anyway, so "Update Now" never hangs |
 
 ### Service Worker Lifecycle
 
@@ -26266,6 +26266,9 @@ if ('serviceWorker' in navigator) {
 > - **Navigations are network-first** — fetch the network first so a new build's HTML is seen immediately (and the `Clear-Site-Data` build-purge has nothing stale to fight); only on failure fall back to the cached page, then to a **synthesized** `Response`.
 > - **Every `respondWith()` branch ends in a guaranteed `Response`** — a terminal `.catch()` returning a real `Response` (a synthesized 503 offline page for navigations, a 504 for subresources). Never end a chain on `cached || caches.match('/offline…')`: that link can itself miss and resolve `undefined`.
 > - **Only intercept same-origin GET.** Let API calls, cross-origin requests, and non-GET methods fall through untouched — never call `respondWith()` for them.
+> - **The wait for the network is bounded** — a navigation `fetch` races an 8 s timer (`NAV_TIMEOUT_MS`); on timeout the worker falls back to the cached page, then the offline page. A server that is restarting, updating or hung never leaves a tab on a blank page with a stuck load bar.
+> - **Never cache or replay a redirect or an error** — only `response.ok && !response.redirected` is put in the cache, and a URL that redirects (the age gate, a login redirect, `/` behind a redirect) is never precached. A `redirected` response handed to a navigation is a network error (blank page).
+> - **A user never has to clear cache, cookies or local storage to recover.** Every state the worker or the page can reach after an update must self-heal: bounded waits, a build-stamped cache name, old caches deleted in `activate`, and the update prompt below that always ends in a reload. Telling a user to clear site data is a defect in the template or the app, never a fix.
 > - **The service worker is an enhancement, never a dependency** — the site stays fully usable if it never installs (the No-JS-first rule above).
 
 **The service worker has three main lifecycle events:**
@@ -26318,6 +26321,19 @@ self.addEventListener('activate', event => {
   );
 });
 
+// A navigation never waits on the network forever: it rejects after NAV_TIMEOUT_MS
+// and the .catch() below serves the cached page or the offline page
+const NAV_TIMEOUT_MS = 8000;
+function withTimeout(promise, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    promise.then(
+      value => { clearTimeout(timer); resolve(value); },
+      error => { clearTimeout(timer); reject(error); }
+    );
+  });
+}
+
 // FETCH - every response path MUST resolve to a real Response.
 // A promise that resolves to undefined - or rejects - makes the browser
 // render net::ERR_FAILED instead of a page. Every branch below therefore
@@ -26338,10 +26354,12 @@ self.addEventListener('fetch', event => {
   // error page, never net::ERR_FAILED
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
+      withTimeout(fetch(request), NAV_TIMEOUT_MS)
         .then(response => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+          if (response.ok && !response.redirected) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+          }
           return response;
         })
         .catch(async () =>
@@ -26359,8 +26377,10 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       caches.match(request)
         .then(cached => cached || fetch(request).then(response => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+          if (response.ok && !response.redirected) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+          }
           return response;
         }))
         .catch(() => new Response('', { status: 504, statusText: 'Gateway Timeout' }))
@@ -26445,16 +26465,31 @@ function showUpdateNotification() {
   document.body.appendChild(banner);
 }
 
-// Apply update
+// Registered ONCE at page load, never inside updateApp(): reloads only after the
+// user accepted the update, and only once
+let updateAccepted = false;
+let reloading = false;
+function reloadOnce() {
+  if (reloading) return;
+  reloading = true;
+  window.location.reload();
+}
+navigator.serviceWorker.addEventListener('controllerchange', () => {
+  if (updateAccepted) reloadOnce();
+});
+
+// Apply update: ALWAYS ends in a reload, so "Update Now" can never hang
 function updateApp() {
+  updateAccepted = true;
   navigator.serviceWorker.ready.then(reg => {
     if (reg.waiting) {
       reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      // The takeover normally fires controllerchange within a moment; if it does not, reload anyway
+      setTimeout(reloadOnce, 5000);
+    } else {
+      // Nothing is waiting (already activated, or the worker was replaced): a plain reload loads the new build
+      reloadOnce();
     }
-  });
-  // Reload when new SW takes over
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    window.location.reload();
   });
 }
 ```
@@ -27366,6 +27401,7 @@ async function requestPersistentStorage() {
 | Viewport meta | ◻️ | Responsive |
 | Install prompt handled | ◻️ | Custom UI |
 | Update notification | ◻️ | New SW prompt |
+| Update never hangs or needs a cache clear | ◻️ | Bounded navigation wait (`NAV_TIMEOUT_MS`), no redirected or error response cached, `controllerchange` listener registered once, "Update Now" always ends in a reload |
 | Offline indicator | ◻️ | Connection status |
 | Push notifications | ◻️ | If needed |
 | Background sync | ◻️ | If needed |
