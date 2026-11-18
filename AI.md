@@ -230,6 +230,8 @@ permission rules, business invariants. The HOW lives in AI.md PARTS 0-36; PART 3
   - `### Trust boundaries & external services`
   - `### Threat model & abuse cases`
   - `### Security decisions & exceptions`
+  - `### API routes`
+- `### API routes` MUST list every route the project defines beyond the template's own: method, path, auth requirement, purpose and a request/response summary, native and compatibility APIs included. A project with none writes `No project-defined routes.` The route drift test (PART 14) reads this inventory
 - `### Threat model & abuse cases` MUST name:
   - the primary assets being protected
   - which inputs and integrations are trusted vs untrusted
@@ -11453,10 +11455,11 @@ PHASE 5: Server startup (actual server start)
       │   ├─ First port = HTTP
       │   └─ Second port = HTTPS
       ├─ No --port? → check PORT env var (same format)
-      ├─ No env var? → EARLY CONFIG PEEK: read ONLY `server.port` from {config_dir}/server.yml (read-only, as root, after the step 8d permission fix; no other key is read or validated here; the full load is step 13)
+      ├─ No env var? → EARLY CONFIG PEEK: read ONLY `server.port` and `server.address` from {config_dir}/server.yml (read-only, as root, after the step 8d permission fix; no other key is read or validated here; the full load is step 13)
       └─ No file, or no `server.port` in it? → random port in 64000-64999 range (single, HTTP); step 13 writes it to the new config
+      Listen address (resolved in the same early step): `--address` flag > `LISTEN` env > the early peek of `server.address` > default `0.0.0.0`. Privileged sockets are bound to THIS address and never to a broader one; step 13 never rebinds (`server.address` needs a restart, PART 12)
    f. Bind ALL privileged ports (< 1024) NOW while still root:
-      ├─ For each port < 1024: create and bind socket, store fd
+      ├─ For each port < 1024: create and bind a socket on the resolved listen address, store fd
       ├─ If ANY privileged port fails: exit with error
       └─ Unprivileged ports (>= 1024) bound later in step 18
    g. Start managed child processes (Tor, if tor binary available) while still root:
@@ -13559,7 +13562,7 @@ livenessProbe:
 **Console Output:**
 
 ```
-$ kill -TERM $(cat /var/run/myapp.pid)
+$ kill -TERM $(cat /var/run/myorg/myapp/myapp.pid)
 
 [INFO] 2025-01-15T10:30:45-05:00 Received SIGTERM, starting graceful shutdown...
 [INFO] 2025-01-15T10:30:45-05:00 Stopping HTTP server...
@@ -15274,6 +15277,93 @@ func NewDB(cfg *config.Database) (*sql.DB, error) {
 ```
 
 ---
+
+## SQLite Concurrency Contract
+
+**Fixes `database is locked` (`SQLITE_BUSY`). Applies to every SQLite file the application opens (for example `server.db` and `users.db`): each file gets its OWN write handle and read handle. libsql/Turso is remote and not covered.**
+
+SQLite allows ONE writer at a time. Without the rules below, concurrent requests, the scheduler and the CLI queue up for the write lock, a deferred transaction that starts as a read and then writes fails at once with `database is locked` (the busy timeout is ignored for that upgrade), and a long transaction starves everything else.
+
+| Rule | Detail |
+|------|--------|
+| Journal and sync | `journal_mode=WAL` and `synchronous=NORMAL`, set on open. The result of the `journal_mode` pragma is checked: anything other than `wal` (a network file system, a read-only volume) logs an ERROR naming the path and refuses to start |
+| Busy wait | `busy_timeout=10000` (10 s) on EVERY connection, set through the DSN so the pool applies it to each new connection |
+| Two handles | `writeDB`: `SetMaxOpenConns(1)`, `SetMaxIdleConns(1)`, no connection lifetime, `_txlock=immediate` (every transaction starts with `BEGIN IMMEDIATE`, so the write lock is taken up front and a busy wait is honored). `readDB`: `SetMaxOpenConns(pool.max_open)`, `query_only(1)`. Only the store layer sees the handles; it exposes `Write(ctx, fn)` and `Read(ctx)`, so a handler cannot pick the wrong one |
+| Writes only through `Write` | Every INSERT, UPDATE, DELETE, DDL and every transaction that may write goes through `Write`. A read-then-write flow runs entirely inside ONE `Write` transaction; it never reads on `readDB` and then writes |
+| Short transactions | A write transaction holds no network call, email send, file I/O, sleep or user callback. Target under 100 ms; `Write` has a 10 s context deadline |
+| Rows are closed first | Rows from a query are fully read and closed before a write in the same flow: collect the ids, close, then write. A cursor held open across a write is a defect |
+| Batches | Cleanup, retention, audit purge and import work in batches of at most 500 rows per transaction, with a short yield between batches (the scheduler tasks of PART 19). `VACUUM` runs only from a maintenance task on the write handle, never inside a transaction and never during a request |
+| Hot counters | Rate-limit counters, request metrics, session `last_used` and other per-request bookkeeping are NOT written per request. They live in memory and one goroutine flushes them in a single transaction every 30 s and on shutdown. `last_used` is written only when it is older than 5 minutes |
+| Retry | `Write` retries a busy or locked error (`SQLITE_BUSY`, `SQLITE_LOCKED` and their extended codes) up to 5 times with exponential backoff (25 ms base, doubled each time) plus jitter, always inside the context deadline. A callback is never retried after its commit succeeded |
+| One process | Only the server process writes the file. A CLI or `--maintenance` command that runs while the server is up uses the same store helper (same pragmas, same busy timeout, short transactions). A second server instance is refused by the PID check; `--maintenance restore` requires the server to be stopped |
+| Location | A local disk only, never NFS, SMB or a FUSE mount. The `-wal` and `-shm` files stay next to the database. In Docker the data volume is a local volume or bind mount |
+| Backups | The SQLite online backup API or `VACUUM INTO` through the write handle, never `cp` of a live file |
+| Shutdown | After in-flight requests drain: `PRAGMA wal_checkpoint(TRUNCATE)`, then close `readDB`, then `writeDB` |
+| Observability | A write that waited more than 1 s logs WARN `db.busy` with `wait_ms` and the caller (never SQL parameters). The metrics `db_busy_total` and `db_write_wait_seconds` are exported (PART 21) |
+| Test | A concurrency test runs 20 writer goroutines and 20 reader goroutines for 10 s against a temporary database and asserts zero `database is locked` errors |
+
+```go
+// OpenSQLite opens the write and read handles of ONE SQLite file (modernc.org/sqlite).
+func OpenSQLite(path string, readers int) (*Store, error) {
+    base := "file:" + path +
+        "?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)" +
+        "&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(1)"
+
+    w, err := sql.Open("sqlite", base+"&_txlock=immediate")
+    if err != nil {
+        return nil, err
+    }
+    w.SetMaxOpenConns(1)
+    w.SetMaxIdleConns(1)
+    w.SetConnMaxLifetime(0)
+
+    r, err := sql.Open("sqlite", base+"&_pragma=query_only(1)")
+    if err != nil {
+        return nil, err
+    }
+    r.SetMaxOpenConns(readers)
+
+    return &Store{w: w, r: r}, nil
+}
+
+// Write runs fn in one write transaction and retries busy errors with backoff and jitter.
+func (s *Store) Write(ctx context.Context, fn func(*sql.Tx) error) error {
+    ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+    defer cancel()
+    var err error
+    for attempt := 0; attempt < 5; attempt++ {
+        err = s.writeOnce(ctx, fn)
+        if !isBusy(err) {
+            return err
+        }
+        wait := time.Duration(25<<attempt)*time.Millisecond + time.Duration(rand.Intn(25))*time.Millisecond
+        select {
+        case <-time.After(wait):
+        case <-ctx.Done():
+            return ctx.Err()
+        }
+    }
+    return err
+}
+
+func (s *Store) writeOnce(ctx context.Context, fn func(*sql.Tx) error) error {
+    tx, err := s.w.BeginTx(ctx, nil)
+    if err != nil {
+        return err
+    }
+    if err := fn(tx); err != nil {
+        _ = tx.Rollback()
+        return err
+    }
+    return tx.Commit()
+}
+
+func isBusy(err error) bool {
+    return err != nil && (strings.Contains(err.Error(), "SQLITE_BUSY") ||
+        strings.Contains(err.Error(), "SQLITE_LOCKED") ||
+        strings.Contains(err.Error(), "database is locked"))
+}
+```
 
 ## Query Timeouts
 
@@ -19293,8 +19383,8 @@ if !subtle.ConstantTimeCompare([]byte(got), []byte(want)) {
 |------|----------------|--------------|
 | `admin` | Server-internal events: error rate spike, panic, cluster failover, backup failure, cert renewal, security report received (summary only) | Subject + body + severity + a deep-link to `/server/{admin_path}/...`. NEVER includes user content. |
 | `security` | Incoming security report (full content, encrypted), researcher status update, CVE assignment milestone | PGP-encrypted body if a researcher pubkey or admin pubkey is configured (PART 11 → "GPG Keypair Management"). |
-| `abuse` | Application-defined abuse events (user-flagged content, DMCA/takedown requests) and any `/server/contact` submission the application routes as an abuse report | Sender name, sender email, subject, message body, and the reported resource URL when the application provides one. Spam-filtered before dispatch. |
-| `general` | `/server/contact` form submission (non-security) | Sender name, sender email, subject, message body. Spam-filtered before dispatch. |
+| `abuse` | Application-defined abuse events (user-flagged content, DMCA/takedown requests) and any `/server/contact` submission the application routes as an abuse report | Sender name, sender email, subject, message body, and the reported resource URL when the application provides one. Spam-filtered before dispatch (PART 16 → "Contact antispam"). |
+| `general` | `/server/contact` form submission (non-security) | Sender name, sender email, subject, message body. Spam-filtered before dispatch (PART 16 → "Contact antispam"). |
 
 ### Privacy & Public Exposure
 
@@ -22438,7 +22528,7 @@ func renderNoJSHTML(w http.ResponseWriter, data interface{}) {
 | **Never manual** | NEVER manually edit OpenAPI JSON or GraphQL schema |
 | **Build-time generation** | Specs regenerated on every build |
 | **JSON only** | OpenAPI spec uses JSON format only (NO YAML) |
-| **Source of truth** | AI.md (template) and IDEA.md (project) define the API CONTRACT: routes, methods, auth and shapes. The code and its annotations implement that contract, and the specs are GENERATED from the code, so they are artifacts, never edited by hand. Drift is detected by a test that compares the generated OpenAPI route and method list with the router's registered routes and with the routes the spec and IDEA.md define; any difference fails the build. A deliberate change is made in AI.md or IDEA.md first, then the code, then the specs are regenerated |
+| **Source of truth** | AI.md defines the TEMPLATE routes and the `### API routes` inventory in IDEA.md defines EVERY project-defined route, including any native or compatibility API of the project; together they are the API CONTRACT: routes, methods, auth and shapes. AI.md never enumerates project routes. The code and its annotations implement that contract, and the specs are GENERATED from the code, so they are artifacts, never edited by hand. Drift is detected by a test with three legs: the generated OpenAPI route and method list, the router's registered routes, and the union of the AI.md template routes and the IDEA.md `### API routes` inventory. A route present in one leg and missing from another fails the build, naming the route and the missing place; a project whose IDEA.md has no `### API routes` subsection fails with that message instead of passing vacuously. A deliberate change is made in AI.md or IDEA.md first, then the code, then the specs are regenerated |
 | **Match site theme** | Both UIs styled to match site theme (light/dark/auto) |
 | **Standardized locations** | ALWAYS `src/swagger/` and `src/graphql/` (NEVER in root `.`) |
 
@@ -31045,10 +31135,12 @@ func trackingScript(r *http.Request) template.HTML {
 | Subject | Text | Yes | Message subject | 200 |
 | Message | Textarea | Yes | Message body | 5000 |
 | Captcha | Captcha | Yes | Spam prevention - rendered on the initial form and required on EVERY submission (anonymous form: no failed-attempt state exists). Single-use; a new challenge is issued after each submit, failed or not | null |
+| Website (honeypot) | Text, hidden | No, must stay EMPTY | Antispam trap, see "Contact antispam" below. Never shown to a person; a filled value is dropped silently | 200 |
+| Form token | Hidden | Yes | Signed render time, see "Contact antispam" below; the API `GET` returns it and the `POST` echoes it | 100 |
 
 **Submission sends to `server.contact.general.email` (or falls back to `server.contact.admin.email` if general is empty).**
 
-**API mirror:** `GET /api/{api_version}/server/contact` returns the same form as JSON (the field list with types, required flags and length limits, the captcha descriptor for the configured provider, `security_url` and `abuse_email`); `POST` submits it. The page and the API are two renderings of the same definition.
+**API mirror:** `GET /api/{api_version}/server/contact` returns the same form as JSON (the field list with types, required flags and length limits, the captcha descriptor for the configured provider, `form_token`, `security_url` and `abuse_email`); `POST` submits it, echoing `form_token` and omitting `website`. The page and the API are two renderings of the same definition.
 
 **Below the form, the page MUST render exactly two informational sections — the content is spec'd here; never improvise it:**
 
@@ -31098,6 +31190,34 @@ CREATE TABLE IF NOT EXISTS captcha_challenges (
 );
 CREATE INDEX IF NOT EXISTS idx_captcha_challenges_expires ON captcha_challenges(expires_at);
 ```
+
+#### Contact antispam
+
+**Antispam is layered, runs entirely on the server, needs no JavaScript and no third party, and runs BEFORE anything is delivered. The layers run cheapest first, and the first one that rejects ends the request.**
+
+| # | Layer | Rule | On failure |
+|---|-------|------|------------|
+| 1 | Shape | Body at most 16 KiB, every field present, no unknown fields, valid UTF-8, no control characters (CR, LF, NUL included) in `name`, `email` and `subject`, no bidirectional-override or zero-width characters in any field, and `email` is ONE address (no comma, semicolon or angle-bracket list) | `VALIDATION_FAILED` (`400`) on the field |
+| 2 | Honeypot | The hidden field `website` is rendered off-screen (absolute position far outside the viewport, not `display:none`), with `tabindex="-1"`, `autocomplete="off"`, `aria-hidden="true"` and a label "Leave this field empty". A person never fills it; many bots fill every field | SILENT DROP: the response is byte-for-byte the normal success response (same status, same page or JSON), nothing is delivered, the block is logged |
+| 3 | Fill time | `form_token` is `{issued_at}.{hex HMAC-SHA256}` over `contact-form\|{issued_at}` keyed with `installation_secret`: it is stateless (no database write) and is issued on every render and every `GET`. A submission is accepted only when the token verifies and its age is between `min_fill_seconds` and `max_age_seconds`. The token is not bound to an IP address (Tor and mobile clients change it) | Too fast, missing, invalid or expired: `VALIDATION_FAILED` (`400`) on `form_token` with the message "Please wait a moment and submit again", and a fresh token in the response |
+| 4 | Captcha | The existing proof ("No-JavaScript fallback and the simple challenge") | `VALIDATION_FAILED` on `captcha` |
+| 5 | Rate limits | Accepted submissions are counted per client IP (`per_ip`), per sender email, lowercased (`per_email`) and in total (`global`) inside `window`. The counters live in memory and are not written to the database per request. These limits come in ADDITION to the general limits of PART 12 | `429` with `Retry-After`; nothing is delivered |
+| 6 | Content rules | At most `max_links` links in the message and none in `name` or `subject`; no `blocked_words` match; the email domain is not in `blocked_email_domains` | `VALIDATION_FAILED` with the generic message "Your message could not be sent": the response NEVER says which rule matched |
+| 7 | Duplicate | SHA-256 of the normalized `email`, `subject` and `message` (trimmed, lowercased, whitespace collapsed) seen inside `duplicate_window_hours` (an in-memory bounded LRU of 10,000 entries) | SILENT DROP, as in layer 2 |
+
+**Delivery safety (after every layer passed):**
+
+- The `From` address is ALWAYS the server's configured sender, never the submitter's. The submitter's address goes only in `Reply-To`.
+- The message is sent as plain text. Submitted values are never placed in a header, never interpreted as HTML, and the subject is prefixed `[{app_name} contact]`.
+- Exactly ONE email per accepted submission, and NEVER an automatic reply to the submitter (it would turn the form into a mail relay and cause backscatter).
+
+**Onion and I2P requests:** every visitor arrives from the local tunnel address, so the per-IP limit would throttle all of them as one client. There, `per_ip` is not applied; `per_email` and `global` are, and the simple captcha is always required (as above).
+
+**Visibility:** every rejection and silent drop logs ONE line `contact.spam_blocked` with `reason` (`shape`, `honeypot`, `fill_time`, `captcha`, `rate_ip`, `rate_email`, `rate_global`, `content`, `duplicate`) and the client IP, NEVER the submitted name, email, subject or message. The counter `contact_blocked_total{reason}` is exported (PART 21).
+
+**The security-report form** (`/server/security/report`) uses layers 1 to 5 and the Delivery-safety rules. Layers 6 and 7 do NOT apply to it, because a vulnerability report legitimately holds links and may be sent twice.
+
+**Tests:** one unit test per layer (a filled honeypot returns the success response and sends nothing; a token younger than `min_fill_seconds`, a forged token and an expired token are rejected; the fourth submission from one IP inside the window gets `429`; a CR/LF in the subject is rejected; a duplicate sends one email), and one test that an accepted submission sends exactly one email whose `From` is the configured sender.
 
 ### /server/help
 
@@ -31344,6 +31464,27 @@ server:
       # Provider keys, required only for recaptcha and hcaptcha (ignored for simple)
       captcha_site_key: ""
       captcha_secret_key: ""
+      # Antispam layers (PART 16 -> "Contact antispam"); all hot-reloaded, 0 or empty disables that one rule
+      antispam:
+        # Hidden field every form carries; a filled value is dropped silently (works without JavaScript)
+        honeypot: true
+        # Seconds a form must have been open before a submission is accepted
+        min_fill_seconds: 3
+        # Seconds a rendered form stays valid
+        max_age_seconds: 43200
+        # Accepted submissions per window, per client IP, per sender email, and in total
+        per_ip: 5
+        per_email: 3
+        global: 60
+        window: 1h
+        # Links (http://, https://, www.) allowed in the message; Name and Subject allow none
+        max_links: 2
+        # Case-insensitive substrings that reject a submission (name, subject or message)
+        blocked_words: []
+        # Sender email domains that are rejected (for example disposable-mail domains)
+        blocked_email_domains: []
+        # An identical message from the same email inside this window is dropped as a duplicate
+        duplicate_window_hours: 24
       # Success message after form submission
       success_message: "Thank you for your message. We'll respond soon."
 
@@ -31390,7 +31531,7 @@ server:
 | `/api/{api_version}/server/about` | GET | About page (JSON, no auth): `title`, `content` (the Markdown source of `pages.about.content` after placeholder substitution, never rendered HTML) and `format` (always `markdown`) |
 | `/api/{api_version}/server/privacy` | GET | Privacy policy (JSON) |
 | `/api/{api_version}/server/contact` | GET | Contact form description (JSON, no auth): `fields` (list of `{name, type, required, max_length, required_when, max_length_when}`, see "Length limits"), `captcha` (`{provider: "simple", challenge_id, question}` for `simple`; `{provider, site_key, fallback}` for `recaptcha` and `hcaptcha`, where `fallback` is the same `{provider: "simple", challenge_id, question}` object; a new challenge on every call), `security_url`, `abuse_email`. Nothing else about recipients |
-| `/api/{api_version}/server/contact` | POST | Submit contact form: the fields above plus ONE captcha proof (`captcha_response`, or `captcha_id` + `captcha_answer`; see "No-JavaScript fallback and the simple challenge") |
+| `/api/{api_version}/server/contact` | POST | Submit contact form: the fields above, the `form_token` from the `GET`, no `website`, plus ONE captcha proof (`captcha_response`, or `captcha_id` + `captcha_answer`; see "No-JavaScript fallback and the simple challenge") |
 | `/api/{api_version}/server/auth/check` | GET | Token check (machine-only, no page; `Authorization: Bearer` required): `200` with `{kind}` when the token is valid (`kind` is `operator`, `owner` or, where the project has accounts, `user`), `401` otherwise. Side-effect free, rate-limited like other auth endpoints, never echoes the token |
 | `/api/{api_version}/server/help` | GET | Help page (JSON, no auth): `title`, `content` (Markdown source of `pages.help.content`) and `format` (always `markdown`) |
 | `/api/{api_version}/server/help/mcp` | GET | MCP help (JSON, no auth): `title`, `endpoint` (the resolved MCP URL) and `sections` (the `/server/help/mcp` sections in page order, each `{id, title, content}` with Markdown `content`); `404` when MCP is disabled |
@@ -48164,7 +48305,7 @@ else
     UNIT_FILE="/etc/init.d/${INTERNAL_NAME}"
     svc_active()  { rc-service "$INTERNAL_NAME" status 2>&1 | grep -q started; }
     svc_enabled() { rc-update show default | grep -qw "$INTERNAL_NAME"; }
-    svc_pid()     { cat "/var/run/${INTERNAL_ORG}/${INTERNAL_NAME}.pid"; }
+    svc_pid()     { cat "/var/run/${INTERNAL_ORG}/${INTERNAL_NAME}/${INTERNAL_NAME}.pid"; }
 fi
 svc_stopped() { ! svc_active; }
 REMOTE_LIB_EOF
@@ -62592,7 +62733,7 @@ Organizations - only for projects with multi-user collaboration.
 | `/api/{api_version}/server/about` | GET | About information |
 | `/api/{api_version}/server/privacy` | GET | Privacy policy |
 | `/api/{api_version}/server/contact` | GET | Contact form description (JSON, no auth): `fields` (list of `{name, type, required, max_length, required_when, max_length_when}`, see "Length limits"), `captcha` (`{provider: "simple", challenge_id, question}` for `simple`; `{provider, site_key, fallback}` for `recaptcha` and `hcaptcha`, where `fallback` is the same `{provider: "simple", challenge_id, question}` object; a new challenge on every call), `security_url`, `abuse_email`. Nothing else about recipients |
-| `/api/{api_version}/server/contact` | POST | Submit contact form: the fields above plus ONE captcha proof (`captcha_response`, or `captcha_id` + `captcha_answer`; see "No-JavaScript fallback and the simple challenge") |
+| `/api/{api_version}/server/contact` | POST | Submit contact form: the fields above, the `form_token` from the `GET`, no `website`, plus ONE captcha proof (`captcha_response`, or `captcha_id` + `captcha_answer`; see "No-JavaScript fallback and the simple challenge") |
 | `/api/{api_version}/server/auth/check` | GET | Token check (machine-only, no page; `Authorization: Bearer` required): `200` with `{kind}` when the token is valid (`kind` is `operator`, `owner` or, where the project has accounts, `user`), `401` otherwise. Side-effect free, rate-limited like other auth endpoints, never echoes the token |
 | `/api/{api_version}/server/help` | GET | Help content |
 
