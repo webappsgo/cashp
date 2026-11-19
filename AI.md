@@ -17273,64 +17273,48 @@ server:
     # Global log level: debug, info, warn, error
     level: warn
 
-    # All log types share these options:
-    #   filename: name of log file
-    #   format: output format (varies by log type)
-    #   custom: custom format string (when format=custom)
+    # Defaults every log kind inherits when it does not set the key itself:
+    #   custom: custom format string (used when format=custom)
     #   rotate: rotation policy
     #   keep: retention policy
+    # A kind's own value always wins. `filename` is never repeated: it defaults to
+    # {kind}.log (access.log, server.log, error.log, audit.log, security.log, debug.log).
+    defaults:
+      custom: ""
+      rotate: weekly,50MB
+      keep: none
 
+    # Each kind lists only what differs from the defaults
     access:
-      filename: access.log
       # Format: apache, nginx, json, custom
       format: apache
-      custom: ""
       rotate: monthly
-      keep: none
 
     server:
-      filename: server.log
       # Format: text, json
       format: text
-      custom: ""
-      rotate: weekly,50MB
-      keep: none
 
     error:
-      filename: error.log
       # Format: text, json
       format: text
-      custom: ""
-      rotate: weekly,50MB
-      keep: none
 
     audit:
       enabled: true
-      filename: audit.log
       # Format: json only (text not supported for audit - must be machine-parseable)
       format: json
       rotate: daily
-      keep: none
       # Compress rotated logs (only useful if keep > 0)
       compress: false
 
     security:
-      filename: security.log
       # Format: fail2ban, syslog, cef, json, text
       format: fail2ban
-      custom: ""
-      rotate: weekly,50MB
-      keep: none
 
     debug:
       # Debug log has an enabled flag since it's for troubleshooting only
       enabled: false
-      filename: debug.log
       # Format: text, json
       format: text
-      custom: ""
-      rotate: weekly,50MB
-      keep: none
 ```
 
 ### Log Output Rules
@@ -21794,6 +21778,8 @@ server:
       mode: disabled
 ⏎
 ```
+
+**The generated `server.yml` follows this rule too:** the writer sets the YAML encoder's indent to 2 explicitly (Go `yaml.v3` indents 4 spaces unless `SetIndent(2)` is called) and ends the file with a single newline. A generated file indented 4 spaces is a defect, and a test generates `server.yml` and asserts that every nesting level is indented by exactly 2 spaces.
 
 ### Go Code Formatting
 
@@ -29246,6 +29232,8 @@ server:
 | `author` | Meta author tag |
 | `og_image` | OpenGraph/Twitter card image |
 | `twitter_handle` | Twitter card attribution |
+
+**`branding` and `seo` hold exactly the keys above.** Project facts (feature lists, compatibility lists, links, long marketing copy) are project data defined by `IDEA.md` and built into the binary; they are never written to `server.yml`.
 
 ### SEO Meta Tags (Generated)
 
