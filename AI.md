@@ -17030,14 +17030,14 @@ Repo-level (source-code) vulnerabilities are reported primarily via GitHub priva
 | Rotation | Every 48 hours (172800 seconds) |
 | Validation window | Server accepts the **current** AND **previous** 48h window's id — prevents boundary failures for researchers who load the security.txt at second 47:59:59 |
 | Where it appears | In the `/.well-known/security.txt` `Contact:` line and its human-readable renderings (`/server/security` and its JSON mirror `GET /api/{api_version}/server/security`), and echoed back only to a requester who supplied a currently valid id (the hidden form field of `/server/contact?security_id={id}`, needed to re-validate the POST). The raw id is NEVER logged and NEVER appears in any other response, error, notification or API body. |
-| Failure mode | Invalid / expired id → form silently falls back to normal contact mode. Log to `security.log` as `security.security_id_invalid` (IP, user-agent, and the first 8 hex chars of `SHA-256(supplied id)` — never the supplied value itself) — useful for catching scrape attempts. |
+| Failure mode | Invalid / expired id → form silently falls back to report mode. Log to `security.log` as `security.security_id_invalid` (IP, user-agent, and the first 8 hex chars of `SHA-256(supplied id)` — never the supplied value itself) — useful for catching scrape attempts. |
 | Why HMAC, not random | Determinism — each replica of the cluster computes the same id without coordinating state. The `installation_secret` (cluster-wide, persisted) is the only secret required. |
 
 ### `/server/contact?security_id={id}` — Mode Switch
 
 | Mode | Triggered when | Form changes |
 |------|----------------|--------------|
-| Standard contact | No `security_id`, OR id present but invalid | Standard fields (Name, Email, Subject, Message, Captcha) — see PART 17 → `/server/contact`. |
+| Report (abuse, dmca, privacy) | No `security_id`, OR id present but invalid | Name, Email, Type (`abuse`, `dmca`, `privacy`), Subject, Message, Captcha, plus the fields each Type requires (PART 16 → "/server/contact"). `security` is not offered. |
 | Security report | `security_id` present AND matches current or previous 48h window | Security-research fields appended; submission routes to the security pipeline; tracking id issued. |
 
 **Security-mode form fields (in addition to Name + Email + Captcha):**
@@ -17065,7 +17065,7 @@ Repo-level (source-code) vulnerabilities are reported primarily via GitHub priva
 
 | Property | Shape | Meaning |
 |----------|-------|---------|
-| `required_when` | `{"field": "{name}", "equals": "{value}"}` | `required` is `false`, but the field becomes required when the named field has that value (`credit_handle`: `{"field": "credit_preference", "equals": "handle"}`) |
+| `required_when` | `{"field": "{name}", "equals": "{value}"}` or `{"field": "{name}", "in": ["{value}", ...]}` | `required` is `false`, but the field becomes required when the named field has that value (or one of those values): `credit_handle` is `{"field": "credit_preference", "equals": "handle"}`, `reported_url` is `{"field": "type", "in": ["abuse", "dmca"]}` |
 | `max_length_when` | `[{"prefix": "{text}", "max_length": N}]` | A value that starts with the prefix uses that narrower limit instead of `max_length` (`researcher_gpg`: `[{"prefix": "https://", "max_length": 2048}]`) |
 
 The server enforces exactly what it publishes: the same descriptors drive the HTML form and the API validation, and a violated conditional rule returns `VALIDATION_FAILED` for that field.
@@ -17137,7 +17137,7 @@ CREATE TABLE IF NOT EXISTS security_thanks (
 |----------|--------|------|---------|
 | `/.well-known/security.txt` | GET | None | RFC 9116 file — see above |
 | `/.well-known/pgp-key.asc` | GET | None | Project's PGP public key (ASCII-armored). 404 if no keypair generated yet. |
-| `/server/security` | GET | None | Security overview page (HTML). Human-readable rendering of everything in `/.well-known/security.txt` — contact channels in RFC 9116 preference order (GitHub private vulnerability reporting, `/server/contact?security_id={id}`, `mailto:` CC address), `Expires`, and the `Encryption` key when a keypair exists — plus plain-language instructions for reporting a vulnerability. Links to `/server/security/policy`, `/server/security/thanks`, `/.well-known/pgp-key.asc`, and the machine-readable `/.well-known/security.txt`. Rendered from live config — nothing to edit. |
+| `/server/security` | GET | None | Security overview page (HTML). Human-readable rendering of everything in `/.well-known/security.txt` — contact channels in RFC 9116 preference order (GitHub private vulnerability reporting, `/server/contact?security_id={id}`, `mailto:` CC address), `Expires`, and the `Encryption` key when a keypair exists — plus plain-language instructions for reporting a vulnerability and a short section for other reports (terms violations, DMCA notices, privacy requests) linking to `/server/contact`. This is the only public page that links to the form. Links to `/server/security/policy`, `/server/security/thanks`, `/.well-known/pgp-key.asc`, and the machine-readable `/.well-known/security.txt`. Rendered from live config — nothing to edit. |
 | `/server/security/policy` | GET | None | Disclosure policy page (HTML). Default content provided; editable from admin panel. Lists the coordinated-disclosure window, in-scope domains, out-of-scope behaviors, safe-harbor language. |
 | `/server/security/thanks` | GET | None | Acknowledgments page. Lists researchers who opted in (real name, handle, or anonymized "Anonymous Researcher #n") with the year and severity: the `security_thanks` entries, newest first (the same entries as the API mirror). |
 | `/server/security/report/{tracking_id}` | GET | One-shot token in URL (no API mirror: explicit exception to the API-for-every-page rule, because the one-shot emailed link must not be duplicated onto the API surface) | Researcher status page — shows triage state (Received / Triaged / Confirmed / Patching / Disclosed / Won't Fix), maintainer comments visible to researcher, expected disclosure date. Token is single-use-per-day; expires after the report is closed for 30 days. |
@@ -18129,7 +18129,7 @@ When GDPR/CCPA (right to erasure) conflicts with HIPAA/SOC2 (retention requireme
 | `/server/privacy` | GET | Privacy policy |
 | `/server/dpo` | GET | Data Protection Officer contact (GDPR) |
 
-**DPO contact source:** `server.contact.dpo.email` (with optional `server.contact.dpo.name`), part of the Contact Configuration tree (PART 12). When `dpo.email` is empty the page shows `server.contact.general.email`; when that is empty too it renders only a link to the contact form (`/server/contact`). It never invents an address and never shows the admin address. The JSON mirror is `GET /api/{api_version}/server/dpo` (`name`, `email`, `privacy_url`) and follows the same fallback chain for `email`; when no address resolves it still answers `200` with `email` = `""` (and `name` = `""` when unset), never `404`; `privacy_url` is always present and is an absolute URL: the request's resolved base URL (PART 8 → "Resolution Order", never a cached value) + `/server/privacy`, so on an onion or I2P request it carries that address; the HTML page itself links with the root-relative path `/server/privacy`. The HTML page shows the DPO name when set, the address as a `mailto:` link when one resolves, and always links to `/server/privacy` and `/server/contact`.
+**DPO contact source:** `server.contact.dpo.email` (with optional `server.contact.dpo.name`), part of the Contact Configuration tree (PART 12). When `dpo.email` is empty the page shows `server.contact.general.email`; when that is empty too it renders only a link to `/server/security` (the form is never linked from this page). It never invents an address and never shows the admin address. The JSON mirror is `GET /api/{api_version}/server/dpo` (`name`, `email`, `privacy_url`) and follows the same fallback chain for `email`; when no address resolves it still answers `200` with `email` = `""` (and `name` = `""` when unset), never `404`; `privacy_url` is always present and is an absolute URL: the request's resolved base URL (PART 8 → "Resolution Order", never a cached value) + `/server/privacy`, so on an onion or I2P request it carries that address; the HTML page itself links with the root-relative path `/server/privacy`. The HTML page shows the DPO name when set, the address as a `mailto:` link when one resolves, and always links to `/server/privacy` and `/server/contact`.
 | `/server/{admin_path}/compliance` | GET | Compliance dashboard |
 | `/server/{admin_path}/compliance/report` | POST | Generate compliance report |
 | `/server/{admin_path}/compliance/breach` | POST | Report data breach |
@@ -19304,15 +19304,15 @@ server:
     # Contact shown on the public /server/dpo page. Default is "" (the server
     # never invents a DPO address). If email is empty the page shows
     # server.contact.general.email; if that is empty too it shows only a
-    # link to the contact form. The admin address is NEVER shown here.
+    # link to /server/security. The admin address is NEVER shown here.
     dpo:
       name: ""
       email: ""
 
-    # ---- General (public contact form) ----
-    # Recipient for /server/contact submissions (non-security). Public
-    # surface — appears as the "Contact us" email if the contact page
-    # exposes one.
+    # ---- General (fallback recipient) ----
+    # Fallback recipient for abuse, dmca and privacy submissions of the report
+    # form (/server/contact) when the abuse or DPO address is empty. The form
+    # has no general-contact type.
     # If empty: falls back to server.contact.admin.email.
     general:
       # default: server.contact.admin.email
@@ -19384,8 +19384,8 @@ if !subtle.ConstantTimeCompare([]byte(got), []byte(want)) {
 |------|----------------|--------------|
 | `admin` | Server-internal events: error rate spike, panic, cluster failover, backup failure, cert renewal, security report received (summary only) | Subject + body + severity + a deep-link to `/server/{admin_path}/...`. NEVER includes user content. |
 | `security` | Incoming security report (full content, encrypted), researcher status update, CVE assignment milestone | PGP-encrypted body if a researcher pubkey or admin pubkey is configured (PART 11 → "GPG Keypair Management"). |
-| `abuse` | Application-defined abuse events (user-flagged content, DMCA/takedown requests) and any `/server/contact` submission the application routes as an abuse report | Sender name, sender email, subject, message body, and the reported resource URL when the application provides one. Spam-filtered before dispatch (PART 16 → "Contact antispam"). |
-| `general` | `/server/contact` form submission (non-security) | Sender name, sender email, subject, message body. Spam-filtered before dispatch (PART 16 → "Contact antispam"). |
+| `abuse` | Application-defined abuse events (user-flagged content, DMCA/takedown requests) and every `abuse` and `dmca` submission of the report form (`/server/contact`) | Sender name, sender email, subject, message body, and the reported resource URL when the application provides one. Spam-filtered before dispatch (PART 16 → "Contact antispam"). |
+| `general` | Fallback for `abuse`, `dmca` and `privacy` submissions of the report form (`/server/contact`) when the abuse or DPO address is empty | Sender name, sender email, subject, message body. Spam-filtered before dispatch (PART 16 → "Contact antispam"). |
 
 ### Privacy & Public Exposure
 
@@ -19394,7 +19394,7 @@ if !subtle.ConstantTimeCompare([]byte(got), []byte(want)) {
 | `server.contact.admin.email` | NEVER public | Server-internal recipient only. |
 | `server.contact.security.email` | Public (security.txt `Contact: mailto:` line — the secondary/CC channel; GitHub private vulnerability reporting is primary) | Researchers need to reach you. Choose carefully. Suggest a role address (`security@{fqdn}`) over a personal one. |
 | `server.contact.abuse.email` | Public (contact page "Abuse Reports" section) when set | RFC 2142 role address (`abuse@{fqdn}`) recommended over a personal one. |
-| `server.contact.general.email` | Public (contact form, footer "Contact us") | Same — role address recommended. |
+| `server.contact.general.email` | Public only where the DPO page falls back to it | Same — role address recommended. |
 | Any `webhooks.*` | NEVER public | URLs contain bearer tokens / chat IDs / etc. |
 
 ### Canonical Contact Keys Only
@@ -28101,7 +28101,7 @@ func renderFallbackError(w http.ResponseWriter, r *http.Request, status int) {
 │                                                                 │
 │                                                                 │
 ├─────────────────────────────────────────────────────────────────┤
-│        About · Privacy · Contact · GitHub · {project_version}   │  ← Footer (centered)
+│             About · Privacy · GitHub · {project_version}        │  ← Footer (centered)
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -28296,7 +28296,7 @@ document.querySelectorAll('.theme-toggle-form').forEach((form) => {
 |---------|:------:|:-----:|---------|
 | `partial/public/header.tmpl` | ✓ | | Logo + top nav + login/user menu |
 | `partial/public/nav.tmpl` | ✓ | | Horizontal navigation links |
-| `partial/public/footer.tmpl` | ✓ | | About, Privacy, Contact links |
+| `partial/public/footer.tmpl` | ✓ | | About, Privacy links (never the report form) |
 | `partial/admin/header.tmpl` | | ✓ | Logo + search + bell + admin menu |
 | `partial/admin/sidebar.tmpl` | | ✓ | Collapsible sidebar navigation |
 | `partial/admin/footer.tmpl` | | ✓ | Version, docs, status |
@@ -28527,7 +28527,7 @@ partial/
 |---------|----------|---------|----------|
 | `<nav>` | TOP | Navigation | Links to app sections, user menu |
 | Header `.header-actions` | TOP | Cross-cutting UI state | Profile/preferences zone (Guest Header when logged out, Profile dropdown when logged in — see above), then theme toggle — in that order, right of the centered nav links |
-| `<footer>` | BOTTOM | Information | About, Privacy, Contact, Help, Preferences, GitHub, version |
+| `<footer>` | BOTTOM | Information | About, Privacy, Help, Preferences, GitHub, version (never the report form) |
 
 **Nav contains (app navigation):**
 - Home link
@@ -28857,7 +28857,7 @@ main {
 - `.print-include` - Exception for buttons that should print
 
 **Footer contains (informational links):**
-- Standard pages: About, Privacy, Contact, Help
+- Standard pages: About, Privacy, Help (the report form exists but no page links to it; PART 16 → "Who can reach the form")
 - External links: GitHub
 - Branding: project name, version, copyright
 
@@ -29499,7 +29499,7 @@ server:
 - Organization pages: Include only if public
 - Custom domain pages: Include with their custom domain URL
 
-**Scope (always on, public frontend pages only):** `/sitemap.xml` is ALWAYS served; there is no setting that turns it off. It lists only public frontend pages: HTML `GET` routes an anonymous visitor can open, and only those that `robots.txt` allows (`web.robots.allow` minus `web.robots.deny`). A URL that `robots.txt` disallows is never in the sitemap, so the two files can never disagree. It never lists `/api/*`, `/server/{admin_path}/*`, auth or account pages, feeds, files, or anything behind authentication or a token.
+**Scope (always on, public frontend pages only):** `/sitemap.xml` is ALWAYS served; there is no setting that turns it off. It lists only public frontend pages: HTML `GET` routes an anonymous visitor can open, and only those that `robots.txt` allows (`web.robots.allow` minus `web.robots.deny`). A URL that `robots.txt` disallows is never in the sitemap, so the two files can never disagree. It never lists `/api/*`, `/server/{admin_path}/*`, auth or account pages, feeds, files, or anything behind authentication or a token. It never lists `/server/contact`: the report form is reachable only from `security.txt` and `/server/security`.
 
 **Sitemap Configuration:**
 
@@ -30221,8 +30221,6 @@ When admin edits `custom_html`, show:
     <span>•</span>
     <a href="/server/privacy">Privacy</a>
     <span>•</span>
-    <a href="/server/contact">Contact</a>
-    <span>•</span>
     <a href="/server/help">Help</a>
     <span>•</span>
     <a href="/server/preferences">Preferences</a>
@@ -30812,7 +30810,7 @@ func trackingScript(r *http.Request) template.HTML {
 | Your Rights | `server.privacy.retention` | Export/deletion options |
 | **CCPA Opt-Out** | Conditional | **Only shown when `data.sold = true`** - Do Not Sell toggle |
 | Manage Preferences | Link | Button to open cookie preferences modal |
-| Contact | `/server/contact` link | How to contact for privacy concerns |
+| Contact | DPO email when set, else a link to `/server/security` (never the report form) | How to make a privacy request |
 
 **Page Layout:**
 
@@ -31017,7 +31015,7 @@ func trackingScript(r *http.Request) template.HTML {
   <!-- Contact -->
   <section id="contact">
     <h2>Contact Us</h2>
-    <p>For privacy-related inquiries, please <a href="/server/contact">contact us</a>.</p>
+    <p>For privacy-related inquiries, see <a href="/server/security">how to reach us</a>.</p>
   </section>
 </article>
 ```
@@ -31127,7 +31125,7 @@ func trackingScript(r *http.Request) template.HTML {
 
 ### /server/contact
 
-**Contact form - sends message to the configured general contact recipient.**
+**Report form (route `/server/contact`) - for security reports, terms violations at a URL on this site, DMCA notices and privacy requests ONLY. It is NOT for support, bug reports, feature requests, feedback or general questions: the form has no such type, and the page says so above the form.**
 
 | Field | Type | Required | Description | Max length |
 |-------|------|----------|-------------|-------------|
@@ -31135,20 +31133,42 @@ func trackingScript(r *http.Request) template.HTML {
 | Email | Email | Yes | Sender's email (for reply) | 254 |
 | Subject | Text | Yes | Message subject | 200 |
 | Message | Textarea | Yes | Message body | 5000 |
+| Type | Dropdown | Yes | `abuse`, `dmca` or `privacy`. `security` is offered only in security mode (a valid `security_id`, see PART 11). There is no general, support or bug type | null |
+| Reported URL | Text | No, but required when Type is `abuse` or `dmca` (published as `required_when`) | The URL on THIS site the report is about; its host MUST match the link rule in "Who can reach the form" | 2048 |
+| Reason | Dropdown | No, but required when Type is `abuse` | `illegal_content`, `terms_violation`, `harassment`, `malware_phishing`, `other` | null |
+| Copyrighted work | Textarea | No, but required when Type is `dmca` | Identification of the copyrighted work claimed to be infringed | 2000 |
+| Good-faith statement | Checkbox | No, but required when Type is `dmca` | "I have a good-faith belief that this use is not authorized by the copyright owner, its agent or the law" | null |
+| Accuracy statement | Checkbox | No, but required when Type is `dmca` | "The information is accurate and, under penalty of perjury, I am the owner or authorized to act for the owner" | null |
+| Signature | Text | No, but required when Type is `dmca` | Typed full legal name, which acts as the electronic signature | 100 |
+| Request kind | Dropdown | No, but required when Type is `privacy` | `access`, `export`, `deletion`, `correction`, `opt_out`, `other` | null |
 | Captcha | Captcha | Yes | Spam prevention - rendered on the initial form and required on EVERY submission (anonymous form: no failed-attempt state exists). Single-use; a new challenge is issued after each submit, failed or not | null |
 | Website (honeypot) | Text, hidden | No, must stay EMPTY | Antispam trap, see "Contact antispam" below. Never shown to a person; a filled value is dropped silently | 200 |
 | Form token | Hidden | Yes | Signed render time, see "Contact antispam" below; the API `GET` returns it and the `POST` echoes it | 100 |
 
-**Submission sends to `server.contact.general.email` (or falls back to `server.contact.admin.email` if general is empty).**
+**Routing by type:** `abuse` and `dmca` go to the `abuse` role (`server.contact.abuse.email`, then `general`, then `admin`; PART 12 → "Resolution Order Per Role"); `privacy` goes to `server.contact.dpo.email`, then `general`, then `admin`; `security` follows the security pipeline (PART 11 → "Submission Flow"). The Type, Reason, Reported URL and DMCA statements are part of the plain-text body.
 
-**API mirror:** `GET /api/{api_version}/server/contact` returns the same form as JSON (the field list with types, required flags and length limits, the captcha descriptor for the configured provider, `form_token`, `security_url` and `abuse_email`); `POST` submits it, echoing `form_token` and omitting `website`. The page and the API are two renderings of the same definition.
+**API mirror:** `GET /api/{api_version}/server/contact` returns the same form as JSON (the field list with types, required flags and length limits, the captcha descriptor for the configured provider, `form_token`, `types` (the Type values offered to this caller), `security_url` and `abuse_email`); `POST` submits it, echoing `form_token` and omitting `website`. The page and the API are two renderings of the same definition.
+
+**Above the form the page MUST render this purpose notice (the wording may vary, the meaning may not):** "This form is only for security reports, terms violations at a URL on this site, DMCA notices and privacy requests. It cannot be used for support, bug reports, feature requests or general questions."
 
 **Below the form, the page MUST render exactly two informational sections — the content is spec'd here; never improvise it:**
 
 | Section | Content |
 |---------|---------|
 | Security Issues | "To report a security vulnerability, consult our security policy at `/server/security`." — rendered as a link to `/server/security`. Never point users at the raw `/.well-known/security.txt` file from this page. |
-| Abuse Reports | "To report abusive content or policy violations, use this contact form." — append " or email {abuse_email}" where `{abuse_email}` resolves to `server.contact.abuse.email` if set, else `server.contact.general.email` if set; omit the email clause entirely when neither is set. NEVER render `server.contact.admin.email` here (it is never public). |
+| Abuse Reports | "To report abusive content or a terms violation, choose the type Abuse above. To send a DMCA notice, choose the type DMCA." — append " or email {abuse_email}" where `{abuse_email}` resolves to `server.contact.abuse.email` if set, else `server.contact.general.email` if set; omit the email clause entirely when neither is set. NEVER render `server.contact.admin.email` here (it is never public). |
+
+#### Who can reach the form
+
+**The form is never linked from a public page.**
+
+| Rule | Behavior |
+|------|----------|
+| **Entry points** | ONLY the `Contact:` line of `/.well-known/security.txt` (with `security_id`) and `/server/security`, the human rendering of the same file. `/server/security` links to the form for security reports, and, for terms violations, DMCA notices and privacy requests, to the same route without `security_id` |
+| **Forbidden** | A link to `/server/contact` anywhere else: header, navigation, footer, home, about, help, privacy, DPO, terms, error and maintenance pages, `sitemap.xml`, feeds, `llms.txt` and every email or notification template. A page that must point people to a reporting channel (the privacy page, the DPO page) links to `/server/security`, never to the form |
+| **Indexing** | The form pages are served with `X-Robots-Tag: noindex, nofollow` and `<meta name="robots" content="noindex,nofollow">`, and `sitemap.xml` never lists the route. `robots.txt` gets no `Disallow` line for it, because that line would advertise the path |
+| **Switch** | `server.pages.contact.enabled: false` turns the form off: `GET` and `POST` return `404`, and the form `Contact:` line leaves `security.txt` (the GitHub and `mailto:` lines stay) |
+| **Link rule** | In `abuse`, `dmca` and `privacy` submissions a link is accepted ONLY when its host is `{fqdn}` (the request's resolved fqdn, PART 8 → "Resolution Order"), a host in the `DOMAIN` list, or the Tor or I2P host that served the request. Any other host rejects the submission as `content`. A link in Name or Subject is always rejected. `security` submissions are not restricted, because a vulnerability report cites CVEs, proofs of concept and third-party pages |
 
 #### Captcha providers (`pages.contact.captcha`)
 
@@ -31203,7 +31223,7 @@ CREATE INDEX IF NOT EXISTS idx_captcha_challenges_expires ON captcha_challenges(
 | 3 | Fill time | `form_token` is `{issued_at}.{hex HMAC-SHA256}` over `contact-form\|{issued_at}` keyed with `installation_secret`: it is stateless (no database write) and is issued on every render and every `GET`. A submission is accepted only when the token verifies and its age is between `min_fill_seconds` and `max_age_seconds`. The token is not bound to an IP address (Tor and mobile clients change it) | Too fast, missing, invalid or expired: `VALIDATION_FAILED` (`400`) on `form_token` with the message "Please wait a moment and submit again", and a fresh token in the response |
 | 4 | Captcha | The existing proof ("No-JavaScript fallback and the simple challenge") | `VALIDATION_FAILED` on `captcha` |
 | 5 | Rate limits | Accepted submissions are counted per client IP (`per_ip`), per sender email, lowercased (`per_email`) and in total (`global`) inside `window`. The counters live in memory and are not written to the database per request. These limits come in ADDITION to the general limits of PART 12. **Strikes:** a rejection by layer 2, 4, 6 or 7 is a strike against the client IP; `strikes` strikes inside `window` ban that IP from the form for `ban_hours` (kept in memory, so a bot that keeps probing stops costing work, and a restart clears it) | `429` with `Retry-After`; nothing is delivered |
-| 6 | Content rules | The form is plain text, so with `reject_markup` (default on) ANY markup in `name`, `subject` or `message` is rejected: an HTML tag (`<x`, `</x`, `<!`), an HTML entity that decodes to `<` or `>`, or BBCode (`[url`, `[img`, `[b]`, `[/`). At most `max_links` links in the message and none in `name` or `subject`; a link is a `scheme://` URL, a `www.` host, or a bare `domain.tld` token (so `mgmarket10.shop` counts without `http://`). No `blocked_words` match; no link host is in `blocked_link_domains` (a suffix match, so `example.shop` also blocks `a.example.shop`); the email domain is not in `blocked_email_domains` | `VALIDATION_FAILED` with the generic message "Your message could not be sent": the response NEVER says which rule matched |
+| 6 | Content rules | Applies to `abuse`, `dmca` and `privacy`, not to `security`. The form is plain text, so with `reject_markup` (default on) ANY markup in a field is rejected: an HTML tag (`<x`, `</x`, `<!`), an HTML entity that decodes to `<` or `>`, or BBCode (`[url`, `[img`, `[b]`, `[/`). Links: none in `name` or `subject`; elsewhere a link (a `scheme://` URL, a `www.` host, or a bare `domain.tld` token; the domain part of an email address is not a link) is accepted only when its host passes the link rule in "Who can reach the form", and at most `max_links` of them. No `blocked_words` match; the email domain is not in `blocked_email_domains` | `VALIDATION_FAILED` with the generic message "Your message could not be sent": the response NEVER says which rule matched |
 | 7 | Duplicate | SHA-256 of the normalized `email`, `subject` and `message` (trimmed, lowercased, whitespace collapsed) seen inside `duplicate_window_hours` (an in-memory bounded LRU of 10,000 entries) | SILENT DROP, as in layer 2 |
 
 **Delivery safety (after every layer passed):**
@@ -31216,9 +31236,9 @@ CREATE INDEX IF NOT EXISTS idx_captcha_challenges_expires ON captcha_challenges(
 
 **Visibility:** every rejection and silent drop logs ONE line `contact.spam_blocked` with `reason` (`shape`, `honeypot`, `fill_time`, `captcha`, `rate_ip`, `rate_email`, `rate_global`, `content`, `markup`, `duplicate`, `banned`) and the client IP, NEVER the submitted name, email, subject or message. The counter `contact_blocked_total{reason}` is exported (PART 21).
 
-**The security-report form** (`/server/security/report`) uses layers 1 to 5 and the Delivery-safety rules. Layers 6 and 7 do NOT apply to it, because a vulnerability report legitimately holds links and may be sent twice. **Email count for the report form:** exactly ONE maintainer notification plus at most ONE researcher acknowledgment per accepted report; PART 11 → "Submission Flow" steps 4 and 5 take precedence over the contact form's one-email rule. The acknowledgment is the only automatic reply the server ever sends. It goes out only after layers 1 to 5 passed (so the captcha and the per-IP, per-email and global limits already applied), carries only the `tracking_id` and the status URL and never any submitted text, uses the server's sender in `From`, and is never retried or repeated; a skipped or failed acknowledgment is not an error for the submitter.
+**Security mode** (`/server/contact?security_id=...`) uses layers 1 to 5 and the Delivery-safety rules. Layers 6 and 7 do NOT apply to it, because a vulnerability report legitimately holds links and may be sent twice. **Email count for the report form:** exactly ONE maintainer notification plus at most ONE researcher acknowledgment per accepted report; PART 11 → "Submission Flow" steps 4 and 5 take precedence over the contact form's one-email rule. The acknowledgment is the only automatic reply the server ever sends. It goes out only after layers 1 to 5 passed (so the captcha and the per-IP, per-email and global limits already applied), carries only the `tracking_id` and the status URL and never any submitted text, uses the server's sender in `From`, and is never retried or repeated; a skipped or failed acknowledgment is not an error for the submitter.
 
-**Tests:** one unit test per layer (a filled honeypot returns the success response and sends nothing; a token younger than `min_fill_seconds`, a forged token and an expired token are rejected; the fourth submission from one IP inside the window gets `429`; a CR/LF in the subject is rejected; a duplicate sends one email), a message holding `<a href=...>` or `[url=...]` is rejected as `markup`, a message with three bare `domain.tld` tokens is rejected when `max_links` is 2, the third strike bans the IP for `ban_hours` (`429`), and one test that an accepted submission sends exactly one email whose `From` is the configured sender.
+**Tests:** one unit test per layer (a filled honeypot returns the success response and sends nothing; a token younger than `min_fill_seconds`, a forged token and an expired token are rejected; the fourth submission from one IP inside the window gets `429`; a CR/LF in the subject is rejected; a duplicate sends one email), an `abuse` message holding `<a href=...>` or `[url=...]` is rejected as `markup`, a link to another host is rejected and a link to `{fqdn}` is accepted for `abuse`, `dmca` and `privacy`, a `security` message with an external link is accepted, `abuse` and `dmca` without a Reported URL are rejected, a `dmca` without the good-faith, accuracy or signature field is rejected, a missing or unknown Type (`general`, `support`, `bug`) is rejected, the third strike bans the IP for `ban_hours` (`429`), and one test that an accepted submission sends exactly one email whose `From` is the configured sender.
 
 ### /server/help
 
@@ -31458,7 +31478,7 @@ server:
       content: ""
 
     contact:
-      # Enable contact form
+      # Enable the report form (security, abuse, DMCA, privacy); false = 404 and no form line in security.txt
       enabled: true
       # Captcha type: simple (built-in, default), recaptcha, hcaptcha
       captcha: simple
@@ -31478,16 +31498,14 @@ server:
         per_email: 3
         global: 60
         window: 1h
-        # Links allowed in the message (scheme:// URLs, www. hosts and bare domain.tld tokens); Name and Subject allow none
-        max_links: 2
+        # Links allowed in the free-text fields, and only to this site's own host (fqdn, DOMAIN list, onion or i2p host); Name and Subject allow none
+        max_links: 10
         # Plain-text form: any HTML tag, entity-encoded angle bracket or BBCode in a field is rejected
         reject_markup: true
         # Case-insensitive substrings that reject a submission (name, subject or message)
         blocked_words: []
         # Sender email domains that are rejected (for example disposable-mail domains)
         blocked_email_domains: []
-        # Hosts that may not appear in any link in the message (suffix match, case-insensitive)
-        blocked_link_domains: []
         # Rejections (honeypot, captcha, content, duplicate) from one IP inside the window before it is banned from the form; 0 disables
         strikes: 3
         # Hours a struck-out IP stays banned from the form
@@ -31540,13 +31558,13 @@ server:
 | `/api/{api_version}/server/about` | GET | About page (JSON, no auth): `title`, `content` (the Markdown source of `pages.about.content` after placeholder substitution, never rendered HTML) and `format` (always `markdown`) |
 | `/api/{api_version}/server/privacy` | GET | Privacy policy (JSON) |
 | `/api/{api_version}/server/contact` | GET | Contact form description (JSON, no auth): `fields` (list of `{name, type, required, max_length, required_when, max_length_when}`, see "Length limits"), `captcha` (`{provider: "simple", challenge_id, question}` for `simple`; `{provider, site_key, fallback}` for `recaptcha` and `hcaptcha`, where `fallback` is the same `{provider: "simple", challenge_id, question}` object; a new challenge on every call), `security_url`, `abuse_email`. Nothing else about recipients |
-| `/api/{api_version}/server/contact` | POST | Submit contact form: the fields above, the `form_token` from the `GET`, no `website`, plus ONE captcha proof (`captcha_response`, or `captcha_id` + `captcha_answer`; see "No-JavaScript fallback and the simple challenge") |
+| `/api/{api_version}/server/contact` | POST | Submit the report form: the fields above (including `type` and the fields that type requires), the `form_token` from the `GET`, no `website`, plus ONE captcha proof (`captcha_response`, or `captcha_id` + `captcha_answer`; see "No-JavaScript fallback and the simple challenge") |
 | `/api/{api_version}/server/auth/check` | GET | Token check (machine-only, no page; `Authorization: Bearer` required): `200` with `{kind}` when the token is valid (`kind` is `operator`, `owner` or, where the project has accounts, `user`), `401` otherwise. Side-effect free, rate-limited like other auth endpoints, never echoes the token |
 | `/api/{api_version}/server/help` | GET | Help page (JSON, no auth): `title`, `content` (Markdown source of `pages.help.content`) and `format` (always `markdown`) |
 | `/api/{api_version}/server/help/mcp` | GET | MCP help (JSON, no auth): `title`, `endpoint` (the resolved MCP URL) and `sections` (the `/server/help/mcp` sections in page order, each `{id, title, content}` with Markdown `content`); `404` when MCP is disabled |
 | `/api/{api_version}/server/terms` | GET | Terms of service (JSON, no auth): `title`, `content` (Markdown source of `pages.terms.content`) and `format` (always `markdown`) |
 | `/api/{api_version}/server/dpo` | GET | DPO contact (JSON): `name`, `email`, `privacy_url` |
-| `/api/{api_version}/server/security` | GET | Security overview (JSON, no auth): `contacts` (ordered list of `{type, value}` in RFC 9116 preference order: `github` with the private-vulnerability-reporting URL, `contact_form` with the absolute `/server/contact?security_id={id}` URL for the current id, `email` with the CC address; a channel that is not configured is omitted), `expires`, `pgp` (`{available, url, fingerprint}`: `url` is the absolute `/.well-known/pgp-key.asc` URL and `fingerprint` the 40-character uppercase hex v4 fingerprint without spaces; `available: false` with both `null` when no keypair exists), `policy_url`, `thanks_url` |
+| `/api/{api_version}/server/security` | GET | Security overview (JSON, no auth): `contacts` (ordered list of `{type, value}` in RFC 9116 preference order: `github` with the private-vulnerability-reporting URL, `contact_form` with the absolute `/server/contact?security_id={id}` URL for the current id, `email` with the CC address; a channel that is not configured is omitted), `expires`, `pgp` (`{available, url, fingerprint}`: `url` is the absolute `/.well-known/pgp-key.asc` URL and `fingerprint` the 40-character uppercase hex v4 fingerprint without spaces; `available: false` with both `null` when no keypair exists), `policy_url`, `thanks_url`, `report_url` (the absolute `/server/contact` URL without `security_id`, for terms violations, DMCA notices and privacy requests; omitted when `server.pages.contact.enabled` is false) |
 | `/api/{api_version}/server/security/policy` | GET | Disclosure policy (JSON, no auth): `policy` (Markdown) |
 | `/api/{api_version}/server/security/thanks` | GET | Hall of fame (JSON, no auth): `entries` (list of `{credit, date, severity}`; `credit` is the stored credit string, `date` is `disclosed_on` as an ISO 8601 date `YYYY-MM-DD`, `severity` is `critical`, `high`, `medium`, `low` or `informational`; newest first, `[]` when empty) |
 | `/api/{api_version}/server/healthz` | GET | Health check (JSON default; text via API rules) |
@@ -31571,7 +31589,7 @@ server:
 | `/server` | Redirect → `/server/about` (301) |
 | `/server/about` | About page (HTML) |
 | `/server/privacy` | Privacy policy page (HTML) |
-| `/server/contact` | Contact form page (HTML) |
+| `/server/contact` | Report form page (HTML); linked from no page, reached from `security.txt` and `/server/security` |
 | `/server/help` | Help page (HTML) |
 | `/server/help/mcp` | MCP help page (HTML); `404` when MCP is disabled |
 | `/server/terms` | Terms of service page (HTML) |
@@ -62742,7 +62760,7 @@ Organizations - only for projects with multi-user collaboration.
 | `/api/{api_version}/server/about` | GET | About information |
 | `/api/{api_version}/server/privacy` | GET | Privacy policy |
 | `/api/{api_version}/server/contact` | GET | Contact form description (JSON, no auth): `fields` (list of `{name, type, required, max_length, required_when, max_length_when}`, see "Length limits"), `captcha` (`{provider: "simple", challenge_id, question}` for `simple`; `{provider, site_key, fallback}` for `recaptcha` and `hcaptcha`, where `fallback` is the same `{provider: "simple", challenge_id, question}` object; a new challenge on every call), `security_url`, `abuse_email`. Nothing else about recipients |
-| `/api/{api_version}/server/contact` | POST | Submit contact form: the fields above, the `form_token` from the `GET`, no `website`, plus ONE captcha proof (`captcha_response`, or `captcha_id` + `captcha_answer`; see "No-JavaScript fallback and the simple challenge") |
+| `/api/{api_version}/server/contact` | POST | Submit the report form: the fields above (including `type` and the fields that type requires), the `form_token` from the `GET`, no `website`, plus ONE captcha proof (`captcha_response`, or `captcha_id` + `captcha_answer`; see "No-JavaScript fallback and the simple challenge") |
 | `/api/{api_version}/server/auth/check` | GET | Token check (machine-only, no page; `Authorization: Bearer` required): `200` with `{kind}` when the token is valid (`kind` is `operator`, `owner` or, where the project has accounts, `user`), `401` otherwise. Side-effect free, rate-limited like other auth endpoints, never echoes the token |
 | `/api/{api_version}/server/help` | GET | Help content |
 
