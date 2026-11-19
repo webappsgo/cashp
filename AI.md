@@ -31202,8 +31202,8 @@ CREATE INDEX IF NOT EXISTS idx_captcha_challenges_expires ON captcha_challenges(
 | 2 | Honeypot | The hidden field `website` is rendered off-screen (absolute position far outside the viewport, not `display:none`), with `tabindex="-1"`, `autocomplete="off"`, `aria-hidden="true"` and a label "Leave this field empty". A person never fills it; many bots fill every field | SILENT DROP: the response is byte-for-byte the normal success response (same status, same page or JSON), nothing is delivered, the block is logged |
 | 3 | Fill time | `form_token` is `{issued_at}.{hex HMAC-SHA256}` over `contact-form\|{issued_at}` keyed with `installation_secret`: it is stateless (no database write) and is issued on every render and every `GET`. A submission is accepted only when the token verifies and its age is between `min_fill_seconds` and `max_age_seconds`. The token is not bound to an IP address (Tor and mobile clients change it) | Too fast, missing, invalid or expired: `VALIDATION_FAILED` (`400`) on `form_token` with the message "Please wait a moment and submit again", and a fresh token in the response |
 | 4 | Captcha | The existing proof ("No-JavaScript fallback and the simple challenge") | `VALIDATION_FAILED` on `captcha` |
-| 5 | Rate limits | Accepted submissions are counted per client IP (`per_ip`), per sender email, lowercased (`per_email`) and in total (`global`) inside `window`. The counters live in memory and are not written to the database per request. These limits come in ADDITION to the general limits of PART 12 | `429` with `Retry-After`; nothing is delivered |
-| 6 | Content rules | At most `max_links` links in the message and none in `name` or `subject`; no `blocked_words` match; the email domain is not in `blocked_email_domains` | `VALIDATION_FAILED` with the generic message "Your message could not be sent": the response NEVER says which rule matched |
+| 5 | Rate limits | Accepted submissions are counted per client IP (`per_ip`), per sender email, lowercased (`per_email`) and in total (`global`) inside `window`. The counters live in memory and are not written to the database per request. These limits come in ADDITION to the general limits of PART 12. **Strikes:** a rejection by layer 2, 4, 6 or 7 is a strike against the client IP; `strikes` strikes inside `window` ban that IP from the form for `ban_hours` (kept in memory, so a bot that keeps probing stops costing work, and a restart clears it) | `429` with `Retry-After`; nothing is delivered |
+| 6 | Content rules | The form is plain text, so with `reject_markup` (default on) ANY markup in `name`, `subject` or `message` is rejected: an HTML tag (`<x`, `</x`, `<!`), an HTML entity that decodes to `<` or `>`, or BBCode (`[url`, `[img`, `[b]`, `[/`). At most `max_links` links in the message and none in `name` or `subject`; a link is a `scheme://` URL, a `www.` host, or a bare `domain.tld` token (so `mgmarket10.shop` counts without `http://`). No `blocked_words` match; no link host is in `blocked_link_domains` (a suffix match, so `example.shop` also blocks `a.example.shop`); the email domain is not in `blocked_email_domains` | `VALIDATION_FAILED` with the generic message "Your message could not be sent": the response NEVER says which rule matched |
 | 7 | Duplicate | SHA-256 of the normalized `email`, `subject` and `message` (trimmed, lowercased, whitespace collapsed) seen inside `duplicate_window_hours` (an in-memory bounded LRU of 10,000 entries) | SILENT DROP, as in layer 2 |
 
 **Delivery safety (after every layer passed):**
@@ -31212,13 +31212,13 @@ CREATE INDEX IF NOT EXISTS idx_captcha_challenges_expires ON captcha_challenges(
 - The message is sent as plain text. Submitted values are never placed in a header, never interpreted as HTML, and the subject is prefixed `[{app_name} contact]`.
 - Contact form: exactly ONE email per accepted submission, and NEVER an automatic reply to the submitter (it would turn the form into a mail relay and cause backscatter). The security-report form is the single documented exception (see below).
 
-**Onion and I2P requests:** every visitor arrives from the local tunnel address, so the per-IP limit would throttle all of them as one client. There, `per_ip` is not applied; `per_email` and `global` are, and the simple captcha is always required (as above).
+**Onion and I2P requests:** every visitor arrives from the local tunnel address, so the per-IP limit would throttle all of them as one client. There, `per_ip` and the strike ban are not applied; `per_email` and `global` are, and the simple captcha is always required (as above).
 
-**Visibility:** every rejection and silent drop logs ONE line `contact.spam_blocked` with `reason` (`shape`, `honeypot`, `fill_time`, `captcha`, `rate_ip`, `rate_email`, `rate_global`, `content`, `duplicate`) and the client IP, NEVER the submitted name, email, subject or message. The counter `contact_blocked_total{reason}` is exported (PART 21).
+**Visibility:** every rejection and silent drop logs ONE line `contact.spam_blocked` with `reason` (`shape`, `honeypot`, `fill_time`, `captcha`, `rate_ip`, `rate_email`, `rate_global`, `content`, `markup`, `duplicate`, `banned`) and the client IP, NEVER the submitted name, email, subject or message. The counter `contact_blocked_total{reason}` is exported (PART 21).
 
 **The security-report form** (`/server/security/report`) uses layers 1 to 5 and the Delivery-safety rules. Layers 6 and 7 do NOT apply to it, because a vulnerability report legitimately holds links and may be sent twice. **Email count for the report form:** exactly ONE maintainer notification plus at most ONE researcher acknowledgment per accepted report; PART 11 → "Submission Flow" steps 4 and 5 take precedence over the contact form's one-email rule. The acknowledgment is the only automatic reply the server ever sends. It goes out only after layers 1 to 5 passed (so the captcha and the per-IP, per-email and global limits already applied), carries only the `tracking_id` and the status URL and never any submitted text, uses the server's sender in `From`, and is never retried or repeated; a skipped or failed acknowledgment is not an error for the submitter.
 
-**Tests:** one unit test per layer (a filled honeypot returns the success response and sends nothing; a token younger than `min_fill_seconds`, a forged token and an expired token are rejected; the fourth submission from one IP inside the window gets `429`; a CR/LF in the subject is rejected; a duplicate sends one email), and one test that an accepted submission sends exactly one email whose `From` is the configured sender.
+**Tests:** one unit test per layer (a filled honeypot returns the success response and sends nothing; a token younger than `min_fill_seconds`, a forged token and an expired token are rejected; the fourth submission from one IP inside the window gets `429`; a CR/LF in the subject is rejected; a duplicate sends one email), a message holding `<a href=...>` or `[url=...]` is rejected as `markup`, a message with three bare `domain.tld` tokens is rejected when `max_links` is 2, the third strike bans the IP for `ban_hours` (`429`), and one test that an accepted submission sends exactly one email whose `From` is the configured sender.
 
 ### /server/help
 
@@ -31478,12 +31478,20 @@ server:
         per_email: 3
         global: 60
         window: 1h
-        # Links (http://, https://, www.) allowed in the message; Name and Subject allow none
+        # Links allowed in the message (scheme:// URLs, www. hosts and bare domain.tld tokens); Name and Subject allow none
         max_links: 2
+        # Plain-text form: any HTML tag, entity-encoded angle bracket or BBCode in a field is rejected
+        reject_markup: true
         # Case-insensitive substrings that reject a submission (name, subject or message)
         blocked_words: []
         # Sender email domains that are rejected (for example disposable-mail domains)
         blocked_email_domains: []
+        # Hosts that may not appear in any link in the message (suffix match, case-insensitive)
+        blocked_link_domains: []
+        # Rejections (honeypot, captcha, content, duplicate) from one IP inside the window before it is banned from the form; 0 disables
+        strikes: 3
+        # Hours a struck-out IP stays banned from the form
+        ban_hours: 24
         # An identical message from the same email inside this window is dropped as a duplicate
         duplicate_window_hours: 24
       # Success message after form submission
