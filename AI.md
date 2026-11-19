@@ -31366,7 +31366,7 @@ curl -H "Accept: application/xml" https://jokes.example.com/api/v1/joke</code></
   <ul>
     <li><a href="/server/docs/swagger">Swagger UI</a> - Interactive REST API explorer</li>
     <li><a href="/server/docs/graphql">GraphiQL</a> - Interactive GraphQL explorer</li>
-    {{ if .MCPEnabled }}<li><a href="/server/help/mcp">MCP server</a> - Use this application from an AI assistant</li>{{ end }}
+    <li><a href="/server/help/mcp">MCP server</a> - Use this application from an AI assistant</li>
   </ul>
 </div>
 ```
