@@ -8511,6 +8511,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | **Reload** | The file watcher watches `server.yml` and `yaml.d/`. A change, add or remove re-merges everything. If the merged result is invalid, the last good config stays active and the error is logged |
 | **Generated values** | The server writes generated values (the saved random port, `server.token`) only to `server.yml`, never to a drop-in. If a drop-in sets the same key, the drop-in wins and the startup log says which file did |
 | **Permissions** | `server.yml` and every drop-in are ALWAYS `0600` and `yaml.d/` is `0700` (PART 8 → "Directory Validation Rules": private paths); a wrong mode is fixed at start, and a drop-in that is group or world writable and cannot be fixed is refused |
+| **Early read** | Before the privileged bind (PART 8 startup, step 8e), ONLY `server.port` and `server.address` are read, from the same merged view (`server.yml`, then drop-ins in order). So a drop-in MAY set either key and it takes effect on the first start; neither key is rebound later (`server.address` and `server.port` need a restart, PART 12) |
 | **Backup** | `{config_dir}/yaml.d/` is included in backups whenever it exists (PART 21 → "Backup Contents") |
 - **Admin panel:** the panel writes only `server.yml`. A setting that a drop-in file sets is shown read-only with the file name (`set by yaml.d/20-mail.yml`) and cannot be changed in the panel; edit that file instead.
 - **Cluster Mode:** drop-ins belong to the file layer. The database layer stays above it (PART 5 priority), and the `server.yml` cache sync never touches `yaml.d/`.
@@ -11455,7 +11456,7 @@ PHASE 5: Server startup (actual server start)
       │   ├─ First port = HTTP
       │   └─ Second port = HTTPS
       ├─ No --port? → check PORT env var (same format)
-      ├─ No env var? → EARLY CONFIG PEEK: read ONLY `server.port` and `server.address` from {config_dir}/server.yml (read-only, as root, after the step 8d permission fix; no other key is read or validated here; the full load is step 13)
+      ├─ No env var? → EARLY CONFIG PEEK: read ONLY `server.port` and `server.address` from the merged view of {config_dir}/server.yml and the ordered {config_dir}/yaml.d/* drop-ins (same file selection, order and replace-whole-value rule as PART 5 → "Drop-in Config Directory"; read-only, as root, after the step 8d permission fix; no other key is read or validated here, and a file that does not parse is skipped for these two keys, its error is reported by the full load at step 13)
       └─ No file, or no `server.port` in it? → random port in 64000-64999 range (single, HTTP); step 13 writes it to the new config
       Listen address (resolved in the same early step): `--address` flag > `LISTEN` env > the early peek of `server.address` > default `[::]` (IPv4 `0.0.0.0` fallback when the kernel has no IPv6, logged once as a warning). `[::]` and `::` are both accepted for `--address`, `LISTEN` and `server.address`; the brackets are stripped before the value is parsed as an IP. Privileged sockets are bound to THIS address and never to a broader one; step 13 never rebinds (`server.address` needs a restart, PART 12)
    f. Bind ALL privileged ports (< 1024) NOW while still root:
