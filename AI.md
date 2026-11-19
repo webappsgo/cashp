@@ -4811,6 +4811,7 @@ Content-Type: application/json
 | **Private functions/types** | `camelCase` | `validateInput()`, `dbConnection` |
 | **Constants** | `PascalCase` or `SCREAMING_SNAKE` | `MaxRetries`, `DEFAULT_TIMEOUT` |
 | **Variables** | `camelCase` | `userEmail`, `isValid`, `retryCount` |
+| **Rendering** | One helper returns the final, sanitized, language-resolved HTML for a request: `operatorHTML(r, name)`, where `name` is `header`, `about`, `privacy`, `terms` or `footer`. It returns an empty string when there is no usable file, and then the built-in content applies. Every template calls it; no handler reads these files itself |
 | **Interfaces** | `PascalCase` + `-er` suffix | `Reader`, `UserStore`, `Authenticator` |
 
 ### Naming Rules
@@ -7749,7 +7750,7 @@ func setupMiddleware(handler http.Handler) http.Handler {
 ### Single Instance Mode
 
 ```
-server.yml (source of truth)
+server.yml, plus yaml.d/* and secrets.yml (source of truth)
      │
      ▼
 Application reads config
@@ -7972,7 +7973,7 @@ Self-Healing Successful?                        │
 | Server running | `systemctl status postgresql` | Active (running) |
 | Network | `ping db.example.com` | Response |
 | Port open | `telnet db.example.com 5432` | Connected |
-| Credentials | Check server.yml | Correct password |
+| Credentials | Check secrets.yml | Correct password |
 | Max connections | Check DB logs | "too many connections" |
 | Firewall | Check iptables/ufw | Port 5432 allowed |
 
@@ -8502,19 +8503,34 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | Rule | Behavior |
 |------|----------|
 | **Files** | `*.yml` and `*.yaml`, regular files only (a symlink is followed only when its target stays inside `yaml.d/`). Hidden files, backups (`*.bak`, `*~`, `*.orig`), other extensions and subdirectories are ignored |
-| **Order** | Built-in defaults, then `server.yml`, then every drop-in in byte-wise filename order (`10-tls.yml`, `20-mail.yml`); a later file overrides an earlier one. CLI flags and environment variables keep their higher priority |
+| **Order** | Built-in defaults, then `server.yml`, then every drop-in in byte-wise filename order (`10-tls.yml`, `20-mail.yml`), and finally `secrets.yml`; a later file overrides an earlier one. CLI flags and environment variables keep their higher priority |
 | **Merge** | Maps merge key by key and recursively. A scalar or a list in a later file REPLACES the earlier value whole; lists are never appended; an explicit `null` is an error, not a reset |
 | **Keys** | Same dotted paths as `server.yml`; any section may live in any file, and one section may span several files |
 | **Validation** | The MERGED result goes through the normal config validation. An error names the file, line and key; a duplicate scalar key inside one file is an error |
-| **Reload** | The file watcher watches `server.yml` and `yaml.d/`. A change, add or remove re-merges everything. If the merged result is invalid, the last good config stays active and the error is logged |
-| **Generated values** | The server writes generated values (the saved random port, `server.token`) only to `server.yml`, never to a drop-in. If a drop-in sets the same key, the drop-in wins and the startup log says which file did |
-| **Permissions** | `server.yml` and every drop-in are ALWAYS `0600` and `yaml.d/` is `0700` (PART 8 → "Directory Validation Rules": private paths); a wrong mode is fixed at start, and a drop-in that is group or world writable and cannot be fixed is refused |
+| **Reload** | The file watcher watches `server.yml`, `yaml.d/`, `secrets.yml` and `html/`. A change, add or remove re-merges everything. If the merged result is invalid, the last good config stays active and the error is logged |
+| **Generated values** | The server writes generated values only to `server.yml` (the saved random port) and to `secrets.yml` (`server.token`, `server.security.encryption_key`), never to a drop-in. If a drop-in sets the same non-secret key, the drop-in wins and the startup log says which file did |
+| **Permissions** | `server.yml`, `secrets.yml` and every drop-in are ALWAYS `0600`, and `yaml.d/` is `0700` (PART 8 → "Directory Validation Rules": private paths); a wrong mode is fixed at start, and a drop-in that is group or world writable and cannot be fixed is refused |
 | **Early read** | Before the privileged bind (PART 8 startup, step 8e), ONLY `server.port` and `server.address` are read, from the same merged view (`server.yml`, then drop-ins in order). So a drop-in MAY set either key and it takes effect on the first start; neither key is rebound later (`server.address` and `server.port` need a restart, PART 12) |
-| **Backup** | `{config_dir}/yaml.d/` is included in backups whenever it exists (PART 21 → "Backup Contents") |
-- **Admin panel:** the panel writes only `server.yml`. A setting that a drop-in file sets is shown read-only with the file name (`set by yaml.d/20-mail.yml`) and cannot be changed in the panel; edit that file instead.
+| **Backup** | `{config_dir}/yaml.d/` and `{config_dir}/secrets.yml` are included in backups whenever they exist (PART 22 → "Backup Contents") |
+- **Admin panel:** the panel writes only `server.yml`, plus `secrets.yml` for the secret keys ("Secrets File") and `html/` for page content ("Operator Content Files"). A setting that a drop-in file sets is shown read-only with the file name (`set by yaml.d/20-mail.yml`) and cannot be changed in the panel; edit that file instead.
 - **Cluster Mode:** drop-ins belong to the file layer. The database layer stays above it (PART 5 priority), and the `server.yml` cache sync never touches `yaml.d/`.
 - **Visibility:** the startup log lists each loaded drop-in in order (info level) and names the file that won for every overridden key (debug level); secret values are never logged.
 
+### Secrets File (`secrets.yml`)
+
+**Credentials live in `{config_dir}/secrets.yml`, never in `server.yml`, so `server.yml` can be read, shared, diffed and kept in configuration management without exposing anything.** It is the same YAML with the same dotted paths, and it is merged LAST.
+
+| Rule | Behavior |
+|------|----------|
+| **Keys** | Only these, for every one the project has: `server.token`; `server.security.encryption_key` and `server.security.encryption_key_version`; `server.notifications.email.smtp.password`; `server.cache.password`; `server.database.password` and `server.database.token`; `server.pages.contact.captcha_secret_key`; `server.ssl.letsencrypt.dns_credentials`; `data.cve.api_key`; `server.backup.encryption_password`; `server.metrics.auth.tokens.*`; every webhook URL and its `_secret` under `server.contact.{role}.webhooks`; `server.auth.ldap.providers[].bind_password`; `server.auth.oidc.providers[].client_secret`. Every other key stays in `server.yml` |
+| **Written by** | The server writes generated, rotated and moved secrets to `secrets.yml` and ONLY there, never to `server.yml` and never to a drop-in: the first-run `server.token`, `server.security.encryption_key` with its version, and every rotation (`--maintenance secret rotate encryption_key`) |
+| **Operator-set values** | An operator MAY also put a secret key in `server.yml` or a drop-in (for example from configuration management). The merge order applies, so `secrets.yml` wins when both set the same key, and the server never moves a value the operator wrote elsewhere. A plaintext DNS credential is rewritten as `enc:v1:` in the file that holds it |
+| **Migration** | At start, if `server.token` or `server.security.encryption_key` is found in `server.yml` and `secrets.yml` does not hold it, the server writes `secrets.yml` first (atomic, `0600`, fsynced) and only then rewrites `server.yml` without those keys, so a secret is never in both files and never lost |
+| **Early read** | The early config read (PART 8 startup, step 8e) never opens `secrets.yml`: it needs only `server.port` and `server.address` |
+| **Permissions** | Always `0600` (PART 8 → "Directory Validation Rules": private paths); a wrong mode is fixed at start |
+| **Reload** | The file watcher watches it with `server.yml` and `yaml.d/`; a change re-merges everything and an invalid result keeps the last good config |
+| **Backup** | Included in every backup whenever it exists (PART 22 → "Backup Contents"), so a restore brings back the same token and encryption key |
+| **Never exposed** | Secret values are never logged, never printed by `--config` (shown as `********`), and never returned by any API response (PART 11) |
 ## Port Rules
 
 **Default port is a random unused port in the 64000-64999 range.**
@@ -10212,7 +10228,7 @@ data:
 ├── geoip/                        # see PART 20: GEOIP for file list
 │   └── .last_updated
 ├── blocklists/
-│   ├── {id}.txt                  # one file per source (the default source is firehol_level1)
+│   ├── {id}.txt                  # one file per source (the built-in source is firehol_level1)
 │   └── .last_updated
 ├── cve/
 │   ├── nvd.json
@@ -10225,28 +10241,25 @@ data:
 
 ### Update Contract and Sources
 
-**Blocklist sources** (`server.security.blocklists`, file-only, hot-reloaded):
+**Blocklist sources** (`server.security.blocklists`, file-only, hot-reloaded). `extra_sources` takes the same fields as below, for example `- {id: my_list, type: domain, url: "https://example.com/list.txt", enabled: true}`:
 
 ```yaml
 server:
   security:
     blocklists:
       enabled: true
-      sources:
-        - id: firehol_level1
-          type: ip
-          url: "https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset"
-          enabled: true
+      # Sources the operator ADDS. The built-in `firehol_level1` source is always active and is never listed here.
+      extra_sources: []
 ```
 
 | Field | Rule |
 |-------|------|
-| `id` | Unique, `a-z0-9_`. The stored file is `{data_dir}/security/blocklists/{id}.txt` and the health check is `blocklist_{id}` |
+| `id` | Unique, `a-z0-9_`, and never `firehol_level1` (reserved for the built-in source). The stored file is `{data_dir}/security/blocklists/{id}.txt` and the health check is `blocklist_{id}` |
 | `type` | `ip` (an address or a CIDR per line, IPv4 or IPv6) or `domain` (a lowercase hostname per line; a leading `*.` matches subdomains) |
 | `url` | `https://` only; any other scheme fails config validation |
 | `enabled` | Default `true` |
 | Line format | One entry per line. Blank lines and lines starting with `#` or `;` are ignored; anything after the first whitespace or `;` on a line is ignored. A line that does not parse as the source's `type` is skipped and counted; a file with no valid entry is rejected |
-| Defaults | Exactly one source ships enabled: `firehol_level1` (type `ip`). There is no default domain source |
+| Built-in | The source `firehol_level1` (type `ip`) is a constant: it is always active, is never written to `server.yml`, and `extra_sources` cannot remove or disable it. There is no built-in domain source |
 
 **NVD (`cve_update`):** the API is paged. Request `resultsPerPage=2000` and advance `startIndex` until `totalResults` is reached. The first run downloads everything; later runs ask only for changes (`lastModStartDate` and `lastModEndDate`, a window of at most 120 days; a longer gap is walked in 120-day windows). Stay at or below 5 requests per 30 seconds without a key and 50 with `data.cve.api_key` set. Records are stored as the API's `cve` objects in `nvd.json` (a JSON array); an incremental update replaces records with the same CVE `id`. A `403` or `429` backs off and retries on the next run and never fails startup.
 
@@ -11140,7 +11153,7 @@ Run '{project_name} <flag> --help' (for example `--service --help`) for detailed
 | **Create if missing** | All directories are created with proper permissions if they don't exist |
 | **Permissions (root)** | Directories: `0755`, Files: `0644`, PID: `0644`, except the private paths below |
 | **Permissions (user)** | Directories: `0700`, Files: `0600`, PID: `0600` |
-| **Private paths (root AND user mode)** | Directories `0700` and files `0600`, whoever runs the server, on: `{config_dir}/server.yml`, `{config_dir}/yaml.d/` and its drop-ins, `{config_dir}/ssl/`, `{config_dir}/tor/`, `{config_dir}/i2p/`, `{data_dir}/security/` and `{data_dir}/tor/` INCLUDING `tor/site/`, each with EVERYTHING below it. `server.yml` holds `server.token` and the encryption key, so it is private even when it contains no other secret. Files and directories are CREATED with these modes (never created `0644`/`0755` and fixed later) |
+| **Private paths (root AND user mode)** | Directories `0700` and files `0600`, whoever runs the server, on: `{config_dir}/server.yml`, `{config_dir}/secrets.yml`, `{config_dir}/yaml.d/` and its drop-ins, `{config_dir}/html/`, `{config_dir}/ssl/`, `{config_dir}/tor/`, `{config_dir}/i2p/`, `{data_dir}/security/` and `{data_dir}/tor/` INCLUDING `tor/site/`, each with EVERYTHING below it. `server.yml` holds `server.token` and the encryption key, so it is private even when it contains no other secret. Files and directories are CREATED with these modes (never created `0644`/`0755` and fixed later) |
 | **Private path enforcement** | `enforcePrivate` runs on every private path at every start, BEFORE the first read of `server.yml` and BEFORE any child process (tor, i2pd) is spawned. A wrong mode is FIXED, never reported as a config load failure; only a path that is neither private nor fixable stops the start, with an error naming the path and its mode (never any content). The unit test builds the tree at `0755`/`0644` and asserts every private path ends `0700`/`0600`, `tor/site` and `server.yml` included |
 | **PID directory (root)** | `/var/run/{internal_org}/{internal_name}/`, one directory per service, `0755`, owned by `{internal_name}:{internal_name}`, created in the root phase (PART 8 startup step 8b) or by the init script before the start. Never a directory shared between services of one org: a service account can then remove only its own PID file on shutdown and can never touch another service's |
 | **Parent dirs** | Create parent directories as needed (`mkdir -p` equivalent) |
@@ -13307,7 +13320,7 @@ func flattenConfig(cfg *Config) []ConfigPair {
 1. CLI flags (highest priority)
 2. Environment variables
 3. Database (admin WebUI changes)
-4. Config files (`server.yml`, then `yaml.d/*`)
+4. Config files (`server.yml`, then `yaml.d/*`, then `secrets.yml`)
 5. Defaults (lowest priority)
 ```
 
@@ -15066,7 +15079,7 @@ if err != nil && !isColumnExistsError(err) {
 - All nodes share same database and cache
 - Config changes propagate automatically
 
-**Cluster join + secret distribution:** new nodes join via the flow defined in **PART 34 → "Join Cluster Flow (Technical)"**. The bootstrap response from the existing node carries every `app_secrets` row (PART 11 → "Cryptographic Keys") inside the encrypted payload — `installation_secret`, `cookie_signing_key`, `csrf_token_secret` are NOT regenerated per node. The pre-existing `server.security.encryption_key` (`server.yml`) is also distributed in the same encrypted payload. All replicas share one set.
+**Cluster join + secret distribution:** new nodes join via the flow defined in **PART 34 → "Join Cluster Flow (Technical)"**. The bootstrap response from the existing node carries every `app_secrets` row (PART 11 → "Cryptographic Keys") inside the encrypted payload — `installation_secret`, `cookie_signing_key`, `csrf_token_secret` are NOT regenerated per node. The pre-existing `server.security.encryption_key` (`secrets.yml`) is also distributed in the same encrypted payload. All replicas share one set.
 
 **Cluster nodes vs agents (do NOT confuse):**
 
@@ -15127,7 +15140,7 @@ Admin manually removes dead nodes via:
 | `app_version` | Running binary's version (Tier-2 public-safe per PART 11) |
 | `commit_hash` | Build commit |
 | `installation_secret_version` | The version number of the `installation_secret` row this node currently has loaded (matches `app_secrets.version` for the `installation_secret` name). Used to detect drift. |
-| `server_security_encryption_key_version` | The node's local `server.security.encryption_key_version` value from `server.yml` (not an `app_secrets` row — this key is file-based, see PART 11 → "Server Encryption Key"). Used to detect drift the same way. |
+| `server_security_encryption_key_version` | The node's local `server.security.encryption_key_version` value from `secrets.yml` (not an `app_secrets` row — this key is file-based, see PART 11 → "Server Encryption Key"). Used to detect drift the same way. |
 | `cookie_signing_key_version` | Same. |
 | `csrf_token_secret_version` | Same. |
 | `learned_origins_version` | Latest `MAX(observed_at)` from the `learned_origins` table this node has read. |
@@ -15797,14 +15810,14 @@ When `DEBUG=true` is active and an error occurs, the canonical error body (PART 
 
 | Aspect | Rule |
 |--------|------|
-| Key | `server.token` in `server.yml` (PART 5) |
+| Key | `server.token` in `secrets.yml` (PART 5) |
 | Format | `tok_` prefix + 32 URL-safe random base62 chars |
 | Generated | First start, when the key is absent or empty; written back to `server.yml` (mode `0600`) and printed once in the startup log banner |
 | Storage | Never stored in the database or in any API token table. Only `SHA-256(server.token)` is cached in memory at startup; inbound tokens are hashed and compared with a constant-time compare |
 | Logging | The raw value is never logged after the first-start banner, never returned by any API response, never included in a backup export or a support bundle |
 | Presented as | `Authorization: Bearer tok_...` |
 | Admin WebUI | Shown masked at `/server/{admin_path}/security` with a "Regenerate" action (sensitive operation per PART 5: re-prompt the admin password, log `security.operator_token_regenerated` to `audit.log`). The new value is displayed once on screen; the previous value stops working immediately |
-| Rotation | Regenerate in the admin WebUI, or blank `server.token` in `server.yml` and restart (a new value is generated and printed once). Cluster Mode: the value is part of the synced configuration (PART 5) |
+| Rotation | Regenerate in the admin WebUI, or blank `server.token` in `secrets.yml` and restart (a new value is generated and printed once). Cluster Mode: the value is part of the synced configuration (PART 5) |
 | Scope | Never implied by `--debug` or development mode: debug only turns endpoints on, it never replaces authentication |
 
 ## Cryptographic Keys
@@ -15836,7 +15849,7 @@ The root secret all other derived material hangs off. Without it, in-flight HMAC
 
 | Key | Length | Storage | Purpose | Rotation |
 |-----|--------|---------|---------|----------|
-| `server.security.encryption_key` | 32 bytes (AES-256-GCM) | `server.yml` (auto-generated on first run), alongside a companion `server.security.encryption_key_version` integer (starts at 1) | At-rest encryption for ALL sensitive server data: 2FA secrets, security report bodies (used as the AES fallback when no PGP keypair exists or when an admin has no personal pubkey, see PART 11 → "Security Reports"), and any future at-rest encrypted data. | Manual via admin panel (`/server/{admin_path}/security/encryption` → "Rotate Encryption Key"). Sensitive-operation flow (PART 5 → "Sensitive Operations"): re-prompt admin password, log to `audit.log` as `security.encryption_key_rotated`. 30-day grace for in-flight encrypted data. `encryption_key_version` is incremented on every rotation and distributed to cluster nodes via the same propagation mechanism as the key itself. |
+| `server.security.encryption_key` | 32 bytes (AES-256-GCM) | `secrets.yml` (auto-generated on first run), alongside a companion `server.security.encryption_key_version` integer (starts at 1) | At-rest encryption for ALL sensitive server data: 2FA secrets, security report bodies (used as the AES fallback when no PGP keypair exists or when an admin has no personal pubkey, see PART 11 → "Security Reports"), and any future at-rest encrypted data. | Manual via admin panel (`/server/{admin_path}/security/encryption` → "Rotate Encryption Key"). Sensitive-operation flow (PART 5 → "Sensitive Operations"): re-prompt admin password, log to `audit.log` as `security.encryption_key_rotated`. 30-day grace for in-flight encrypted data. `encryption_key_version` is incremented on every rotation and distributed to cluster nodes via the same propagation mechanism as the key itself. |
 
 **Rotation contract (`installation_secret`, `encryption_key` and `cookie_signing_key`):**
 
@@ -15848,7 +15861,7 @@ The root secret all other derived material hangs off. Without it, in-flight HMAC
 | Reads during grace | A value that fails under the current key is tried with the previous key; a success also re-encrypts that row under the current key |
 | Retirement | The daily cleanup task deletes `{name}_previous` and `{name}_previous_until` once `_until` has passed. A row that still needs the retired value fails closed and logs `security.decrypt_failed` with the table and row id, never any content |
 
-**Note on consolidation:** `server.security.encryption_key` is the canonical at-rest AES key — every place the spec talks about "encrypt this sensitive data at rest" resolves to this one key, including security report bodies. It is NOT duplicated in `app_secrets`. The three `app_secrets` rows above are HMAC keys (not AES) and a root-secret for HMAC derivation; they are stored in the DB rather than `server.yml` because they have independent rotation lifecycles and need to be visible to cluster replicas via shared DB read. `encryption_key`'s own version is instead tracked via the `encryption_key_version` field written alongside it in `server.yml` (see "Pre-existing key" above) — used to populate `server_security_encryption_key_version` in the cluster heartbeat below.
+**Note on consolidation:** `server.security.encryption_key` is the canonical at-rest AES key — every place the spec talks about "encrypt this sensitive data at rest" resolves to this one key, including security report bodies. It is NOT duplicated in `app_secrets`. The three `app_secrets` rows above are HMAC keys (not AES) and a root-secret for HMAC derivation; they are stored in the DB rather than `secrets.yml` because they have independent rotation lifecycles and need to be visible to cluster replicas via shared DB read. `encryption_key`'s own version is instead tracked via the `encryption_key_version` field written alongside it in `secrets.yml` (see "Pre-existing key" above) — used to populate `server_security_encryption_key_version` in the cluster heartbeat below.
 
 **All secrets above:**
 - Generated on first start, before any user-visible operation.
@@ -19284,7 +19297,7 @@ Every outbound webhook POST includes these headers so the receiver can verify th
 
 | Header | Value |
 |--------|-------|
-| `X-Webhook-Signature` | `sha256=<hex_hmac>` where `hmac = HMAC-SHA256(per_webhook_secret, request_body_bytes)`. The `per_webhook_secret` is auto-generated when the webhook URL is first saved (random 32 bytes, persisted in `server.yml` next to the URL as `webhooks.<name>_secret`) and shown ONCE in the admin panel for the operator to configure on the receiving end. |
+| `X-Webhook-Signature` | `sha256=<hex_hmac>` where `hmac = HMAC-SHA256(per_webhook_secret, request_body_bytes)`. The `per_webhook_secret` is auto-generated when the webhook URL is first saved (random 32 bytes, persisted in `secrets.yml` next to the URL as `webhooks.<name>_secret`) and shown ONCE in the admin panel for the operator to configure on the receiving end. |
 | `X-Webhook-Timestamp` | Unix seconds — receiver SHOULD reject if delta exceeds `±5 min` to prevent replay |
 | `X-Webhook-ID` | UUID v7 (time-ordered, RFC 9562) — idempotency key the receiver can use to deduplicate retries |
 | `X-Webhook-Event` | The event type (e.g., `security.report_received`, `admin.cluster_failover`) |
@@ -19861,72 +19874,82 @@ server:
       #     data_sent: "Page views, browser type, country (anonymized IP)"
       #     policy_url: "https://matomo.org/privacy-policy/"
 
-    # ============================================================
-    # PRIVACY PAGE CONTENT (Markdown supported)
-    # ============================================================
-    content:
-      # --- Data Collection Section ---
-      data_collection: |
-        **We collect only what is necessary to provide our service:**
-
-        **Account Information:**
-        - Email address (for account recovery and notifications)
-        - Username (for identification)
-        - Password (stored securely hashed, never in plain text)
-
-        **Usage Information (with consent):**
-        - Pages visited and features used
-        - Browser type and device information
-        - Approximate location (country/region from IP, not precise)
-
-        **Technical Information:**
-        - IP address (for security and abuse prevention)
-        - Session data (for keeping you logged in)
-
-        **We do NOT collect:**
-        - Payment information (unless explicitly required by the service)
-        - Precise location data
-        - Data from other websites or apps
-
-      # --- Data Usage Section (when data.sold = false) ---
-      data_usage: |
-        **Your data is used solely to:**
-
-        - **Provide the service:** Account management, authentication, core functionality
-        - **Improve the experience:** Performance optimization, bug fixes, feature improvements
-        - **Ensure security:** Prevent abuse, detect fraud, protect your account
-        - **Communicate:** Service updates, security alerts, and (with consent) product news
-
-        **Your data is NEVER:**
-        - Sold to third parties
-        - Used for targeted advertising
-        - Shared without your explicit consent (except as required by law)
-
-      # --- Data Usage Section (when data.sold = true) ---
-      data_usage_if_sold: |
-        **Your data may be used to:**
-
-        - **Provide the service:** Account management, authentication, core functionality
-        - **Improve the experience:** Performance optimization, bug fixes, feature improvements
-        - **Ensure security:** Prevent abuse, detect fraud, protect your account
-        - **Communicate:** Service updates, security alerts, and (with consent) product news
-        - **Third-party sharing:** Your data may be shared with or sold to third parties for analytics, advertising, or other purposes as described below
-
-        **Your rights:**
-        - You can opt out of data sales via your account privacy settings
-        - You can request deletion of your data at any time
-        - See "Your Rights" section below for details
-
-      # --- Data Security Section ---
-      data_security: |
-        **How we protect your data:**
-
-        - All data is stored on our servers (not third-party cloud services unless specified)
-        - Passwords are hashed using Argon2id (industry-standard, memory-hard algorithm)
-        - All connections are encrypted (HTTPS/TLS)
-        - Regular security audits and updates
-        - Access controls and audit logging for admin actions
 ```
+
+### Built-in privacy text (not configurable)
+
+**The privacy page text below is project data, not configuration: it is never read from `server.yml`.** `data_usage` is shown when `server.privacy.data.sold` is false and `data_usage_if_sold` when it is true. An operator adds to the page with `{config_dir}/html/privacy.{html,md,txt}` ("Operator Content Files"); a project replaces these defaults in its own source.
+
+#### `data_collection`
+
+```markdown
+**We collect only what is necessary to provide our service:**
+
+**Account Information:**
+- Email address (for account recovery and notifications)
+- Username (for identification)
+- Password (stored securely hashed, never in plain text)
+
+**Usage Information (with consent):**
+- Pages visited and features used
+- Browser type and device information
+- Approximate location (country/region from IP, not precise)
+
+**Technical Information:**
+- IP address (for security and abuse prevention)
+- Session data (for keeping you logged in)
+
+**We do NOT collect:**
+- Payment information (unless explicitly required by the service)
+- Precise location data
+- Data from other websites or apps
+```
+
+#### `data_usage`
+
+```markdown
+**Your data is used solely to:**
+
+- **Provide the service:** Account management, authentication, core functionality
+- **Improve the experience:** Performance optimization, bug fixes, feature improvements
+- **Ensure security:** Prevent abuse, detect fraud, protect your account
+- **Communicate:** Service updates, security alerts, and (with consent) product news
+
+**Your data is NEVER:**
+- Sold to third parties
+- Used for targeted advertising
+- Shared without your explicit consent (except as required by law)
+```
+
+#### `data_usage_if_sold`
+
+```markdown
+**Your data may be used to:**
+
+- **Provide the service:** Account management, authentication, core functionality
+- **Improve the experience:** Performance optimization, bug fixes, feature improvements
+- **Ensure security:** Prevent abuse, detect fraud, protect your account
+- **Communicate:** Service updates, security alerts, and (with consent) product news
+- **Third-party sharing:** Your data may be shared with or sold to third parties for analytics, advertising, or other purposes as described below
+
+**Your rights:**
+- You can opt out of data sales via your account privacy settings
+- You can request deletion of your data at any time
+- See "Your Rights" section below for details
+```
+
+#### `data_security`
+
+```markdown
+**How we protect your data:**
+
+- All data is stored on our servers (not third-party cloud services unless specified)
+- Passwords are hashed using Argon2id (industry-standard, memory-hard algorithm)
+- All connections are encrypted (HTTPS/TLS)
+- Regular security audits and updates
+- Access controls and audit logging for admin actions
+```
+
 
 ### Dynamic Privacy Messaging
 
@@ -19950,7 +19973,6 @@ type PrivacyConfig struct {
     Consent    ConsentConfig    `yaml:"consent"`
     Cookies    CookieCategories `yaml:"cookies"`
     ThirdParty ThirdPartyConfig `yaml:"third_party"`
-    Content    PrivacyContent   `yaml:"content"`
 }
 
 // DataPolicy controls data handling and CCPA compliance
@@ -20008,14 +20030,23 @@ type AnalyticsCookie struct {
     DescriptionSuffixSold    string `yaml:"description_suffix_sold"`
 }
 
-// PrivacyContent with sold/not-sold variants
+// PrivacyContent is the built-in privacy text with sold/not-sold variants.
+// It is project data ("Built-in privacy text"), never read from server.yml.
 type PrivacyContent struct {
-    DataCollection   string `yaml:"data_collection"`
+    DataCollection   string
     // Used when data.sold = false
-    DataUsage        string `yaml:"data_usage"`
+    DataUsage        string
     // Used when data.sold = true
-    DataUsageIfSold  string `yaml:"data_usage_if_sold"`
-    DataSecurity     string `yaml:"data_security"`
+    DataUsageIfSold  string
+    DataSecurity     string
+}
+
+// builtinPrivacy holds the four texts of "Built-in privacy text"
+var builtinPrivacy = PrivacyContent{
+    DataCollection:  textDataCollection,
+    DataUsage:       textDataUsage,
+    DataUsageIfSold: textDataUsageIfSold,
+    DataSecurity:    textDataSecurity,
 }
 
 // GetConsentMessage returns appropriate message based on sold setting
@@ -20038,9 +20069,9 @@ func (p *PrivacyConfig) GetAnalyticsDescription() string {
 // GetDataUsageContent returns appropriate content
 func (p *PrivacyConfig) GetDataUsageContent() string {
     if p.Data.Sold {
-        return p.Content.DataUsageIfSold
+        return builtinPrivacy.DataUsageIfSold
     }
-    return p.Content.DataUsage
+    return builtinPrivacy.DataUsage
 }
 
 // IsCCPAApplicable returns true if CCPA "Do Not Sell" is required
@@ -20066,6 +20097,10 @@ func privacyData(r *http.Request) PrivacyTemplateData {
         Tracking:     &tracking,
         // From cookie check
         CCPAOptedOut: ccpaOptedOut,
+        // Built-in text (.Content.*), never from server.yml
+        Content:      builtinPrivacy,
+        // Sanitized html/privacy.{html,md,txt} for this request's language, or ""
+        Extension:    operatorHTML(r, "privacy"),
     }
 }
 
@@ -20078,6 +20113,10 @@ type PrivacyTemplateData struct {
     Tracking     *TrackingConfig
     // From ccpa_opt_out cookie
     CCPAOptedOut bool
+    // Built-in privacy text: .Content.DataCollection, .Content.DataSecurity
+    Content      PrivacyContent
+    // Sanitized operator extension (html/privacy.*), "" when there is none
+    Extension    template.HTML
 }
 ```
 
@@ -23202,7 +23241,7 @@ Before proceeding, confirm you understand:
 | Rule | Detail |
 |------|--------|
 | YAML shape | `server.ssl.letsencrypt.dns_provider` is the lego provider name (the lowercase identifier on the lego DNS provider list, e.g. `cloudflare`). `dns_credentials` is ONE flat map of that provider's lego environment variable names to string values, e.g. `CF_DNS_API_TOKEN: "..."`; no nesting |
-| Encryption at rest | A plaintext value an operator writes is accepted at load and rewritten in place, atomically and `0600` (PART 8 private paths), as `enc:v1:{base64 of nonce + AES-256-GCM ciphertext}` under `server.security.encryption_key`. A value that starts with `enc:v1:` is decrypted in memory only. A value is never logged, never returned by the API, and shown as `********` in every view and bundle |
+| Encryption at rest | A plaintext value an operator writes is accepted at load and rewritten in place, in the file that holds it, atomically and `0600` (PART 8 private paths), as `enc:v1:{base64 of nonce + AES-256-GCM ciphertext}` under `server.security.encryption_key`. A value that starts with `enc:v1:` is decrypted in memory only. A value is never logged, never returned by the API, and shown as `********` in every view and bundle |
 | Field discovery | The server hardcodes no field list. For one `dns.NewDNSChallengeProviderByName` call it sets the map as the provider's environment (under a mutex), then restores the environment. lego's error names a missing or invalid variable; the server reports the variable NAME only, never a value |
 | Passing to lego | Only through that constructor call: the resulting provider object is given to the ACME client as its DNS-01 solver. Credentials are never written to a file or kept in the process environment |
 | Validation | At startup and before every certificate request the provider is constructed (no DNS record is touched). A failure makes the request fail with the variable name and logs at ERROR; no other challenge type is tried silently. Real proof of the credentials is a successful issuance |
@@ -28223,7 +28262,7 @@ document.querySelectorAll('.theme-toggle-form').forEach((form) => {
 
 | Partial | Public | Admin | Purpose |
 |---------|:------:|:-----:|---------|
-| `partial/public/header.tmpl` | ✓ | | Logo + top nav + login/user menu |
+| `partial/public/header.tmpl` | ✓ | | Logo + top nav + login/user menu, then the operator `header.html` ("Operator Content Files") |
 | `partial/public/nav.tmpl` | ✓ | | Horizontal navigation links |
 | `partial/public/footer.tmpl` | ✓ | | About, Privacy links (never the report form) |
 | `partial/admin/header.tmpl` | | ✓ | Logo + search + bell + admin menu |
@@ -29971,25 +30010,51 @@ web:
 | Public endpoint POST'd to from anywhere | n/a (no auth, nothing to abuse) |
 | Browser-issued report to `/api/{api_version}/server/reports/*` | n/a (PART 14 reports are deliberately public; rate-limited per-IP) |
 
+## Operator Content Files (`{config_dir}/html/`)
+
+**Page content the operator writes lives in files, not in `server.yml`.** The directory `{config_dir}/html/` is optional and so is every file in it. A file either EXTENDS the built-in content or OVERRIDES it:
+
+| File | Mode | Effect |
+|------|------|--------|
+| `header.html` | **Extends** | Inserted inside `<header>` of every public page, after the built-in logo and navigation. It replaces nothing |
+| `about.{html,md,txt}` | **Extends** | Appended after the built-in About content |
+| `privacy.{html,md,txt}` | **Extends** | Appended after the built-in privacy sections (after "Your Rights" and the consent controls) and before the Contact section. The built-in sections are never replaced, because they must stay in step with `server.privacy.*` |
+| `footer.html` | **Overrides** | Replaces the custom branding block above the Application Footer ("Footer Customization"). No file: the built-in branding. A file that holds only whitespace: no branding. The Default Application Footer is always shown |
+| `terms.{html,md,txt}` | **Overrides** | Replaces the built-in terms of service entirely. No file: the built-in terms |
+
+| Rule | Behavior |
+|------|----------|
+| **Format** | By extension. `.html` is a fragment (no `<html>`, `<head>` or `<body>`). `.md` is Markdown, rendered by the project's Markdown renderer. `.txt` is plain text: HTML-escaped, a blank line starts a paragraph. `header.html` and `footer.html` are HTML only |
+| **Sanitizing** | Every file is sanitized before it renders; nothing the operator writes can run script. `header.html` and `footer.html` use the strict policy of "Footer Customization → Custom HTML Validation". `about`, `privacy` and `terms` (any extension, after Markdown rendering) use the same policy plus `table`, `thead`, `tbody`, `tr`, `th`, `td`, `pre`, `code`, `blockquote`, `hr`, `dl`, `dt`, `dd`, `sup`, `sub`, so ordinary documents keep their tables and code blocks |
+| **Several formats** | If `about.html` and `about.md` both exist, the first of `.html`, `.md`, `.txt` wins; the others are ignored and the startup log names them |
+| **Language** | `{name}.{lang}.{ext}` (for example `terms.fr.md`) is used for a request whose resolved language is `{lang}` (PART 31 → "I18N & A11Y"); otherwise the file without a language; otherwise the built-in content |
+| **Variables** | The placeholders of "Footer Customization → Available Footer Variables" work in every file |
+| **Links** | A file MUST NOT link `/server/contact` (PART 16 → "Who can reach the form"). Scripts, styles, forms and frames are stripped by the sanitizer |
+| **Limits** | At most 256 KiB per file. A larger, unreadable or invalid file is ignored, the error is logged, and the built-in content (or the last good version) is used |
+| **Files** | Regular files only; a symlink is followed only when its target stays inside `html/`. Hidden files, backups (`*.bak`, `*~`, `*.orig`), other extensions and subdirectories are ignored |
+| **Permissions** | `html/` is `0700` and its files `0600` (PART 8 → "Directory Validation Rules": private paths) |
+| **Reload** | The file watcher watches `html/` like `yaml.d/`: an added, changed or removed file applies without a restart, and an invalid file keeps the last good content |
+| **Backup** | `{config_dir}/html/` is included in backups whenever it exists (PART 22 → "Backup Contents") |
+| **Overlay hosts** | Files are served as written. The Tor and I2P privacy rules apply to built-in content only, so an operator must not put clearnet identity into a file that is also shown on `.onion` or `.i2p` |
+
+**Admin panel:** the Pages editors (About, Privacy, Terms) and the footer editor read and write these same files (atomic write, `0600`); a save never touches `server.yml`, "Reset to default" deletes the file, and a new file is written as `.md` (`.html` for header and footer).
+
+
 ## Footer Customization
 
 ### Configuration
 
 **Note:** Analytics tracking → `server.tracking` (PART 12). Privacy/consent → `server.privacy` (PART 12).
 
-```yaml
-web:
-  footer:
-    # Custom branding HTML above the Application Footer
-    # - Not set or "": Use default branding (built-in)
-    # - " " (space): Disable branding, show only Application Footer
-    # - Custom HTML: Use your own branding (SANITIZED - no scripts)
-    custom_html: ""
-```
+**There is no `server.yml` key for the footer.** The custom branding block above the Application Footer is the file `{config_dir}/html/footer.html` ("Operator Content Files"):
+
+- No file: use the default branding (built-in)
+- A file holding only whitespace: disable branding, show only the Application Footer
+- Custom HTML: use your own branding (SANITIZED, no scripts)
 
 ### Custom HTML Validation
 
-**`custom_html` is SANITIZED before rendering. Scripts and dangerous elements are NEVER executed.**
+**`footer.html` is SANITIZED before rendering. Scripts and dangerous elements are NEVER executed.**
 
 ```go
 import "github.com/microcosm-cc/bluemonday"
@@ -30044,7 +30109,7 @@ func ValidateFooterHTML(html string) (string, error) {
 
     // Warn if content was modified (for admin UI feedback)
     if html != sanitized && html != "" && html != " " {
-        log.Warnf("footer custom_html was sanitized: removed potentially dangerous content")
+        log.Warnf("footer.html was sanitized: removed potentially dangerous content")
     }
 
     return sanitized, nil
@@ -30107,7 +30172,7 @@ func ValidateFooterHTML(html string) (string, error) {
 
 ### Admin Panel Preview
 
-When admin edits `custom_html`, show:
+When an admin edits `footer.html` (or any other html content file), show:
 1. **Raw input** - What they typed
 2. **Sanitized output** - What will actually render
 3. **Warning** - If content was modified by sanitizer
@@ -30732,9 +30797,9 @@ func trackingScript(r *http.Request) template.HTML {
 |---------|--------|-------------|
 | Summary | Dynamic | Key points: data stored on server, sold/not-sold (based on `data.sold`) |
 | Cookie Policy | `server.privacy.cookies` | What cookies are used and why |
-| Data Collection | `server.privacy.content.data_collection` | What data is collected |
+| Data Collection | built-in text ("Built-in privacy text") | What data is collected |
 | Data Usage | `GetDataUsageContent()` | Dynamic: returns `data_usage` or `data_usage_if_sold` |
-| Data Security | `server.privacy.content.data_security` | How data is protected |
+| Data Security | built-in text ("Built-in privacy text") | How data is protected |
 | Data Storage | `server.privacy.sharing` | Where data is stored, third-party conditions |
 | Data Retention | `server.privacy.retention` | How long data is kept |
 | Third Parties | `server.privacy.third_party` | Services that receive data (if any) |
@@ -30816,7 +30881,7 @@ func trackingScript(r *http.Request) template.HTML {
   <!-- Data Collection - admin-defined content -->
   <section id="data-collection">
     <h2>Data We Collect</h2>
-    {{ .Privacy.Content.DataCollection | markdownToHTML }}
+    {{ .Content.DataCollection | markdownToHTML }}
   </section>
 
   <!-- Data Usage - admin-defined content -->
@@ -30829,7 +30894,7 @@ func trackingScript(r *http.Request) template.HTML {
   <!-- Data Security - admin-defined content -->
   <section id="data-security">
     <h2>Data Security</h2>
-    {{ .Privacy.Content.DataSecurity | markdownToHTML }}
+    {{ .Content.DataSecurity | markdownToHTML }}
   </section>
 
   <!-- Data Storage - from server.privacy.data -->
@@ -30943,6 +31008,9 @@ func trackingScript(r *http.Request) template.HTML {
   </section>
   {{ end }}
 
+  <!-- Operator extension (html/privacy.*): sanitized, appended before Contact -->
+  {{ if .Extension }}<section id="operator-extension">{{ .Extension }}</section>{{ end }}
+
   <!-- Contact -->
   <section id="contact">
     <h2>Contact Us</h2>
@@ -31052,7 +31120,7 @@ func trackingScript(r *http.Request) template.HTML {
 - The `message_if_sold` and `data_usage_if_sold` fields are only editable when `data.sold = true`
 - Preview tab should allow toggling between "Data NOT Sold" and "Data Sold" views
 
-**Default content provided, fully customizable via admin panel.**
+**Built-in content provided; the operator extends it with the privacy file ("Operator Content Files").**
 
 ### /server/contact
 
@@ -31109,7 +31177,7 @@ func trackingScript(r *http.Request) template.HTML {
 | Value | Behavior |
 |-------|----------|
 | `simple` (default) | Built-in, self-hosted challenge: no third party, no keys, works over Tor and with JavaScript disabled. The server generates a question and stores only the hashed answer; each challenge is single-use, expires after 10 minutes and is rate-limited |
-| `recaptcha` | Google reCAPTCHA v2 checkbox. Needs `pages.contact.captcha_site_key` (public, rendered in the page) and `pages.contact.captcha_secret_key` (server-side only, kept in `server.yml` like other secrets, never returned in a response or written to a log). The server verifies by POSTing `secret`, `response` and `remoteip` to `https://www.google.com/recaptcha/api/siteverify` and accepts only `"success": true`; the widget needs JavaScript, so the no-JavaScript fallback below applies |
+| `recaptcha` | Google reCAPTCHA v2 checkbox. Needs `pages.contact.captcha_site_key` (public, rendered in the page) and `pages.contact.captcha_secret_key` (server-side only, kept in `secrets.yml` like every secret, never returned in a response or written to a log). The server verifies by POSTing `secret`, `response` and `remoteip` to `https://www.google.com/recaptcha/api/siteverify` and accepts only `"success": true`; the widget needs JavaScript, so the no-JavaScript fallback below applies |
 | `hcaptcha` | hCaptcha. Same two keys; verified by POSTing `secret` and `response` to `https://api.hcaptcha.com/siteverify` and accepting only `"success": true`; the widget needs JavaScript, so the no-JavaScript fallback below applies |
 
 - **Validation:** `recaptcha` or `hcaptcha` with an empty site key or secret key fails config validation with a clear error; the keys are ignored for `simple`
@@ -31416,15 +31484,6 @@ server:
       email: ""
 
   pages:
-    about:
-      # Additional content for about page (markdown supported)
-      content: ""
-
-    privacy:
-      # Privacy policy content (markdown supported)
-      # If empty, uses default template
-      content: ""
-
     contact:
       # Enable the report form (security, abuse, DMCA, privacy); false = 404 and no form line in security.txt
       enabled: true
@@ -31470,11 +31529,6 @@ server:
       # Help page content (markdown supported)
       # Project-specific - must be defined per application
       content: ""
-
-    terms:
-      # Terms of service content (markdown supported)
-      # If empty, uses default template
-      content: ""
 ```
 
 ### Admin Panel (/server/{admin_path}/pages)
@@ -31482,11 +31536,11 @@ server:
 | Element | Type | Description |
 |---------|------|-------------|
 | **About Page** | | |
-| Content | Markdown editor | Additional about page content |
+| Content | Markdown editor | Extends the built-in about page (file `html/about.md`) |
 | Preview | Button | Preview about page |
 | **Privacy Policy** | | |
-| Content | Markdown editor | Privacy policy content |
-| Reset to default | Button | Restore default template |
+| Content | Markdown editor | Extends the built-in privacy page (file `html/privacy.md`) |
+| Reset to default | Button | Delete the file (the built-in content returns) |
 | Preview | Button | Preview privacy page |
 | **Contact Page** | | |
 | Enable contact form | Toggle | Enable/disable contact form |
@@ -31498,22 +31552,22 @@ server:
 | Content | Markdown editor | Help/documentation content |
 | Preview | Button | Preview help page |
 | **Terms of Service** | | |
-| Content | Markdown editor | Terms of service content |
-| Reset to default | Button | Restore default template |
+| Content | Markdown editor | Overrides the built-in terms (file `html/terms.md`) |
+| Reset to default | Button | Delete the file (the built-in content returns) |
 | Preview | Button | Preview terms page |
 
 ### /server/ API Endpoints
 
 | Route | Method | Description |
 |-------|--------|-------------|
-| `/api/{api_version}/server/about` | GET | About page (JSON, no auth): `title`, `content` (the Markdown source of `pages.about.content` after placeholder substitution, never rendered HTML) and `format` (always `markdown`) |
+| `/api/{api_version}/server/about` | GET | About page (JSON, no auth): `title`, `content` (the source of the operator's `about` file after placeholder substitution, never rendered HTML; an empty string when there is no file) and `format` (`markdown`, `html` or `text`, from the file extension; `markdown` when there is no file) |
 | `/api/{api_version}/server/privacy` | GET | Privacy policy (JSON) |
 | `/api/{api_version}/server/contact` | GET | Contact form description (JSON, no auth): `fields` (list of `{name, type, required, max_length, required_when, max_length_when}`, see "Length limits"), `captcha` (`{provider: "simple", challenge_id, question}` for `simple`; `{provider, site_key, fallback}` for `recaptcha` and `hcaptcha`, where `fallback` is the same `{provider: "simple", challenge_id, question}` object; a new challenge on every call), `security_url`, `abuse_email`. Nothing else about recipients |
 | `/api/{api_version}/server/contact` | POST | Submit the report form in two calls (the first returns the `review` and a `review_token` and delivers nothing; the second repeats every field with `review_token` and `confirmed: true` and delivers): the fields above (including `type` and the fields that type requires), the `form_token` from the `GET`, no `website`, plus ONE captcha proof (`captcha_response`, or `captcha_id` + `captcha_answer`; see "No-JavaScript fallback and the simple challenge") |
 | `/api/{api_version}/server/auth/check` | GET | Token check (machine-only, no page; `Authorization: Bearer` required): `200` with `{kind}` when the token is valid (`kind` is `operator`, `owner` or, where the project has accounts, `user`), `401` otherwise. Side-effect free, rate-limited like other auth endpoints, never echoes the token |
 | `/api/{api_version}/server/help` | GET | Help page (JSON, no auth): `title`, `content` (Markdown source of `pages.help.content`) and `format` (always `markdown`) |
 | `/api/{api_version}/server/help/mcp` | GET | MCP help (JSON, no auth): `title`, `endpoint` (the resolved MCP URL) and `sections` (the `/server/help/mcp` sections in page order, each `{id, title, content}` with Markdown `content`); `404` when MCP is disabled |
-| `/api/{api_version}/server/terms` | GET | Terms of service (JSON, no auth): `title`, `content` (Markdown source of `pages.terms.content`) and `format` (always `markdown`) |
+| `/api/{api_version}/server/terms` | GET | Terms of service (JSON, no auth): `title`, `content` (the source of the `terms` override file, or the built-in terms in Markdown when there is no file) and `format` (`markdown`, `html` or `text`) |
 | `/api/{api_version}/server/dpo` | GET | DPO contact (JSON): `name`, `email`, `privacy_url` |
 | `/api/{api_version}/server/security` | GET | Security overview (JSON, no auth): `contacts` (ordered list of `{type, value}` in RFC 9116 preference order: `github` with the private-vulnerability-reporting URL, `contact_form` with the absolute `/server/contact?security_id={id}` URL for the current id, `email` with the CC address; a channel that is not configured is omitted), `expires`, `pgp` (`{available, url, fingerprint}`: `url` is the absolute `/.well-known/pgp-key.asc` URL and `fingerprint` the 40-character uppercase hex v4 fingerprint without spaces; `available: false` with both `null` when no keypair exists), `policy_url`, `thanks_url`, `report_url` (the absolute `/server/contact` URL without `security_id`, for terms violations, DMCA notices and privacy requests; omitted when `server.pages.contact.enabled` is false) |
 | `/api/{api_version}/server/security/policy` | GET | Disclosure policy (JSON, no auth): `policy` (Markdown) |
@@ -33061,32 +33115,9 @@ server:
       # Auto-update all enabled blocklists on schedule
       auto_update: true
 
-      # Sources - list of blocklist URLs (custom URLs can be added)
-      sources:
-        - name: "firehol_level1"
-          url: "https://iplists.firehol.org/files/firehol_level1.netset"
-          format: cidr
-          enabled: true
-
-        - name: "spamhaus_drop"
-          url: "https://www.spamhaus.org/drop/drop.txt"
-          format: cidr
-          enabled: true
-
-        - name: "blocklist_de"
-          url: "https://lists.blocklist.de/lists/all.txt"
-          format: plain
-          enabled: false
-
-        - name: "abuse_ch_urlhaus"
-          url: "https://urlhaus.abuse.ch/downloads/text/"
-          format: plain
-          enabled: false
-
-        - name: "dshield"
-          url: "https://www.dshield.org/block.txt"
-          format: cidr
-          enabled: false
+      # Sources the operator ADDS (see "Suggested sources" below). The built-in
+      # firehol_level1 source is always active and is never listed here.
+      extra_sources: []
 
       # Where parsed blocklist data is stored
       # Uses {data_dir}/security/blocklists/ directory
@@ -33104,6 +33135,15 @@ server:
       # Log blocked requests
       log_blocked: true
 ```
+
+**Built-in and suggested sources:** the built-in source `firehol_level1` is a constant: it is always active, is never written to `server.yml`, and is listed first and read-only in the admin panel (no Remove, no disable; `PATCH` or `DELETE` on it returns `403 FORBIDDEN`). A source's `name` here is the `id` of PART 19 → "Update Contract and Sources" (same value, same `a-z0-9_` rule, stored as `{id}.txt`); `format` is the parse format and applies to `type: ip` sources. These sources are NOT shipped and NOT written to `server.yml`; an operator adds the ones they want:
+
+| Name | URL | Format |
+|------|-----|--------|
+| `spamhaus_drop` | `https://www.spamhaus.org/drop/drop.txt` | `cidr` |
+| `blocklist_de` | `https://lists.blocklist.de/lists/all.txt` | `plain` |
+| `abuse_ch_urlhaus` | `https://urlhaus.abuse.ch/downloads/text/` | `plain` |
+| `dshield` | `https://www.dshield.org/block.txt` | `cidr` |
 
 **Data Model:**
 
@@ -36079,7 +36119,7 @@ All databases come from [sapics/ip-location-db](https://github.com/sapics/ip-loc
 ```
 
 - Attribution MUST be visible on the page — not hidden behind a click-through, tooltip, or collapsed section
-- The DB-IP notice is required whenever `geoip.databases.city` is enabled (the default); PDDL databases need no notice, though `LICENSE.md`'s third-party table still lists their source and license
+- The DB-IP notice is ALWAYS required, because the City database is always in use; PDDL databases need no notice, though `LICENSE.md`'s third-party table still lists their source and license
 - If a future database swap changes the license (e.g. adding a PDDL-only source), update this section — do not carry stale attribution for a database no longer in use, and do not drop attribution for one still in use
 
 ## Configuration
@@ -36088,9 +36128,6 @@ All databases come from [sapics/ip-location-db](https://github.com/sapics/ip-loc
 server:
   geoip:
     enabled: true
-
-    # Directory for downloaded MMDB files
-    dir: "{data_dir}/security/geoip"
 
     # Update schedule handled by the scheduler (see PART 19: SCHEDULER)
     # Default: weekly, Sunday 03:00 local
@@ -36108,28 +36145,16 @@ server:
     # fields and environments. Ships empty — see "Country Blocking Presets"
     # below for why no preset is bundled by default.
     presets: {}
-
-    # Which databases to download and use - the City database is CC BY 4.0 and
-    # requires the attribution above whenever its data is used (ASN and Country are PDDL)
-    databases:
-      # autonomous_system_number, autonomous_system_organization
-      asn: true
-      # country_code
-      country: true
-      # city, country_code, state1, state2, postcode, lat/lon, timezone
-      city: true
 ```
 
 | Config Key | Description |
 |------------|-------------|
 | `geoip.enabled` | Turn GeoIP on/off entirely |
-| `geoip.dir` | Directory the downloaded `.mmdb` files live in |
 | `geoip.deny_countries` | ISO 3166-1 alpha-2 codes to block; all others allowed |
 | `geoip.allow_countries` | ISO 3166-1 alpha-2 codes to allow exclusively; wins if both lists are set |
 | `geoip.presets` | Named operator-authored country lists (`name -> []code`), for reuse; empty by default — see Country Blocking Presets |
-| `geoip.databases.asn` | Enable ASN lookups |
-| `geoip.databases.country` | Enable country lookups |
-| `geoip.databases.city` | Enable city lookups |
+
+**Built in:** the ASN, Country and City databases and their directory (`{data_dir}/security/geoip`) are constants and are never written to `server.yml`. Only `enabled`, the country lists and the presets are configurable.
 
 **Country blocking behavior:**
 
@@ -36143,7 +36168,7 @@ server:
 **Notes:**
 - ISO 3166-1 alpha-2 country codes only (2 letters, uppercase)
 - Allowlisted IPs (`server.security.allowlist`) always bypass country blocking
-- Country blocking requires the Country database; if it's missing or disabled, country blocking is skipped with a logged warning (fail-open per the risk-signal rule above)
+- Country blocking requires the Country database; if it is missing (not downloaded yet), country blocking is skipped with a logged warning (fail-open per the risk-signal rule above)
 - Tor exit nodes are evaluated by exit-node country, not by any inferred user origin
 - Private/internal IPs (RFC 1918, RFC 4193, loopback) are never looked up or country-blocked
 
@@ -36226,7 +36251,7 @@ it in a compliance-sensitive form.
 
 | Rule | Detail |
 |------|--------|
-| **Per-service tokens** | Each service (`prometheus`, `grafana`, `loki`) has its own token in `server.yml` — rotating one service's token never breaks the others |
+| **Per-service tokens** | Each service (`prometheus`, `grafana`, `loki`) has its own token in `secrets.yml` — rotating one service's token never breaks the others |
 | **Header only** | `Authorization: Bearer {token}` — query-string tokens are FORBIDDEN (they leak into access logs and proxies) |
 | **Constant-time compare** | Token comparison uses constant-time equality |
 | **Empty token = service disabled** | An empty token disables that service's endpoints → `403` with an empty body; the reason is logged once at startup (log files, not console) |
@@ -37756,6 +37781,8 @@ groups:
 |---------|----------|-------|
 | `server.yml` | ✓ Always | Configuration file |
 | `{config_dir}/yaml.d/` | ✓ If exists | Drop-in config files |
+| `{config_dir}/secrets.yml` | ✓ If exists | Secrets (token, encryption key, credentials) |
+| `{config_dir}/html/` | ✓ If exists | Operator page content |
 | `server.db` | ✓ Always | Main database (settings) |
 | `users.db` | ✓ Always | User database (admins table holds admin credentials) |
 | `{config_dir}/template/` | ✓ If exists | Custom email templates |
