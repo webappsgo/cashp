@@ -31210,13 +31210,13 @@ CREATE INDEX IF NOT EXISTS idx_captcha_challenges_expires ON captcha_challenges(
 
 - The `From` address is ALWAYS the server's configured sender, never the submitter's. The submitter's address goes only in `Reply-To`.
 - The message is sent as plain text. Submitted values are never placed in a header, never interpreted as HTML, and the subject is prefixed `[{app_name} contact]`.
-- Exactly ONE email per accepted submission, and NEVER an automatic reply to the submitter (it would turn the form into a mail relay and cause backscatter).
+- Contact form: exactly ONE email per accepted submission, and NEVER an automatic reply to the submitter (it would turn the form into a mail relay and cause backscatter). The security-report form is the single documented exception (see below).
 
 **Onion and I2P requests:** every visitor arrives from the local tunnel address, so the per-IP limit would throttle all of them as one client. There, `per_ip` is not applied; `per_email` and `global` are, and the simple captcha is always required (as above).
 
 **Visibility:** every rejection and silent drop logs ONE line `contact.spam_blocked` with `reason` (`shape`, `honeypot`, `fill_time`, `captcha`, `rate_ip`, `rate_email`, `rate_global`, `content`, `duplicate`) and the client IP, NEVER the submitted name, email, subject or message. The counter `contact_blocked_total{reason}` is exported (PART 21).
 
-**The security-report form** (`/server/security/report`) uses layers 1 to 5 and the Delivery-safety rules. Layers 6 and 7 do NOT apply to it, because a vulnerability report legitimately holds links and may be sent twice.
+**The security-report form** (`/server/security/report`) uses layers 1 to 5 and the Delivery-safety rules. Layers 6 and 7 do NOT apply to it, because a vulnerability report legitimately holds links and may be sent twice. **Email count for the report form:** exactly ONE maintainer notification plus at most ONE researcher acknowledgment per accepted report; PART 11 → "Submission Flow" steps 4 and 5 take precedence over the contact form's one-email rule. The acknowledgment is the only automatic reply the server ever sends. It goes out only after layers 1 to 5 passed (so the captcha and the per-IP, per-email and global limits already applied), carries only the `tracking_id` and the status URL and never any submitted text, uses the server's sender in `From`, and is never retried or repeated; a skipped or failed acknowledgment is not an error for the submitter.
 
 **Tests:** one unit test per layer (a filled honeypot returns the success response and sends nothing; a token younger than `min_fill_seconds`, a forged token and an expired token are rejected; the fourth submission from one IP inside the window gets `429`; a CR/LF in the subject is rejected; a duplicate sends one email), and one test that an accepted submission sends exactly one email whose `From` is the configured sender.
 
