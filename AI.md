@@ -8093,9 +8093,8 @@ X-Maintenance-Reason: database_connection
 ```yaml
 server:
   maintenance:
-    # Self-healing settings
+    # Self-healing is always on and has no enabled switch; only its pacing is configurable
     self_healing:
-      enabled: true
       # Seconds between retry attempts
       retry_interval: 30s
       # 0 = unlimited (keep trying forever)
@@ -8189,7 +8188,6 @@ _cache:
 | `branding.tagline` | `"The best app"` | 2025-01-15 10:30:00 |
 | `ssl.enabled` | `true` | 2025-01-15 09:00:00 |
 | `ssl.letsencrypt.enabled` | `true` | 2025-01-15 09:00:00 |
-| `rate_limit.enabled` | `true` | 2025-01-14 15:00:00 |
 | `rate_limit.read.requests` | `120` | 2025-01-14 15:00:00 |
 
 **Cluster State Table:**
@@ -9384,7 +9382,6 @@ server:
         schedule: "*/10 * * * *"
 
   rate_limit:
-    enabled: true
     read:
       # per minute per IP (per token when authenticated)
       requests: 120
@@ -15875,7 +15872,7 @@ Cross-Origin-Opener-Policy: <see "Cross-Origin Isolation" below — default unsa
 Cross-Origin-Embedder-Policy: <see "Cross-Origin Isolation" below — default unsafe-none>
 Cross-Origin-Resource-Policy: <see "Cross-Origin Isolation" below — default cross-origin>
 Content-Security-Policy: <see "Content Security Policy" below>
-Permissions-Policy: <generated from web.permissions_policy config — see "Permissions-Policy Configuration" below>
+Permissions-Policy: <built from the project's declared features — see "Permissions-Policy" below>
 Reporting-Endpoints: default="https://{fqdn}/api/{api_version}/server/reports/default"
 Report-To: {"group":"default","max_age":10886400,"endpoints":[{"url":"https://{fqdn}/api/{api_version}/server/reports/default"}]}
 NEL: {"report_to":"default","max_age":2592000,"include_subdomains":true}
@@ -15901,64 +15898,21 @@ Clear-Site-Data: "cache", "cookies", "storage"
 - HSTS — RFC 6797. Default `max-age=63072000` (2 years) per the HSTS Preload List requirement (`hstspreload.org`). `includeSubDomains` and `preload` directives included by default.
 - **`preload` is an opt-out commitment.** Once a domain is on the public preload list (built into Chrome/Firefox/Safari/Edge), removal can take 6-12 months even after disabling. Operator MAY disable preload via `web.hsts.preload: false` if the site is not yet ready (no SSL on every subdomain, etc.). Default ON because zero-config secure means committing to TLS forever.
 - `web.hsts.max_age_seconds` is configurable; values <31536000 (1 year) make the site preload-ineligible. Setting to 0 disables HSTS entirely for emergencies — produces a warning at startup.
-- Permissions-Policy is **fully configurable per project** — see "Permissions-Policy Configuration" below. Defaults strike a balance: features required by the spec itself (WebAuthn, fullscreen, payment, picture-in-picture, encrypted-media, web-share, autoplay, storage-access) are scoped to `self`; advertising-tracking proposals (`interest-cohort`, `browsing-topics`, `attribution-reporting`) are disabled; everything else (camera, microphone, geolocation, USB, MIDI, sensors, screen capture, etc.) is **disabled by default but trivially enable-able** by the project's `IDEA.md` declaring which features it uses. A mapping app, video chat, voice notes, and similar projects flip a single config key per feature and the header updates automatically.
+- Permissions-Policy is **declared by the project and always emitted**; it is not configurable in `server.yml` (see "Permissions-Policy" below). Features the spec itself uses are scoped to `self`; advertising-tracking proposals (`interest-cohort`, `browsing-topics`, `attribution-reporting`) are always disabled; everything else (camera, microphone, geolocation, USB, MIDI, sensors, screen capture, etc.) is disabled unless the project's `IDEA.md` declares that it uses the feature.
 
-### Permissions-Policy Configuration
+### Permissions-Policy (declared by the project, always emitted)
 
-```yaml
-web:
-  permissions_policy:
-    # Each key is a Permissions-Policy feature. Value is one of:
-    #   "()"             - block for everyone (locked-down default)
-    #   "(self)"         - allow same-origin only (typical for app's own use)
-    #   "(self https://embedded.example.com)" - allow self + specific origins
-    #   "*"              - allow all origins (use rarely; consider security implications)
-    #
-    # Spec-default-locked features (project enables only what its IDEA.md declares):
-    accelerometer: "()"
-    ambient-light-sensor: "()"
-    battery: "()"
-    # mapping/video-chat/voice projects: set to "(self)"
-    camera: "()"
-    # screen-share projects: set to "(self)"
-    display-capture: "()"
-    # location-aware projects: set to "(self)"
-    geolocation: "()"
-    gyroscope: "()"
-    hid: "()"
-    idle-detection: "()"
-    magnetometer: "()"
-    # voice/video projects: set to "(self)"
-    microphone: "()"
-    midi: "()"
-    screen-wake-lock: "()"
-    serial: "()"
-    usb: "()"
-    xr-spatial-tracking: "()"
+**The `Permissions-Policy` header belongs to the project, not to the deployment: there is no `web.permissions_policy` key and nothing in `server.yml` changes it.** The server builds it at startup from three fixed sets and ALWAYS sends it:
 
-    # Advertising / tracking proposals — disabled by default, regardless of project.
-    # The spec's privacy posture (PART 11 → "Public Endpoint Safety Principle") forbids
-    # these even if a project's IDEA.md asks for them. Operator can override but the
-    # admin panel surfaces a privacy warning.
-    attribution-reporting: "()"
-    browsing-topics: "()"
-    interest-cohort: "()"
+| Set | Features | Value |
+|-----|----------|-------|
+| **Locked** (default) | `accelerometer`, `ambient-light-sensor`, `battery`, `camera`, `display-capture`, `geolocation`, `gyroscope`, `hid`, `idle-detection`, `magnetometer`, `microphone`, `midi`, `screen-wake-lock`, `serial`, `usb`, `xr-spatial-tracking` | `()` |
+| **Tracking proposals** | `attribution-reporting`, `browsing-topics`, `interest-cohort` | `()` ALWAYS, even if `IDEA.md` asks for them (PART 11 → "Public Endpoint Safety Principle") |
+| **Used by the spec itself** | `autoplay`, `encrypted-media`, `fullscreen`, `payment`, `picture-in-picture`, `publickey-credentials-get` (WebAuthn and Passkeys), `storage-access`, `web-share` | `(self)` |
 
-    # Features the spec itself uses — scoped to self by default.
-    autoplay: "(self)"
-    encrypted-media: "(self)"
-    fullscreen: "(self)"
-    payment: "(self)"
-    picture-in-picture: "(self)"
-    # WebAuthn / Passkeys
-    publickey-credentials-get: "(self)"
-    storage-access: "(self)"
-    web-share: "(self)"
-```
+**Project declaration:** a locked feature becomes `(self)` only when the project's `IDEA.md` declares that it uses it, with one flag per feature named `uses_{feature}` (hyphens become underscores): `"uses_geolocation": true`, `uses_camera`, `uses_microphone`, `uses_display_capture`, and so on. A declared feature is therefore always enabled, and an undeclared one is always locked; an operator cannot flip either.
 
-**Generation rule:** the binary builds the `Permissions-Policy` header at startup by joining the keys above into a single `feature1=value1, feature2=value2, …` string. Empty values (`""`) skip the feature entirely (header omits it — browser default applies). Unknown feature names (browser doesn't support yet) are emitted anyway — non-supporting browsers ignore them harmlessly.
-
-**`IDEA.md`-driven enablement:** when a project's `IDEA.md` declares a feature like `"uses_geolocation": true`, the binary's first-run setup pre-fills `geolocation: "(self)"` in `server.yml` so the operator doesn't have to flip the flag manually. Same for camera, microphone, display-capture, etc.
+**Generation rule:** the binary joins the features into one `feature1=value1, feature2=value2, …` string. Unknown feature names (a browser that does not support them yet) are emitted anyway, because non-supporting browsers ignore them harmlessly.
 
 **In development mode, headers are issued unchanged — but CSP runs in `Content-Security-Policy-Report-Only` mode (see below) so violations are logged without breaking the app.**
 
@@ -15975,9 +15929,6 @@ web:
     include_subdomains: true
     # default true. See HSTS preload caveat above.
     preload: true
-
-  permissions_policy:
-    # Per-feature config — see "Permissions-Policy Configuration" below.
 
   reports:
     # Public reports endpoints (PART 34 → "Public Reports Scope").
@@ -16926,7 +16877,7 @@ web:
 
 | Aspect | Rule |
 |--------|------|
-| Default | **On** (`server.mcp.enabled: true`); the admin panel toggle in "Web" settings disables it. When disabled every route below returns `404` |
+| Availability | **Always on.** There is no `server.mcp` key in `server.yml` and no admin toggle; the Bearer token (the same one the API uses) is the only gate |
 | Transport | **Streamable HTTP, remote only** — one endpoint, JSON-RPC 2.0 over HTTP `POST`. No stdio build, no local-process mode, no separate MCP binary or port |
 | Specification | Follow the current MCP specification (https://modelcontextprotocol.io/specification) — the revision, header and error rules come from it, not from this file. Negotiate the version the client asks for; unsupported version → `400` with the spec's `UnsupportedProtocolVersionError` listing the supported versions |
 | Canonical route | `/api/{api_version}/server/mcp` |
@@ -16964,18 +16915,12 @@ web:
 - Handler errors map to the MCP tool result with `isError: true` and the API's normal error body (`ok: false`, `error`, `message`); secrets are never included in a tool result any more than in an API response.
 - Resources and prompts are not exposed unless the project's `IDEA.md` defines them.
 
-#### Config and Admin Panel
+#### Configuration
 
-```yaml
-server:
-  mcp:
-    # Serve the MCP endpoint (default: true)
-    enabled: true
-```
+**None.** The MCP endpoint is always on: there is no `server.mcp.enabled` setting, and no switch in the config file or the admin panel.
 
 | Element | Type | Description |
 |---------|------|-------------|
-| MCP endpoint | Toggle | Enables `server.mcp.enabled`; takes effect without restart |
 | Endpoint URL | Read-only | The resolved `/api/{api_version}/server/mcp` URL (per request via the URL-resolution rules) |
 | Auth note | Read-only help text | MCP uses the same Bearer tokens as the API; there is no separate MCP token |
 
@@ -17014,7 +16959,7 @@ server:
 | Root `/healthz` alias | Toggle | Enables `server.healthz.root.enabled` |
 | Behavior note | Read-only help text | `/healthz` maps directly to `/server/healthz` using the same handler; never redirects |
 
-**MCP Settings:** see "MCP Endpoint" (`server.mcp.enabled`).
+**MCP:** always on; there is no setting (see "MCP Endpoint").
 
 ## Security Reports — Coordinated Disclosure Pipeline
 
@@ -17219,9 +17164,9 @@ All three coexist under the admin tree. The admin-panel UI groups them under a s
 
 ### Health-Check Log Suppression
 
-Successful health-check requests are excluded from EVERY request log output (`access.log` AND the console/stdout request line) by default — a 10-second Docker healthcheck otherwise writes ~8,640 identical lines per day of pure noise.
+Successful health-check requests are excluded from EVERY request log output (`access.log` AND the console/stdout request line) — always, with no setting to turn it off — because a 10-second Docker healthcheck otherwise writes ~8,640 identical lines per day of pure noise.
 
-**Suppressed by default (successful 2xx responses only):**
+**Always suppressed (successful 2xx responses only):**
 - `GET /server/healthz` (the frontend route; this is the one Docker and compose healthchecks usually call)
 - `GET /api/{api_version}/server/healthz` and its alias `GET /api/healthz`
 - `GET /healthz` (root alias, when enabled)
@@ -17231,7 +17176,6 @@ Successful health-check requests are excluded from EVERY request log output (`ac
 - Any non-2xx health-check response: failures always log to `access.log` and `error.log` (and the console as an error)
 
 **Debug and development mode do NOT lift the suppression:** a successful health request is never logged, in any mode.
-- All health-check requests when debug is enabled
 
 **`--status` stays silent server-side:** it reports via exit code (0 healthy, 1 unhealthy) and its own stdout; a successful poll writes no server log entry.
 
@@ -17343,8 +17287,6 @@ server:
       custom: ""
       rotate: monthly
       keep: none
-      # Log successful health-check requests (failures always log)
-      log_health_checks: false
 
     server:
       filename: server.log
@@ -19167,12 +19109,11 @@ server:
 
 ## Rate Limiting
 
-Rate limiting is the primary abuse defense. Anonymous requests are limited per IP; requests carrying a valid Bearer token (REST and MCP alike) are limited per token, so clients that share an egress IP (hosted assistants, NAT) never throttle one another, and failed authentication is always counted per IP. Counters use a sliding window stored in `server.db`.
+Rate limiting is the primary abuse defense. It is always on: there is no `enabled` setting, and the numbers below are its tunables. Anonymous requests are limited per IP; requests carrying a valid Bearer token (REST and MCP alike) are limited per token, so clients that share an egress IP (hosted assistants, NAT) never throttle one another, and failed authentication is always counted per IP. Counters use a sliding window stored in `server.db`.
 
 ```yaml
 server:
   rate_limit:
-    enabled: true
     read:
       # per minute per IP (per token when authenticated)
       requests: 120
@@ -31267,7 +31208,7 @@ CREATE INDEX IF NOT EXISTS idx_captcha_challenges_expires ON captcha_challenges(
 |---------|-------------|
 | Getting started | Quick start guide |
 | Features | How to use key features |
-| MCP | Link to `/server/help/mcp` (only shown if `server.mcp.enabled`) |
+| MCP | Link to `/server/help/mcp` |
 | API Documentation | Links to Swagger (`/server/docs/swagger`) and GraphQL (`/server/docs/graphql`) — UIs fetch from the versioned `/api/{api_version}/server/swagger` and `/api/{api_version}/server/graphql` routes |
 | Tor Access | How to access via Tor (only shown if Tor enabled) |
 | I2P Access | How to access via I2P (only shown if I2P enabled and running) |
@@ -31431,7 +31372,7 @@ curl -H "Accept: application/xml" https://jokes.example.com/api/v1/joke</code></
 | `GET /server/help/mcp` | MCP help page (HTML) |
 | `GET /api/{api_version}/server/help/mcp` | Same content as JSON |
 
-When `server.mcp.enabled` is `false`, both routes return `404` and no link to the page is rendered anywhere (the same rule as every MCP route). `/server/help` links to this page (see "/server/help"); the link is shown only when MCP is enabled.
+`/server/help` links to this page (see "/server/help").
 
 **Base sections (always rendered, in this order, each with its anchor id):**
 
@@ -32940,7 +32881,6 @@ Admin Panel Header:
 | Setting | Control | Default | Restart | Description |
 |---------|---------|---------|---------|-------------|
 | `admin_path` | Text | `administration` | Reload | Custom admin panel path (see PART 17) |
-| `rate_limit.enabled` | Toggle | On | No | Enable rate limiting |
 | `rate_limit.read.requests` | Number | `120` | No | Read (GET/HEAD) requests per window, per IP |
 | `rate_limit.write.requests` | Number | `10` | No | Write (POST/PUT/PATCH/DELETE) requests per window, per IP |
 | `rate_limit.health.requests` | Number | `120` | No | Health/status requests per window, per IP |
