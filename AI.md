@@ -16902,7 +16902,7 @@ web:
 | Aliases | `/api/mcp` and `/mcp` — direct aliases for the current `{api_version}`; the SAME handler mounted at all three paths, never a redirect (see "Unversioned API aliases") |
 | Route class | All three paths, including the root `/mcp` alias, are API-class: never content-negotiated, no User-Agent detection, never HTML or plain text. Every response, including `400`, `403`, `404` and `405`, is JSON (a JSON-RPC error object when the request parsed, otherwise the canonical error body); success is `application/json` or `text/event-stream` according to the client's `Accept` |
 | Reserved name | `mcp` is in `reservedNames` so no user, org, or project slug can claim `/mcp` |
-| Help page | `/server/help/mcp` documents how to connect a client (see "/server/help/mcp"); `/server/help` links to it. Both return `404` when MCP is disabled |
+| Help page | `/server/help/mcp` documents how to connect a client (see "/server/help/mcp"); `/server/help` links to it |
 | Methods | `POST` only. `GET` and `DELETE` → `405 Method Not Allowed` (the server keeps no sessions and opens no standalone stream) |
 | Responses | A single `application/json` object per request; an SSE stream only when a tool needs to stream progress. Server-initiated requests are never sent |
 | Sessions | None. An `Mcp-Session-Id` header, if sent by an older client, is ignored — never minted, never echoed |
@@ -31450,7 +31450,7 @@ curl -H "Accept: application/xml" https://jokes.example.com/api/v1/joke</code></
 | `#connect` | Connect a client | Copy-paste snippets using the resolved URL and the project name: a Claude Code command (`claude mcp add --transport http {project_name} {url} --header "Authorization: Bearer $MCP_TOKEN"`), a generic JSON client config (`mcpServers` with `type`, `url`, `headers`), and a `curl` `initialize` request that verifies the connection. The token is the only value the page cannot know, so it appears as the shell variable `$MCP_TOKEN` — no other placeholders |
 | `#tools` | Tools | The live tool list for an anonymous caller (name and description from the same registry that backs `tools/list`) — never hand-written. When authenticated callers see more tools, say so |
 | `#limits` | Behavior and limits | `POST` only; no sessions; the same rate limits and audit as the API; `Origin` validated; the supported MCP protocol versions |
-| `#troubleshooting` | Troubleshooting | A table of `400` (protocol-version or header mismatch), `401` (missing, invalid or expired token — `WWW-Authenticate: Bearer`), `403` (bad `Origin` or insufficient scope), `404` (MCP disabled), `405` (GET or DELETE; the endpoint is POST-only) with the fix for each |
+| `#troubleshooting` | Troubleshooting | A table of `400` (protocol-version or header mismatch), `401` (missing, invalid or expired token — `WWW-Authenticate: Bearer`), `403` (bad `Origin` or insufficient scope), `405` (GET or DELETE; the endpoint is POST-only) with the fix for each |
 
 **Project expansion (required content):** the project appends its own section, `#project`, after the base sections. The text comes from IDEA.md `## Business logic` and is stored as Markdown in `pages.help.mcp` (canonical storage is `server.yml` `pages.help.mcp`, edited there by the operator and applied on config reload; a project that has an admin panel also exposes it in Pages → Help. API projects have no admin panel or web editor, so `server.yml` is the only editing path). It MUST use the project's real tool names and real data — example prompts a user can paste into an assistant, per-tool tips and limits, and documentation of any MCP resources or prompts the project exposes. It never repeats or contradicts the base sections, and generic placeholder text is forbidden (same rule as `/server/help`).
 
@@ -31576,7 +31576,7 @@ server:
 | `/api/{api_version}/server/contact` | POST | Submit the report form in two calls (the first returns the `review` and a `review_token` and delivers nothing; the second repeats every field with `review_token` and `confirmed: true` and delivers): the fields above (including `type` and the fields that type requires), the `form_token` from the `GET`, no `website`, plus ONE captcha proof (`captcha_response`, or `captcha_id` + `captcha_answer`; see "No-JavaScript fallback and the simple challenge") |
 | `/api/{api_version}/server/auth/check` | GET | Token check (machine-only, no page; `Authorization: Bearer` required): `200` with `{kind}` when the token is valid (`kind` is `operator`, `owner` or, where the project has accounts, `user`), `401` otherwise. Side-effect free, rate-limited like other auth endpoints, never echoes the token |
 | `/api/{api_version}/server/help` | GET | Help page (JSON, no auth): `title`, `content` (Markdown source of `pages.help.content`) and `format` (always `markdown`) |
-| `/api/{api_version}/server/help/mcp` | GET | MCP help (JSON, no auth): `title`, `endpoint` (the resolved MCP URL) and `sections` (the `/server/help/mcp` sections in page order, each `{id, title, content}` with Markdown `content`); `404` when MCP is disabled |
+| `/api/{api_version}/server/help/mcp` | GET | MCP help (JSON, no auth): `title`, `endpoint` (the resolved MCP URL) and `sections` (the `/server/help/mcp` sections in page order, each `{id, title, content}` with Markdown `content`) |
 | `/api/{api_version}/server/terms` | GET | Terms of service (JSON, no auth): `title`, `content` (the source of the `terms` override file, or the built-in terms in Markdown when there is no file) and `format` (`markdown`, `html` or `text`) |
 | `/api/{api_version}/server/dpo` | GET | DPO contact (JSON): `name`, `email`, `privacy_url` |
 | `/api/{api_version}/server/security` | GET | Security overview (JSON, no auth): `contacts` (ordered list of `{type, value}` in RFC 9116 preference order: `github` with the private-vulnerability-reporting URL, `contact_form` with the absolute `/server/contact?security_id={id}` URL for the current id, `email` with the CC address; a channel that is not configured is omitted), `expires`, `pgp` (`{available, url, fingerprint}`: `url` is the absolute `/.well-known/pgp-key.asc` URL and `fingerprint` the 40-character uppercase hex v4 fingerprint without spaces; `available: false` with both `null` when no keypair exists), `policy_url`, `thanks_url`, `report_url` (the absolute `/server/contact` URL without `security_id`, for terms violations, DMCA notices and privacy requests; omitted when `server.pages.contact.enabled` is false) |
@@ -31606,7 +31606,7 @@ server:
 | `/server/privacy` | Privacy policy page (HTML) |
 | `/server/contact` | Report form page (HTML); linked from no page, reached from `security.txt` and `/server/security` |
 | `/server/help` | Help page (HTML) |
-| `/server/help/mcp` | MCP help page (HTML); `404` when MCP is disabled |
+| `/server/help/mcp` | MCP help page (HTML) |
 | `/server/terms` | Terms of service page (HTML) |
 | `/server/dpo` | Data Protection Officer contact page (HTML) |
 | `/server/healthz` | Health page (HTML) |
