@@ -8125,7 +8125,9 @@ server:
 
 | Setting | Single Instance | Cluster Mode | Read-Only Fallback |
 |---------|-----------------|--------------|-------------------|
-| Database connection | server.yml | server.yml | server.yml |
+| Database connection (host, port, name, user) | server.yml | server.yml | server.yml |
+| Database password and token | secrets.yml | secrets.yml | secrets.yml |
+| Operator token, encryption key, other credentials | secrets.yml | secrets.yml (shared values arrive by join or sync) | secrets.yml |
 | Admin credentials | Local SQLite | Remote DB | Cached in server.yml |
 | Server settings | server.yml | Remote DB | Cached in server.yml |
 | Branding/SEO | server.yml | Remote DB | Cached in server.yml |
@@ -8145,11 +8147,13 @@ server:
     port: 5432
     name: myapp
     username: myapp
+    # The password is set in secrets.yml (server.database.password), or may be written here as ${DB_PASSWORD}
     password: ${DB_PASSWORD}
     sslmode: require
 
 # Cached configuration (synced from database)
 # Used as backup when database unavailable
+# Never holds a secret key (see "Secrets File")
 _cache:
   last_sync: "2025-01-15T10:30:00Z"
 
@@ -8167,7 +8171,7 @@ _cache:
       enabled: true
       email: admin@example.com
 
-  # ... all other settings cached here
+  # ... all other settings cached here (never a secret key; see "Secrets File")
 ```
 
 ### Database Schema for Configuration
@@ -8513,7 +8517,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | **Early read** | Before the privileged bind (PART 8 startup, step 8e), ONLY `server.port` and `server.address` are read, from the same merged view (`server.yml`, then drop-ins in order). So a drop-in MAY set either key and it takes effect on the first start; neither key is rebound later (`server.address` and `server.port` need a restart, PART 12) |
 | **Backup** | `{config_dir}/yaml.d/` and `{config_dir}/secrets.yml` are included in backups whenever they exist (PART 22 → "Backup Contents") |
 - **Admin panel:** the panel writes only `server.yml`, plus `secrets.yml` for the secret keys ("Secrets File") and `html/` for page content ("Operator Content Files"). A setting that a drop-in file sets is shown read-only with the file name (`set by yaml.d/20-mail.yml`) and cannot be changed in the panel; edit that file instead.
-- **Cluster Mode:** drop-ins belong to the file layer. The database layer stays above it (PART 5 priority), and the `server.yml` cache sync never touches `yaml.d/`.
+- **Cluster Mode:** drop-ins belong to the file layer. The database layer stays above it (PART 5 priority), and the `server.yml` cache sync never touches `yaml.d/`, `secrets.yml` or `html/`.
 - **Visibility:** the startup log lists each loaded drop-in in order (info level) and names the file that won for every overridden key (debug level); secret values are never logged.
 
 ### Secrets File (`secrets.yml`)
@@ -8524,13 +8528,14 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 |------|----------|
 | **Keys** | Only these, for every one the project has: `server.token`; `server.security.encryption_key` and `server.security.encryption_key_version`; `server.notifications.email.smtp.password`; `server.cache.password`; `server.database.password` and `server.database.token`; `server.pages.contact.captcha_secret_key`; `server.ssl.letsencrypt.dns_credentials`; `data.cve.api_key`; `server.backup.encryption_password`; `server.metrics.auth.tokens.*`; every webhook URL and its `_secret` under `server.contact.{role}.webhooks`; `server.auth.ldap.providers[].bind_password`; `server.auth.oidc.providers[].client_secret`. Every other key stays in `server.yml` |
 | **Written by** | The server writes generated, rotated and moved secrets to `secrets.yml` and ONLY there, never to `server.yml` and never to a drop-in: the first-run `server.token`, `server.security.encryption_key` with its version, and every rotation (`--maintenance secret rotate encryption_key`) |
-| **Operator-set values** | An operator MAY also put a secret key in `server.yml` or a drop-in (for example from configuration management). The merge order applies, so `secrets.yml` wins when both set the same key, and the server never moves a value the operator wrote elsewhere. A plaintext DNS credential is rewritten as `enc:v1:` in the file that holds it |
+| **Operator-set values** | An operator MAY also put a secret key in `server.yml` or a drop-in (for example from configuration management). A value may also be an environment reference such as `${DB_PASSWORD}`. The merge order applies, so `secrets.yml` wins when both set the same key, and the server never moves a value the operator wrote elsewhere. A plaintext DNS credential is rewritten as `enc:v1:` in the file that holds it |
 | **Migration** | At start, if `server.token` or `server.security.encryption_key` is found in `server.yml` and `secrets.yml` does not hold it, the server writes `secrets.yml` first (atomic, `0600`, fsynced) and only then rewrites `server.yml` without those keys, so a secret is never in both files and never lost |
 | **Early read** | The early config read (PART 8 startup, step 8e) never opens `secrets.yml`: it needs only `server.port` and `server.address` |
 | **Permissions** | Always `0600` (PART 8 → "Directory Validation Rules": private paths); a wrong mode is fixed at start |
 | **Reload** | The file watcher watches it with `server.yml` and `yaml.d/`; a change re-merges everything and an invalid result keeps the last good config |
 | **Backup** | Included in every backup whenever it exists (PART 22 → "Backup Contents"), so a restore brings back the same token and encryption key |
 | **Never exposed** | Secret values are never logged, never printed by `--config` (shown as `********`), and never returned by any API response (PART 11) |
+| **Cluster Mode** | `secrets.yml` is local to each node. Config sync (the remote `config` table and the `_cache` block of `server.yml`) never carries a secret key. A value the cluster shares reaches a node by the mechanism the spec names for it (the join payload for the database password and the encryption key, PART 34; the synced configuration for `server.token`, PART 5), and the receiving node writes it to ITS OWN `secrets.yml` (atomic, `0600`), never to `server.yml` and never to `_cache` |
 ## Port Rules
 
 **Default port is a random unused port in the 64000-64999 range.**
@@ -12674,7 +12679,7 @@ func OpenDatabase(cfg *Config) (*Database, error) {
 -- ============================================================================
 
 -- Single-instance SQLite server.db has NO config table: configuration lives only in server.yml (PART 5).
--- Cluster Mode ONLY (remote PostgreSQL/MySQL): the remote database is the configuration source of truth (PART 5), so these two tables exist there (srv_ prefix) and server.yml is a synced cache.
+-- Cluster Mode ONLY (remote PostgreSQL/MySQL): the remote database is the configuration source of truth (PART 5), so these two tables exist there (srv_ prefix) and server.yml is a synced cache (it never holds a secret key: `secrets.yml` is node-local).
 CREATE TABLE IF NOT EXISTS srv_config (
     key        VARCHAR(255) PRIMARY KEY,
     value      TEXT NOT NULL,
@@ -15171,7 +15176,7 @@ Admin manually removes dead nodes via:
 | Side | Action |
 |------|--------|
 | **Server-side** (from the removing node) | Delete the row from `nodes` table. Mark `app_secrets` versions valid for that node as `revoked_for_node = node_id` so audit can see the removal happened mid-rotation if applicable. Emit `cluster.node_removed` audit event. |
-| **Removed-node-side** (when the removed node next attempts to heartbeat) | Heartbeat returns `403 NODE_REMOVED`. The binary on the removed node MUST: (1) wipe `{config_dir}/security/pgp.priv.asc.enc` if present (PGP keys are cluster-shared and the removed node has lost permission to participate); (2) wipe its `app_secrets` cache; (3) leave `server.yml` minus the cluster section; (4) log `cluster.removed_self_cleanup` to local `audit.log`; (5) refuse to serve requests until re-joined. The binary does NOT delete logs, data files, or user content — those stay on the removed host for forensic / audit purposes. |
+| **Removed-node-side** (when the removed node next attempts to heartbeat) | Heartbeat returns `403 NODE_REMOVED`. The binary on the removed node MUST: (1) wipe `{config_dir}/security/pgp.priv.asc.enc` if present (PGP keys are cluster-shared and the removed node has lost permission to participate); (2) wipe its `app_secrets` cache and the cluster-shared keys in `secrets.yml` (the encryption key with its version, the database password); (3) leave `server.yml` minus the cluster section; (4) log `cluster.removed_self_cleanup` to local `audit.log`; (5) refuse to serve requests until re-joined. The binary does NOT delete logs, data files, or user content — those stay on the removed host for forensic / audit purposes. |
 | **If the removed node is offline at removal time** | The cleanup happens whenever the removed node next attempts to communicate. Until then, it's running with stale secrets — but per the secret-version-mismatch flow above, its requests would already fail because `installation_secret` may have rotated. Operators removing a node SHOULD power down or `systemctl stop {internal_name}` first, then remove. The admin panel surfaces this guidance. |
 
 **Caveat:** removed-node cleanup is best-effort. A truly compromised host that's been removed cannot be trusted to wipe its own secrets — assume the secrets it had ARE in attacker hands. Always rotate `installation_secret`, `cookie_signing_key`, `csrf_token_secret`, `server.security.encryption_key`, and the project PGP keypair after removing a compromised node. The admin panel offers a "Rotate everything" button on the Remove Node confirmation dialog.
@@ -15817,7 +15822,7 @@ When `DEBUG=true` is active and an error occurs, the canonical error body (PART 
 | Logging | The raw value is never logged after the first-start banner, never returned by any API response, never included in a backup export or a support bundle |
 | Presented as | `Authorization: Bearer tok_...` |
 | Admin WebUI | Shown masked at `/server/{admin_path}/security` with a "Regenerate" action (sensitive operation per PART 5: re-prompt the admin password, log `security.operator_token_regenerated` to `audit.log`). The new value is displayed once on screen; the previous value stops working immediately |
-| Rotation | Regenerate in the admin WebUI, or blank `server.token` in `secrets.yml` and restart (a new value is generated and printed once). Cluster Mode: the value is part of the synced configuration (PART 5) |
+| Rotation | Regenerate in the admin WebUI, or blank `server.token` in `secrets.yml` and restart (a new value is generated and printed once). Cluster Mode: the value is part of the synced configuration (PART 5), and each node writes it to its own `secrets.yml`, never to `server.yml` or `_cache` |
 | Scope | Never implied by `--debug` or development mode: debug only turns endpoints on, it never replaces authentication |
 
 ## Cryptographic Keys
@@ -30019,7 +30024,7 @@ web:
 | `header.html` | **Extends** | Inserted inside `<header>` of every public page, after the built-in logo and navigation. It replaces nothing |
 | `about.{html,md,txt}` | **Extends** | Appended after the built-in About content |
 | `privacy.{html,md,txt}` | **Extends** | Appended after the built-in privacy sections (after "Your Rights" and the consent controls) and before the Contact section. The built-in sections are never replaced, because they must stay in step with `server.privacy.*` |
-| `footer.html` | **Overrides** | Replaces the custom branding block above the Application Footer ("Footer Customization"). No file: the built-in branding. A file that holds only whitespace: no branding. The Default Application Footer is always shown |
+| `footer.html` | **Overrides** | Replaces the custom branding block above the Application Footer ("Footer Customization"). No file: the built-in branding. An empty or whitespace-only file: no branding. The Default Application Footer is always shown |
 | `terms.{html,md,txt}` | **Overrides** | Replaces the built-in terms of service entirely. No file: the built-in terms |
 
 | Rule | Behavior |
@@ -30035,9 +30040,10 @@ web:
 | **Permissions** | `html/` is `0700` and its files `0600` (PART 8 → "Directory Validation Rules": private paths) |
 | **Reload** | The file watcher watches `html/` like `yaml.d/`: an added, changed or removed file applies without a restart, and an invalid file keeps the last good content |
 | **Backup** | `{config_dir}/html/` is included in backups whenever it exists (PART 22 → "Backup Contents") |
+| **Cluster Mode** | `html/` is local to each node, like `yaml.d/`: the `server.yml` cache sync never touches it. In Cluster Mode the admin Pages and footer editors do not write files; they store the content in the remote `config` table (keys `html.{name}` and `html.{name}.{lang}`, value `{format, body}`), and the database layer stays above the file layer (PART 5 priority): a node uses the database content when it exists, else its own `html/` file, else the built-in content. Same sanitizing and size limits |
 | **Overlay hosts** | Files are served as written. The Tor and I2P privacy rules apply to built-in content only, so an operator must not put clearnet identity into a file that is also shown on `.onion` or `.i2p` |
 
-**Admin panel:** the Pages editors (About, Privacy, Terms) and the footer editor read and write these same files (atomic write, `0600`); a save never touches `server.yml`, "Reset to default" deletes the file, and a new file is written as `.md` (`.html` for header and footer).
+**Admin panel:** the Pages editors (About, Privacy, Terms) and the footer editor read and write these same files in single-instance mode (atomic write, `0600`; clusters: see the Cluster Mode row); a save never touches `server.yml`, "Reset to default" deletes the file, and a new file is written as `.md` (`.html` for header and footer).
 
 
 ## Footer Customization
@@ -30049,7 +30055,7 @@ web:
 **There is no `server.yml` key for the footer.** The custom branding block above the Application Footer is the file `{config_dir}/html/footer.html` ("Operator Content Files"):
 
 - No file: use the default branding (built-in)
-- A file holding only whitespace: disable branding, show only the Application Footer
+- An empty or whitespace-only file: disable branding, show only the Application Footer
 - Custom HTML: use your own branding (SANITIZED, no scripts)
 
 ### Custom HTML Validation
@@ -30057,13 +30063,17 @@ web:
 **`footer.html` is SANITIZED before rendering. Scripts and dangerous elements are NEVER executed.**
 
 ```go
-import "github.com/microcosm-cc/bluemonday"
+import (
+    "strings"
+
+    "github.com/microcosm-cc/bluemonday"
+)
 
 // SanitizeFooterHTML sanitizes custom footer HTML
 // ONLY allows safe formatting tags - NO scripts, NO event handlers
 func SanitizeFooterHTML(html string) string {
-    if html == "" || html == " " {
-        // Empty or space (disable) passes through
+    if strings.TrimSpace(html) == "" {
+        // An empty or whitespace-only file (branding disabled) passes through
         return html
     }
 
@@ -30108,7 +30118,7 @@ func ValidateFooterHTML(html string) (string, error) {
     }
 
     // Warn if content was modified (for admin UI feedback)
-    if html != sanitized && html != "" && html != " " {
+    if html != sanitized && strings.TrimSpace(html) != "" {
         log.Warnf("footer.html was sanitized: removed potentially dangerous content")
     }
 
@@ -63711,8 +63721,10 @@ NEW NODE                                    EXISTING NODE
    - joined_at: now()                            │
     │                                            │
     ▼                                            │
-9. Write minimal server.yml                      │
-   - Database connection only                    │
+9. Write minimal server.yml and secrets.yml      │
+   - server.yml: database connection, no password│
+   - secrets.yml: database password, encryption  │
+     key (with version) and synced secrets       │
     │                                            │
     ▼                                            │
 10. Start heartbeat                              │
