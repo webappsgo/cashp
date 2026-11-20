@@ -8433,9 +8433,6 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | `DOMAIN` | FQDN override (highest priority for hostname resolution) |
 | `MODE` | `production` (default; shortcut `prod`) · `development` (shortcuts `dev`, `devel`) · `debug` (explicit opt-in only) |
 | `DEBUG` | Truthy value turns the debug flag on (`--debug` wins; precedence and the `/debug/*` endpoints are defined in PART 6 → Debug Flag). Independent of `MODE`: `MODE=debug` only defaults the flag on |
-| `DATABASE_DRIVER` | `sqlite` (+ `sqlite2`, `sqlite3`), `libsql` (+ `turso`), `postgres` (+ `pgsql`, `postgresql`), `mysql` (+ `mariadb`), `mssql`, `mongodb` (+ `mongo`) |
-| `DATABASE_URL` | Full database connection string; overrides `server.database.url` and the separate fields ("Connection Strings") |
-| `CACHE_URL` | Full cache connection string (`valkey://`, `redis://`); overrides `server.cache.url` and the separate fields |
 | `SMTP_HOST` | SMTP server hostname (if set, skips autodetect) |
 | `SMTP_PORT` | SMTP server port (default: 587) |
 | `SMTP_USERNAME` | SMTP authentication username |
@@ -8472,8 +8469,11 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | `LISTEN` | Listen address |
 | `APPLICATION_NAME` | Application title |
 | `APPLICATION_TAGLINE` | Application description |
+| `DATABASE_DRIVER` | First run: the database driver when `DATABASE_URL` is not set (`sqlite` (+ `sqlite2`, `sqlite3`), `libsql` (+ `turso`), `postgres` (+ `pgsql`, `postgresql`), `mysql` (+ `mariadb`), `mssql`, `mongodb` (+ `mongo`)) |
+| `DATABASE_URL` | First run: the full database connection string, saved to `secrets.yml` (when it carries a credential) or `server.yml`; ignored afterwards ("Connection Strings") |
+| `CACHE_URL` | First run: the full cache connection string (`valkey://`, `redis://`), saved the same way |
 
-**Init-only variables are used ONCE during first run to seed `server.yml`, then ignored.**
+**Init-only variables are used ONCE during first run to seed `server.yml` (and `secrets.yml` for a credential), then ignored.** The database and cache connection variables are init-only because the saved connection belongs to the node's setup: a node that is added to a cluster receives its database connection in the join payload, and a database migrated from the admin panel must not be reverted by an environment variable at the next start.
 
 ---
 
@@ -8625,12 +8625,12 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 
 | Connection | Key | Environment variable |
 |------------|-----|----------------------|
-| Database | `server.database.url` | `DATABASE_URL` (the driver comes from the scheme; `DATABASE_DRIVER` is only needed for SQLite) |
-| Cache | `server.cache.url` | `CACHE_URL` (the type comes from the scheme) |
+| Database | `server.database.url` | `DATABASE_URL` (first run only; the driver comes from the scheme, `DATABASE_DRIVER` is only needed for SQLite) |
+| Cache | `server.cache.url` | `CACHE_URL` (first run only; the type comes from the scheme) |
 
 | Rule | Behavior |
 |------|----------|
-| **Precedence** | The environment variable, then the `url` key, then the separate fields (`host`, `port`, `name`, `username`, `password`, `sslmode`, and the cache equivalents), which are ignored whenever a URL is set. The environment variable is checked on EVERY start and is never written to any file, so a container recreated with another URL follows it |
+| **Precedence** | First run, with no saved connection: the environment variable seeds the saved connection (a URL that carries a credential goes to `secrets.yml`, any other to `server.yml`); after that the variable is IGNORED, and one warning (variable name only) is logged when it differs from the saved value. Every later change comes from the admin panel, the CLI, the files or the cluster join. At any time a saved `url` wins over the separate fields (`host`, `port`, `name`, `username`, `password`, `sslmode`, and the cache equivalents), which are then ignored |
 | **Driver** | The scheme selects the driver ("Accepted forms"). When `DATABASE_DRIVER` disagrees with the scheme, the scheme wins, with one warning |
 | **Not accepted** | ADO.NET or key-value strings (`Server=...;Password=...`, `host=... user=...`) and `jdbc:` URLs. The server reports one error that names the key and says "use the URL form", never the value. The "Invalid → default" rule does NOT apply to a connection URL: a rejected database URL is never replaced by another database (not even SQLite) and is reported exactly like an unreachable database |
 | **Encoding** | The user does NOT have to encode a password. The userinfo ends at the LAST `@` before the host (a host name cannot contain `@`), and the user name is split from the password at the FIRST `:`, so a password may hold `@`, `:`, `/`, `?`, `#`, `[`, `]` and spaces as typed. A valid `%XX` is read as already encoded and decoded; a `%` that is not followed by two hex digits is a literal. A password that literally contains something like `%41` is ambiguous: put it in the separate `password` field (raw value) or write the percent sign as `%25`. Query values are left as written. The server never rewrites a URL it was given; a URL it builds itself (for example from the setup wizard fields) is percent-encoded per RFC 3986. In a Docker Compose file a `$` in the value must be written `$$` (Compose's own rule) |
@@ -8638,8 +8638,8 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | **Query options** | Driver options in the query (`sslmode`, `authToken`, `database`, `encrypt`, `tls`, ...) are read and passed to the driver; the TLS ones are mapped as in "TLS" below. An option in the URL wins over the matching separate field |
 | **Credentials** | A URL that carries a password or a token (in the userinfo, or as a `password`, `pwd`, `token` or `authToken` query value) is a secret: it lives in `secrets.yml` under the same key (`server.database.url`, `server.cache.url`) and the automatic migration moves it there from `server.yml` or a drop-in ("Secrets File"). A URL with no credential (`valkey://cache:6379`) stays in `server.yml` |
 | **Never shown** | Logs, `--config` output, the admin panel and error messages show only the redacted form `scheme://user:********@host:port/name?authToken=********`. The full URL is never logged, never returned by an API and never part of a health response (PART 11) |
-| **Backup** | A backup holds the URL (and so its credential) through `secrets.yml` and `server.yml`, and the TLS files named by the six file keys, even without `--include-ssl` (PART 22 → "Backup Contents"). A connection URL that exists only as the `DATABASE_URL` or `CACHE_URL` environment variable is never in a backup: a restore on a host without the variable uses the restored `server.database.url` or `server.cache.url`, or the separate fields |
-| **References** | `${NAME}` and `${NAME:-default}` inside any string value are replaced from the environment after the files are merged and are never written back. `url: ${DATABASE_URL}` therefore works, but is not needed: the variable is read directly. An unset name without a default becomes an empty string |
+| **Backup** | A backup holds the URL (and so its credential) through `secrets.yml` and `server.yml`, and the TLS files named by the six file keys, even without `--include-ssl` (PART 22 → "Backup Contents"). The seeded connection is saved at first run, so it is part of every later backup |
+| **References** | `${NAME}` and `${NAME:-default}` inside any string value are replaced from the environment after the files are merged and are never written back. `url: ${DATABASE_URL}` therefore works, but is not needed: the variable is read directly. An unset name without a default becomes an empty string. A reference is read at every load, so it keeps a value tied to the environment; a cluster join replaces the saved value with the payload's literal one |
 
 **Accepted forms** (placeholders in braces; replace them with the real values, typed as they are):
 
@@ -64085,7 +64085,7 @@ NEW NODE                                    EXISTING NODE
 }
 ```
 
-**Database configured by URL.** A node whose database is set with `server.database.url` ("Connection Strings") receives `url_encrypted` (the whole URL, encrypted like the other secrets) in place of `host`, `port`, `name`, `username`, `password_encrypted` and `sslmode`, and step 9 writes it to `secrets.yml` as `server.database.url`. A node started with the `DATABASE_URL` environment variable keeps using that variable, and the payload value is not written. The database TLS files travel in `tls_files` in both forms.
+**Database configured by URL.** A node whose database is set with `server.database.url` ("Connection Strings") receives `url_encrypted` (the whole URL, encrypted like the other secrets) in place of `host`, `port`, `name`, `username`, `password_encrypted` and `sslmode`, and step 9 writes it to `secrets.yml` as `server.database.url`. The payload value replaces whatever the node seeded at its first run, `DATABASE_URL` included: an environment variable never overrides the cluster setup. The database TLS files travel in `tls_files` in both forms.
 
 #### Security: Encrypted Transfer
 
