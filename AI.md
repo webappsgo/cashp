@@ -3351,6 +3351,7 @@ Implemented core server functionality and API.
 - third-party actions pinned to full SHA
 - no secrets/write tokens exposed to fork PRs
 - ci.yml security jobs (secret-scan, vuln-scan, workflow-policy) exist and block on failures
+- `.github/trufflehog-exclude.txt` exists and lists only `AI.md` and `go.sum` (plus any other file the project does not author, with a reason in its commit)
 
 ### Step 4: AI Tool Configuration (Rule Files)
 **Do AI rule files exist and follow the required format?**
@@ -43502,7 +43503,7 @@ jobs:
         with:
           base: ${{ steps.scope.outputs.base }}
           head: ${{ steps.scope.outputs.head }}
-          extra_args: --results=${{ steps.scope.outputs.results }}
+          extra_args: --results=${{ steps.scope.outputs.results }} --exclude-paths=.github/trufflehog-exclude.txt
 ```
 
 > **Note:** Security jobs (`secret-scan`, `workflow-policy`, `vuln-scan`, `image-scan`) are defined within `ci.yml`. They run on push, PR, and weekly schedule (`cron: '0 6 * * 1'`). Add `if: github.event_name != 'schedule'` to build/test/coverage/artifact jobs to skip non-security work on scheduled runs. Secret scanning is mandatory on every public repo via truffleHog (Apache-2.0). Use `github.event.before` / `github.event.after` for the scan range — never `default_branch`, which after a push resolves to the same commit as HEAD and silently skips the scan.
@@ -43519,11 +43520,12 @@ jobs:
 
 | Rule | Detail |
 |------|--------|
-| **Flag** | `--results=verified,unknown` or `--results=verified`. The old `--only-verified` flag is not used. `unknown` means verification was attempted and could not complete; `unverified` (checked and found inactive) is reported and does not fail the job |
+| **Flag** | `--results=verified,unknown` or `--results=verified`, always with `--exclude-paths=.github/trufflehog-exclude.txt`. The old `--only-verified` flag is not used. `unknown` means verification was attempted and could not complete; `unverified` (checked and found inactive) is reported and does not fail the job |
 | **Never `default_branch`** | `base` is never `repository.default_branch`: after a push it equals the pushed commit and truffleHog skips the scan ("BASE and HEAD commits are the same") |
 | **Documentation examples** | `AI.md`, `IDEA.md`, `README.md` and `docs/` never contain a credential-shaped string. Connection strings use `{user}:{password}` placeholders; a flagged example is rewritten, not allowlisted, because a copied spec file is read-only in the projects that receive it |
+| **Excluded paths** | `.github/trufflehog-exclude.txt` (the same path on every provider), passed as `--exclude-paths=.github/trufflehog-exclude.txt`. One regex per line, no comments (it is a data file). It lists ONLY files the project does not author: `^go\.sum$` (dependency hashes) and `^AI\.md$` (the read-only copy of this specification, which carries example values; the template repository scans the original itself). Source, tests, docs, configuration and the exclude file itself are never listed. Adding a path needs a reason in the commit message. Everything else is handled by the placeholder rule or the allowlist below |
 | **Allowlist** | Only a reviewed true false positive in project code or a test fixture, with truffleHog's inline `trufflehog:ignore` comment on that line. There is no root config file for it |
-| **Other providers** | GitLab and Jenkins run the same contract in Docker: `trufflehog git file://. --since-commit HEAD~1 --results=verified,unknown --fail` for a range, `trufflehog git file://. --results=verified --fail` for the full history |
+| **Other providers** | GitLab and Jenkins run the same contract in Docker: `trufflehog git file://. --since-commit HEAD~1 --results=verified,unknown --exclude-paths=.github/trufflehog-exclude.txt --fail` for a range, `trufflehog git file://. --results=verified --exclude-paths=.github/trufflehog-exclude.txt --fail` for the full history |
 
 ## Release Workflow — Stable (GitHub Actions)
 
@@ -44701,7 +44703,7 @@ jobs:
         with:
           base: ${{ steps.scope.outputs.base }}
           head: ${{ steps.scope.outputs.head }}
-          extra_args: --results=${{ steps.scope.outputs.results }}
+          extra_args: --results=${{ steps.scope.outputs.results }} --exclude-paths=.github/trufflehog-exclude.txt
 ```
 
 **Forgejo:** `.forgejo/workflows/ci.yml` has the same content with `forgejo.*` and `FORGEJO_ENV` (Variable Mapping below). The `secret-scan` and `image-scan` host-runner rule of the GitHub CI Workflow applies unchanged.
