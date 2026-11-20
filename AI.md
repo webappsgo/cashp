@@ -39440,7 +39440,7 @@ ON --service --install:
 
 **Note:** The server binary handles user/group creation, privilege escalation,
 directory setup, and permissions during NORMAL STARTUP (see Server Startup
-Sequence). `--service --install` runs the same user/group and directory routine first (idempotent: an existing account or directory is left alone), because init systems that sandbox the service (systemd `ProtectSystem=strict` makes `/etc` read-only, so `groupadd` and `useradd` cannot run inside it) or that create directories for the service user (OpenRC `checkpath -o`, SysV `chown`) need the account to exist before the first start. The startup routine then finds nothing left to do. A user service (non-root install) creates no account.
+Sequence). `--service --install` runs the same user/group and directory routine first (idempotent: an existing account or directory is left alone), because init scripts that create directories for the service user (OpenRC `checkpath -o`, SysV `chown`) need the account to exist before the first start. The startup routine then finds nothing left to do. A user service (non-root install) creates no account.
 ```
 
 **Init system detection (install time).** `--service --install` and the other `--service` commands look at the HOST, not at how this process was started, and pick the FIRST match:
@@ -40336,12 +40336,13 @@ StandardOutput=journal
 StandardError=journal
 
 # Security hardening (binary drops privileges after port binding)
-ProtectSystem=strict
+# true: /usr and /boot are read-only; /etc stays writable so the server can rewrite its config and create its account
+ProtectSystem=true
 ProtectHome=yes
 PrivateTmp=yes
 # Complete writable set: config, data (which holds {db_dir} and the fallback backup dir), cache, log, the per-service PID directory and the system backup dir.
 # A leading "-" makes a path OPTIONAL, so a path that does not exist yet never fails the namespace setup.
-# ExecStartPre runs with the "+" prefix (full privileges, OUTSIDE the sandbox) and creates the missing directories BEFORE ProtectSystem=strict applies.
+# ExecStartPre runs with the "+" prefix (full privileges, OUTSIDE the sandbox) and creates the missing directories BEFORE the sandbox applies.
 # A project whose effective config moves {db_dir} or {backup_dir} elsewhere gets that path added here by the service installer, in the same "-" form.
 ExecStartPre=+/usr/bin/install -d -m 0755 /etc/{internal_org}/{internal_name} /var/lib/{internal_org}/{internal_name} /var/cache/{internal_org}/{internal_name} /var/log/{internal_org}/{internal_name} /var/run/{internal_org}/{internal_name}
 ReadWritePaths=-/etc/{internal_org}/{internal_name}
@@ -40350,6 +40351,8 @@ ReadWritePaths=-/var/cache/{internal_org}/{internal_name}
 ReadWritePaths=-/var/log/{internal_org}/{internal_name}
 ReadWritePaths=-/var/run/{internal_org}/{internal_name}
 ReadWritePaths=-/mnt/Backups/{internal_org}/{internal_name}
+# The binary's directory: the update flow replaces the binary in place
+ReadWritePaths=-/usr/local/bin
 
 [Install]
 WantedBy=multi-user.target
