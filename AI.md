@@ -13772,7 +13772,7 @@ $ kill -TERM $(cat /var/run/myorg/myapp/myapp.pid)
 | `--port` | `{PROJECT_NAME}_PORT` | Listen port |
 | `--address` | `LISTEN` | Listen address |
 | `--mode` | `MODE` | Application mode (production/development/debug) |
-| `--i2p` | `I2P_ENABLED` | Enable the opt-in I2P eepsite (config key: `server.i2p.enabled`) |
+| `--i2p` | `I2P_ENABLED` | Enable the I2P eepsite (config key: `server.i2p.enabled`); the container image sets it to `true`, everywhere else it is off |
 | (none) | `DATABASE_DIR` | SQLite database directory (Docker: `/data/db/sqlite`, Native: `{data_dir}/db/`) |
 | (none) | `BACKUP_DIR` | Backup directory (defaults to `{data_dir}/backup/`, changeable) |
 
@@ -41955,7 +41955,8 @@ RUN chmod 755 /usr/local/bin/*
 # DATABASE_DIR: SQLite location (binary auto-detects container, but explicit is clearer)
 # MODE is never baked into the production image — binary defaults to production; compose sets MODE explicitly (only Dockerfile.dev bakes MODE=development)
 ENV TZ=America/New_York \
-    DATABASE_DIR=/data/db/sqlite
+    DATABASE_DIR=/data/db/sqlite \
+    I2P_ENABLED=true
 
 # Expose internal port (always 80)
 EXPOSE 80
@@ -42693,9 +42694,9 @@ fi
 # Tor is auto-enabled: the binary is installed in the AIO image; set TOR_ENABLED=false to opt out
 export TOR_ENABLED="${TOR_ENABLED:-true}"
 
-# Set I2P enabled flag (OPT-IN: disabled by default, unlike Tor). Set I2P_ENABLED=true
-# to enable the eepsite; the app then prefers the i2pd binary and falls back to SAM.
-export I2P_ENABLED="${I2P_ENABLED:-false}"
+# I2P is ON by default in a container (isolated, i2pd is installed); set I2P_ENABLED=false
+# to turn it off. The app prefers the i2pd binary and falls back to SAM.
+export I2P_ENABLED="${I2P_ENABLED:-true}"
 
 # Start supervisor (manages postgresql + valkey + tor + app)
 exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
@@ -42720,7 +42721,7 @@ exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
 | `DB_USER` | `{project_name}` | PostgreSQL username |
 | `DB_PASSWORD` | `{project_name}` | PostgreSQL password |
 | `TOR_ENABLED` | `true` | Tor hidden service (auto-enabled — tor binary is installed; set `false` to disable) |
-| `I2P_ENABLED` | `false` | I2P eepsite (OPT-IN — set `true` to enable; prefers i2pd binary, falls back to SAM) |
+| `I2P_ENABLED` | `true` | I2P eepsite (ON in a container, set `false` to turn it off; prefers i2pd binary, falls back to SAM) |
 
 **App Connection Strings (internal):**
 
@@ -49139,7 +49140,7 @@ echo "Incus tests completed successfully ($MODES)"
 
 **Every mode runs the same steps, in this order:** init identity (PID 1, and no foreign init) → `--service --install` (file exists, enabled, active, health answers) → `--service restart` (new PID) → `--service stop` (stopped, port closed) → `--service start` → API, project-specific, rename and client tests → Tor tests → I2P tests → `incus restart` of the container (service still enabled and back by itself, health answers) → `--service --disable` (not enabled, not active, file kept) → `--service --install` again → `--service --uninstall` (file removed, not enabled, not active, data removed).
 
-**Tor and I2P are tested with both installed.** The script installs `tor` and `i2pd` in the container (`apt-get install tor i2pd` on Debian, `apk add tor i2pd` on Alpine) and disables the distro's own `tor` and `i2pd` services, because the server runs its own dedicated, isolated instances (PART 31):
+**Tor and I2P are tested with both installed, and both are enabled in every container test.** `tests/docker.sh` runs the image as shipped, so I2P is on by default there: `features.i2p.enabled` is `true`, and within `I2P_WAIT` seconds `features.i2p.status` is `healthy` with a `.b32.i2p` hostname and `checks.i2p` is `ok`. On a bare host or VM (`tests/incus.sh`) I2P is opt-in, so that script checks the default (off) first and then enables it through a drop-in. The script installs `tor` and `i2pd` in the container (`apt-get install tor i2pd` on Debian, `apk add tor i2pd` on Alpine) and disables the distro's own `tor` and `i2pd` services, because the server runs its own dedicated, isolated instances (PART 31):
 
 | Test | Expected |
 |------|----------|
@@ -54679,7 +54680,7 @@ Tor Hidden Service: Connected
 
 ### Overview
 
-**I2P support is OPTIONAL and opt-in — disabled by default.** This is the deliberate difference from Tor (PART 32.1), which is auto-enabled whenever the `tor` binary is found. The eepsite is created **only** when I2P is explicitly enabled (`server.i2p.enabled: true` / `I2P_ENABLED=true` / `--i2p`) **and** a provider is available.
+**I2P support is OPTIONAL. On bare metal and in a VM it is opt-in and off by default; in a container it is ON by default.** A container image is isolated and always ships `i2pd` (the image contract), so there is nothing to protect by asking; a host may already run its own router or SAM bridge, so the operator opts in there. This is the difference from Tor (PART 32.1), which is auto-enabled whenever the `tor` binary is found. The eepsite is created **only** when I2P is enabled (`server.i2p.enabled: true` / `I2P_ENABLED=true` / `--i2p`, which the container image sets by default) **and** a provider is available.
 
 **I2P provides one capability here:**
 1. **Eepsite** — server-side `.b32.i2p` hosting over the I2P network.
@@ -54703,13 +54704,14 @@ Tor Hidden Service: Connected
 
 ### Configuration
 
-**I2P is opt-in.** No provider is contacted and no port is allocated unless `enabled: true`. The canonical config path is `server.i2p.enabled` (env `I2P_ENABLED`, flag `--i2p`), grouped under `server` like `server.tor`; `features.i2p.*` names the same state only as response fields in health output and is never a config key. Precedence follows PART 8: `--i2p` flag, then `I2P_ENABLED`, then `server.i2p.enabled`.
+**I2P is off by default outside a container, and on by default inside one** (the image sets `I2P_ENABLED=true`; an explicit flag, variable or config value always wins). No provider is contacted and no port is allocated unless `enabled: true`. The canonical config path is `server.i2p.enabled` (env `I2P_ENABLED`, flag `--i2p`), grouped under `server` like `server.tor`; `features.i2p.*` names the same state only as response fields in health output and is never a config key. Precedence follows PART 8: `--i2p` flag, then `I2P_ENABLED`, then `server.i2p.enabled`.
 
 ```yaml
 server:
   i2p:
-    # OPT-IN: disabled by default. Unlike Tor (auto-enabled when the binary is
-    # found), the eepsite is created only when this is true.
+    # The built-in default is false (bare metal and VM: opt-in). The container image sets
+    # I2P_ENABLED=true. Unlike Tor (auto-enabled when the binary is found), the eepsite
+    # is created only when this is true.
     enabled: false
 
     # Path to the i2pd binary (auto-detected if empty). When an i2pd binary is
@@ -54740,7 +54742,7 @@ server:
 ```
 
 **Notes:**
-- **Opt-in only** — never auto-enabled; selecting it requires an explicit config/flag/env.
+- **Never inferred from the binary** — outside a container it needs an explicit config/flag/env; in a container the image supplies `I2P_ENABLED=true` as that explicit env.
 - Model A uses the external `i2pd` binary (not embedded), keeping `CGO_ENABLED=0` static binaries.
 - Model B needs no dependency — SAMv3 is spoken over a plain `net.Conn`.
 - **App handles EVERYTHING** for Model A — directory creation, permissions, `i2pd.conf` generation, i2pd process management, the destination key. For Model B the external router owns tunnels; the app owns only the SAM session and the persisted destination key.
@@ -67345,7 +67347,7 @@ make docker
   - [ ] `features.tor.hostname` ({onion_address})
 
 **PART 32.2: I2P Eepsite (OPTIONAL — opt-in)**
-- [ ] Disabled by default; enabled only via `server.i2p.enabled` / `I2P_ENABLED=true` / `--i2p`
+- [ ] Off by default on bare metal and in a VM (opt-in via `server.i2p.enabled` / `I2P_ENABLED=true` / `--i2p`); ON by default in the container image (`I2P_ENABLED=true`)
 - [ ] Provider resolution: i2pd binary preferred, external SAM bridge fallback
 - [ ] Dedicated i2pd process (Model A, not a system router) when i2pd found
 - [ ] `.b32.i2p` address generation from persisted destination key
