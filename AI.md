@@ -704,7 +704,7 @@ if cacheSize > 1024*1024*1024 {
 | **Unsafe PR triggers forbidden by default** | Do NOT use `pull_request_target` for untrusted code execution, build, test, or artifact upload paths |
 | **Secrets never exposed to forks** | Fork PR workflows run without repo secrets, write tokens, publish steps, or deployment credentials |
 | **Dependency updates are automated** | Public repos include dependency update automation for every ecosystem in use |
-| **Secret scanning is mandatory** | Public repos run `truffleHog` (`trufflesecurity/trufflehog`, Apache-2.0, no license key) on push/PR via `ci.yml`; blocking statuses: `verified` always; `unknown` (unverified) only in push/PR range scans, never in a full-history scan (scheduled runs and new-branch pushes), where unverified noise is reported but does not fail the run. Every `unknown` finding is reviewed and true false positives are allowlisted in place with truffleHog's inline `trufflehog:ignore` comment on that line (no root config file exists for it). Never use `gitleaks` — requires a commercial license for org repos |
+| **Secret scanning is mandatory** | Public repos run `truffleHog` (`trufflesecurity/trufflehog`, Apache-2.0, no license key) on push/PR via `ci.yml`; blocking statuses: `verified` always; `unknown` (verification could not complete) only in push/PR range scans, never in a full-history scan (scheduled runs and new-branch pushes), where unverified noise is reported but does not fail the run. Every `unknown` finding is reviewed and true false positives are allowlisted in place with truffleHog's inline `trufflehog:ignore` comment on that line (no root config file exists for it). Documentation examples never hold a credential-shaped string: connection strings use `{user}:{password}` placeholders, and a flagged example is rewritten, not allowlisted ("Secret Scan Job (truffleHog)"). Never use `gitleaks` — requires a commercial license for org repos |
 | **Release outputs are verifiable** | Releases publish checksums, SBOM, release notes, and provenance/attestation when the host platform supports it |
 
 ### Workflow Permissions
@@ -23443,12 +23443,12 @@ Before proceeding, confirm you understand:
 
 ### DNS-01 Provider Configuration
 
-**ALL DNS providers are supported.** The admin WebUI provides a dropdown that dynamically shows the appropriate credential fields based on the selected provider.
+**Every lego DNS provider is supported.** The admin WebUI provides a dropdown of all of them and shows the credential fields as described below.
 
 **Admin WebUI Flow (`/server/{admin_path}/ssl`):**
 
-1. Select DNS provider from dropdown (all lego-supported providers available)
-2. Form dynamically shows required credential fields for that provider
+1. Select the DNS provider from a dropdown (every lego-supported provider is listed)
+2. The form shows the provider's fields. For the common providers below the fields are prefilled from that table. For every other provider the form is a free-form editor of `VARIABLE` / value rows with a link to the provider's lego page, because lego publishes no field list at runtime; lego's error names a missing variable and the form shows it next to the editor
 3. Submit credentials → app validates by attempting DNS API connection
 4. On success, credentials are **encrypted** and stored for reuse
 5. Certificate requests use stored encrypted credentials
@@ -23459,13 +23459,13 @@ Before proceeding, confirm you understand:
 |------|--------|
 | YAML shape | `server.ssl.letsencrypt.dns_provider` is the lego provider name (the lowercase identifier on the lego DNS provider list, e.g. `cloudflare`). `dns_credentials` is ONE flat map of that provider's lego environment variable names to string values, e.g. `CF_DNS_API_TOKEN: "..."`; no nesting |
 | Encryption at rest | A plaintext value an operator writes is accepted at load and rewritten in place, in the file that holds it, atomically and `0600` (PART 8 private paths), as `enc:v1:{base64 of nonce + AES-256-GCM ciphertext}` under `server.security.encryption_key`. A value that starts with `enc:v1:` is decrypted in memory only. A value is never logged, never returned by the API, and shown as `********` in every view and bundle |
-| Field discovery | The server hardcodes no field list. For one `dns.NewDNSChallengeProviderByName` call it sets the map as the provider's environment (under a mutex), then restores the environment. lego's error names a missing or invalid variable; the server reports the variable NAME only, never a value |
+| Field discovery | The server hardcodes no field list for VALIDATION (lego decides what is missing); the table below only prefills the form. For one `dns.NewDNSChallengeProviderByName` call it sets the map as the provider's environment (under a mutex), then restores the environment. lego's error names a missing or invalid variable; the server reports the variable NAME only, never a value |
 | Passing to lego | Only through that constructor call: the resulting provider object is given to the ACME client as its DNS-01 solver. Credentials are never written to a file or kept in the process environment |
 | Validation | At startup and before every certificate request the provider is constructed (no DNS record is touched). A failure makes the request fail with the variable name and logs at ERROR; no other challenge type is tried silently. Real proof of the credentials is a successful issuance |
 | `validated_at` | Server-written, never in YAML: the row `app_secrets.dns_validated_at` in `server.db` (UTC ISO 8601), set when a certificate was issued or renewed through the provider and cleared when `dns_provider` or any `dns_credentials` value changes |
 | Key rotation | `dns_credentials` values depend on `server.security.encryption_key`; the rotation re-encrypts them (PART 11 → "Rotation contract") |
 
-**Common Providers (examples; the variable names are lego's, and the lego page for a provider is authoritative):**
+**Common Providers (form prefill; the variable names are lego's, and the lego page for a provider is authoritative):**
 
 | Provider | Required Fields |
 |----------|-----------------|
@@ -23474,9 +23474,62 @@ Before proceeding, confirm you understand:
 | `digitalocean` | `DO_AUTH_TOKEN` |
 | `godaddy` | `GODADDY_API_KEY`, `GODADDY_API_SECRET` |
 | `namecheap` | `NAMECHEAP_API_USER`, `NAMECHEAP_API_KEY` |
-| `rfc2136` | `RFC2136_NAMESERVER`, `RFC2136_TSIG_KEY`, `RFC2136_TSIG_SECRET`, `RFC2136_TSIG_ALGORITHM` |
+| `rfc2136` (alias `dnsupdate`) | `DNSUPDATE_NAMESERVER` and, for TSIG, `DNSUPDATE_TSIG_KEY`, `DNSUPDATE_TSIG_SECRET`, `DNSUPDATE_TSIG_ALGORITHM` ("RFC 2136 (dynamic DNS update)") |
 
 **Note:** Full provider list from [lego DNS providers](https://go-acme.github.io/lego/dns/).
+
+#### RFC 2136 (dynamic DNS update)
+
+**`rfc2136` (alias `dnsupdate`) answers the DNS-01 challenge by sending RFC 2136 dynamic UPDATE messages straight to your own authoritative server (BIND, Knot, PowerDNS, CoreDNS and others). It works for any zone you run yourself, for wildcard certificates, and with no third-party API.** The variable names are lego v5's `DNSUPDATE_*`; the older `RFC2136_*` spelling is accepted for every variable and means the same (it is stored as written).
+
+| Variable | Needed | Meaning |
+|----------|--------|---------|
+| `DNSUPDATE_NAMESERVER` | Always | `host` or `host:port` of the server that accepts the update; the port defaults to `53`; IPv6 as `[::1]:53` |
+| `DNSUPDATE_TSIG_KEY` | With TSIG | Key name as written in the DNS server config |
+| `DNSUPDATE_TSIG_SECRET` | With TSIG | The base64 key |
+| `DNSUPDATE_TSIG_ALGORITHM` | No | `hmac-sha1.` (the default), `hmac-sha224.`, `hmac-sha256.`, `hmac-sha384.`, `hmac-sha512.`; `hmac-md5.sig-alg.reg.int.` only for an old server. Use `hmac-sha256.` or stronger |
+| `DNSUPDATE_TSIG_FILE` | No | A key file made by `tsig-keygen`, as a name inside `{config_dir}/ssl/`; it replaces KEY, SECRET and ALGORITHM |
+| `DNSUPDATE_ZONES` | No | Comma-separated candidate zones; by default the zone is found by an SOA lookup that walks up from the domain |
+| `DNSUPDATE_TTL` | No | TTL of the TXT record, in seconds (default `120`) |
+| `DNSUPDATE_PROPAGATION_TIMEOUT` | No | Longest wait for the record to be visible, in seconds (default `60`) |
+| `DNSUPDATE_POLLING_INTERVAL` | No | Seconds between propagation checks (default `2`) |
+| `DNSUPDATE_SEQUENCE_INTERVAL` | No | Seconds between sequential requests (default `60`) |
+| `DNSUPDATE_DNS_TIMEOUT` | No | Timeout of one DNS request, in seconds (default `10`) |
+| `DNSUPDATE_TSIG_GSS_REALM`, `DNSUPDATE_TSIG_GSS_USERNAME`, `DNSUPDATE_TSIG_GSS_PASSWORD`, `DNSUPDATE_TSIG_GSS_KEYTAB_FILE` | `gss-tsig.` only | Kerberos (RFC 3645) |
+
+| Rule | Detail |
+|------|--------|
+| **Records** | Adds the TXT record `_acme-challenge.{domain}.` and, after validation, deletes exactly that record: never another TXT record. A wildcard certificate uses the same name. A CNAME at `_acme-challenge` is followed, so the key only needs rights on the zone the CNAME points to |
+| **Unsigned updates** | With no TSIG key and secret the update is sent unsigned, which only a server that trusts the sender's address accepts; one warning says so (`rfc2136: unsigned update`) |
+| **Secrets** | `DNSUPDATE_TSIG_SECRET` and `DNSUPDATE_TSIG_GSS_PASSWORD` are encrypted at rest like every `dns_credentials` value; a missing or invalid variable is reported by NAME only |
+| **Errors** | A refused update (`REFUSED`, `NOTAUTH`, `NOTZONE`), a bad signature (`BADSIG`, `BADKEY`, `BADTIME`) and a timeout are reported as these words, never with the secret or the packet |
+| **Tests** | An in-process DNS server accepts a signed UPDATE and the test checks the INSERT then the REMOVE of the one TXT record, a wrong key (`BADSIG`), an unsigned update, a port-less nameserver (port 53), and that both the `DNSUPDATE_*` and the `RFC2136_*` spellings work |
+
+```yaml
+server:
+  ssl:
+    letsencrypt:
+      challenge: dns-01
+      dns_provider: rfc2136
+      dns_credentials:
+        DNSUPDATE_NAMESERVER: "ns1.example.com:53"
+        DNSUPDATE_TSIG_KEY: "acme"
+        DNSUPDATE_TSIG_ALGORITHM: "hmac-sha256."
+        DNSUPDATE_TSIG_SECRET: "{base64_secret}"
+```
+
+The matching BIND configuration limits the key to the challenge name:
+
+```
+key "acme" { algorithm hmac-sha256; secret "{base64_secret}"; };
+zone "example.com" {
+    type master;
+    file "example.com.zone";
+    update-policy { grant acme name _acme-challenge.example.com. txt; };
+};
+```
+
+**Kerberos:** `gss-tsig.` works through lego.
 
 **See PART 36: CUSTOM DOMAINS for user/org custom domain support (optional per-project feature).**
 
@@ -43422,11 +43475,55 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: govulncheck ./...
 
-  # Additional jobs. Container jobs follow the pattern above: workflow-policy, coverage (needs: test), upload-artifacts (needs: build).
-  # Host-runner jobs (no container:, no needs): secret-scan, image-scan
+  # Additional container jobs follow the pattern above: workflow-policy, coverage (needs: test), upload-artifacts (needs: build).
+  # image-scan is the other host-runner job (no container:, no needs)
+  secret-scan:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Pick the scan scope
+        id: scope
+        run: |
+          ZERO=0000000000000000000000000000000000000000
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "base=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+            echo "head=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+            echo "results=verified,unknown" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.event.before }}" != "$ZERO" ]; then
+            echo "base=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+            echo "head=${{ github.event.after }}" >> "$GITHUB_OUTPUT"
+            echo "results=verified,unknown" >> "$GITHUB_OUTPUT"
+          else
+            echo "results=verified" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: trufflesecurity/trufflehog@b2b0a92070f206ab7b5a1105d82a7f2f48d92341  # v3.99.0
+        with:
+          base: ${{ steps.scope.outputs.base }}
+          head: ${{ steps.scope.outputs.head }}
+          extra_args: --results=${{ steps.scope.outputs.results }}
 ```
 
 > **Note:** Security jobs (`secret-scan`, `workflow-policy`, `vuln-scan`, `image-scan`) are defined within `ci.yml`. They run on push, PR, and weekly schedule (`cron: '0 6 * * 1'`). Add `if: github.event_name != 'schedule'` to build/test/coverage/artifact jobs to skip non-security work on scheduled runs. Secret scanning is mandatory on every public repo via truffleHog (Apache-2.0). Use `github.event.before` / `github.event.after` for the scan range — never `default_branch`, which after a push resolves to the same commit as HEAD and silently skips the scan.
+
+### Secret Scan Job (truffleHog)
+
+**`secret-scan` in `ci.yml` is a host-runner job (no `container:`, no `needs`) that runs `trufflesecurity/trufflehog`, pinned by SHA like every action, with `fetch-depth: 0` so the whole history is available. What it scans, and what blocks, depends on the event:**
+
+| Event | Scope | Results that FAIL the job |
+|-------|-------|---------------------------|
+| Pull request | `base.sha` to `head.sha` | `verified` and `unknown` |
+| Push to an existing branch | `event.before` to `event.after` | `verified` and `unknown` |
+| New-branch push (`before` is all zeros), weekly schedule, manual run | The full history | `verified` only |
+
+| Rule | Detail |
+|------|--------|
+| **Flag** | `--results=verified,unknown` or `--results=verified`. The old `--only-verified` flag is not used. `unknown` means verification was attempted and could not complete; `unverified` (checked and found inactive) is reported and does not fail the job |
+| **Never `default_branch`** | `base` is never `repository.default_branch`: after a push it equals the pushed commit and truffleHog skips the scan ("BASE and HEAD commits are the same") |
+| **Documentation examples** | `AI.md`, `IDEA.md`, `README.md` and `docs/` never contain a credential-shaped string. Connection strings use `{user}:{password}` placeholders; a flagged example is rewritten, not allowlisted, because a copied spec file is read-only in the projects that receive it |
+| **Allowlist** | Only a reviewed true false positive in project code or a test fixture, with truffleHog's inline `trufflehog:ignore` comment on that line. There is no root config file for it |
+| **Other providers** | GitLab and Jenkins run the same contract in Docker: `trufflehog git file://. --since-commit HEAD~1 --results=verified,unknown --fail` for a range, `trufflehog git file://. --results=verified --fail` for the full history |
 
 ## Release Workflow — Stable (GitHub Actions)
 
@@ -44577,8 +44674,34 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: govulncheck ./...
 
-  # Additional jobs. Container jobs follow the pattern above: workflow-policy, coverage (needs: test), upload-artifacts (needs: build).
-  # Host-runner jobs (no container:, no needs): secret-scan, image-scan
+  # Additional container jobs follow the pattern above: workflow-policy, coverage (needs: test), upload-artifacts (needs: build).
+  # image-scan is the other host-runner job (no container:, no needs)
+  secret-scan:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Pick the scan scope
+        id: scope
+        run: |
+          ZERO=0000000000000000000000000000000000000000
+          if [ "${{ gitea.event_name }}" = "pull_request" ]; then
+            echo "base=${{ gitea.event.pull_request.base.sha }}" >> "$GITEA_OUTPUT"
+            echo "head=${{ gitea.event.pull_request.head.sha }}" >> "$GITEA_OUTPUT"
+            echo "results=verified,unknown" >> "$GITEA_OUTPUT"
+          elif [ "${{ gitea.event_name }}" = "push" ] && [ "${{ gitea.event.before }}" != "$ZERO" ]; then
+            echo "base=${{ gitea.event.before }}" >> "$GITEA_OUTPUT"
+            echo "head=${{ gitea.event.after }}" >> "$GITEA_OUTPUT"
+            echo "results=verified,unknown" >> "$GITEA_OUTPUT"
+          else
+            echo "results=verified" >> "$GITEA_OUTPUT"
+          fi
+      - uses: trufflesecurity/trufflehog@b2b0a92070f206ab7b5a1105d82a7f2f48d92341  # v3.99.0
+        with:
+          base: ${{ steps.scope.outputs.base }}
+          head: ${{ steps.scope.outputs.head }}
+          extra_args: --results=${{ steps.scope.outputs.results }}
 ```
 
 **Forgejo:** `.forgejo/workflows/ci.yml` has the same content with `forgejo.*` and `FORGEJO_ENV` (Variable Mapping below). The `secret-scan` and `image-scan` host-runner rule of the GitHub CI Workflow applies unchanged.
