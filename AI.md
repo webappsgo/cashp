@@ -8685,7 +8685,7 @@ sudo {project_name} --service --install
 
 **Default:** service starts with elevated privileges only when needed, then drops to dedicated service user after privileged setup/port binding.
 
-**Drop timing — the privilege drop is the FINAL root-phase action.** It happens only after ALL root-requiring initialization completes: service user/group creation, directory and file creation, ownership and permission setup, privileged port binding (<1024), and spawning managed child processes (e.g. Tor) with setuid/setgid service-user credentials. Nothing after the drop may require root — anything that does is an init-ordering bug. Immediately after dropping, verify with getuid() != 0.
+**Drop timing — the privilege drop is the FINAL root-phase action.** It happens only after ALL root-requiring initialization completes: service user/group creation, directory and file creation, ownership and permission setup, privileged port binding (<1024), and spawning managed child processes (e.g. Tor) with setuid/setgid service-user credentials, and applying a staged update (step 7b, before everything else). Nothing after the drop may require root — anything that does is an init-ordering bug. Immediately after dropping, verify with getuid() != 0.
 
 **Permanent-root exception:** allowed only for project-defined cases such as firewall control, packet capture, TUN/TAP/VPN, mount/filesystem management, package/service management, or other ongoing kernel/device operations.
 
@@ -11523,6 +11523,8 @@ PHASE 5: Server startup (actual server start)
    ├─ {backup_dir}  (see PART 8 GetBackupDir - /mnt/Backups/... if writable, else {data_dir}/backup/ in system mode)
    └─ Never resolve ~/$HOME again after step 8h — the service account's HOME is {data_dir}
 
+7b. IF ROOT AND {data_dir}/update/ holds a staged update: verify and apply it NOW, before any other root-phase work, then re-execute the new binary (see "Update Privileges")
+
 8. IF RUNNING AS ROOT - setup system resources BEFORE dropping privileges:
    a. Check/create system user:
       ├─ User {project_name} exists → use it
@@ -11701,6 +11703,7 @@ PHASE 5: Server startup (actual server start)
 |------|---------|-----|
 | 6. Determine context | any | First thing - detect if root, container, etc. |
 | 7. Resolve paths | any | Resolved ONCE and cached — mode locked from start EUID; never re-derived after 8h |
+| 7b. Apply staged update | **root** | Only root may replace the installed binary ("Update Privileges") |
 | **IF ROOT (step 8):** | | |
 | 8a. Create system user | **root** | Only root can create system users |
 | 8b. Create directories | **root** | Only root can create /etc/, /var/lib/, etc. |
@@ -38837,7 +38840,7 @@ server:
 | Setting | Behavior |
 |---------|----------|
 | `auto_install: false` (default) | Notify only — fires the "Update available" event; never touches the binary |
-| `auto_install: true` | Runs the full `--update yes` flow during the task run — eligible releases only |
+| `auto_install: true` | Stages an eligible release; a root-started server restarts and installs it as root, any other server only notifies ("Update Privileges") |
 
 **Surfacing rules:**
 
@@ -38859,6 +38862,25 @@ server:
 4. Replace running binary (PLATFORM-SPECIFIC)
 5. Restart service or re-exec
 ```
+
+### Update Privileges
+
+**Who may install an update is decided by how the process STARTED, not by what it is now: `startedElevated` (PART 8 → `GetBackupDir`) is captured before the privilege drop and never re-evaluated. The binary is only ever replaced by a root process, never by the dropped service user.**
+
+| Server started as | What `auto_install: true` does |
+|-------------------|--------------------------------|
+| root / Administrator (Unix) | Stage, restart, swap as root (below) |
+| A normal user (user mode, user service) | Installs nothing: behaves as `auto_install: false`. It fires the "Update available" event to the Server Admins with the manual command (`{project_name} --update yes`, with `sudo` for a system install) and records `update.install_skipped` (reason `not_elevated`, version only) in `audit.log` |
+| Windows service | Installs nothing (the service account cannot write the install directory): notify only, with the manual command run from an elevated prompt |
+
+**Stage, restart, swap (started as root):**
+
+1. The `update_check` task, running as the service user, performs steps 1 to 3 of the Update Flow into `{data_dir}/update/` (`{project_name}.new` and its SHA256) and records `update.staged` (version only).
+2. The server shuts down gracefully (PART 8 → shutdown) and exits with code `75` (`EX_TEMPFAIL`), a failure exit, so the supervisor restarts it.
+3. The restart runs as root. Startup step 7b verifies the SHA256 again, checks that the staged version is newer than the running one, runs `replaceBinary()` (step 4), deletes `{data_dir}/update/` and re-executes the new binary (step 5), which continues at step 6 as the new version.
+4. Any failure (bad checksum, rename error): the staged files are deleted, the old binary keeps running, `update.failed` is recorded and the Server Admins get the "Update failed" notification. The same version is not staged again until the next release.
+
+**Restart support:** systemd (`Restart=on-failure`), launchd (`KeepAlive`), runit and s6 restart the service after exit `75`. OpenRC, SysV and rc.d do not supervise it: the staged update waits for the next start (boot or `--service restart`) and the Server Admins get "Update staged: restart to apply". In a cluster the rollout stays node-by-node.
 
 ### Platform-Specific Binary Replacement
 
@@ -40331,6 +40353,7 @@ Wants=network-online.target
 Type=simple
 ExecStart=/usr/local/bin/{project_name}
 Restart=on-failure
+# Exit code 75 after a staged update is a failure exit, so on-failure restarts the service (as root, which applies the update)
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
