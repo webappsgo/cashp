@@ -419,7 +419,7 @@ permission rules, business invariants. The HOW lives in AI.md PARTS 0-36; PART 3
 BUILD_DIR=$(ls -td ${TMPDIR:-/tmp}/${PROJECT_ORG}/${INTERNAL_NAME}-*/ 2>/dev/null | head -1)
 docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v "$BUILD_DIR:/app" alpine:latest sh -c "
   # Required debug tools
-  apk add --no-cache curl bash file jq
+  apk add --no-cache curl bash file jq tor i2pd tzdata ca-certificates
   /app/{project_name} --help
   /app/{project_name} --version
   # Interactive debugging...
@@ -466,7 +466,7 @@ make dev
 # 2. Debug in Docker (with tools)
 BUILD_DIR=$(ls -td ${TMPDIR:-/tmp}/${PROJECT_ORG}/${INTERNAL_NAME}-*/ 2>/dev/null | head -1)
 docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v "$BUILD_DIR:/app" alpine:latest sh -c "
-  apk add --no-cache curl bash file jq
+  apk add --no-cache curl bash file jq tor i2pd tzdata ca-certificates
   /app/{project_name} --help
 "
 
@@ -626,7 +626,7 @@ if cacheSize > 1024*1024*1024 {
 | **STOPSIGNAL** | `SIGRTMIN+3` |
 | **ENTRYPOINT** | `["tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh"]` |
 | **NEVER modify ENTRYPOINT/CMD** | All customization via entrypoint.sh |
-| **Required packages** | `git`, `curl`, `bash`, `tini`, `tor`, `i2pd` |
+| **Required packages** | `git`, `curl`, `bash`, `tini`, `tor`, `i2pd`, `tzdata`, `ca-certificates` |
 | **Tor** | Binary installed but **server binary controls startup** (see PART 32) |
 
 ### Container Port Behavior
@@ -41441,7 +41441,7 @@ docker run --rm \
   --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" \
   -v "$BUILD_DIR:/app" \
   alpine:latest sh -c "
-    apk add --no-cache curl bash file jq
+    apk add --no-cache curl bash file jq tor i2pd tzdata ca-certificates
     /app/${PROJECT_NAME} --help
     /app/${PROJECT_NAME} --version
     # Debug interactively...
@@ -41705,7 +41705,9 @@ docker/
 | Builder stage | `casjaysdev/go:latest` |
 | Runtime stage | `alpine:latest` |
 | Meta labels | All OCI labels (see below) |
-| Required packages | git, curl, bash, tini, tor, i2pd |
+| Required packages | git, curl, bash, tini, tor, i2pd, tzdata, ca-certificates |
+| Image contract | EVERY image the project ships (release, `:devel`, the all-in-one Debian image, any variant) installs `bash`, `curl`, `tor`, `i2pd`, `tini`, `tzdata` and `ca-certificates` in its FINAL stage. `tor` and `i2pd` are installed even though I2P is opt-in: a missing package is an image bug, never a runtime fallback. A project may ADD packages and never remove these |
+| Image check | After every build, CI and `tests/docker.sh` run `docker run --rm --entrypoint sh {image} -c 'for c in bash curl tor i2pd tini; do command -v "$c" || exit 1; done'` and fail on any missing command; the container's `/server/healthz` must then report `features.tor.status` `healthy` (never `unavailable`) within `server.tor.startup_timeout` |
 | Tor handling | Installed but **binary controls** (see PART 32) |
 | Binary location | `/usr/local/bin/{project_name}` |
 | Entrypoint script | `/usr/local/bin/entrypoint.sh` |
@@ -41927,7 +41929,9 @@ RUN apk add --no-cache \
     bash \
     tini \
     tor \
-    i2pd
+    i2pd \
+    tzdata \
+    ca-certificates
 
 # NO directory creation - binary handles ALL setup based on env vars
 # This allows users to override CONFIG_DIR, DATA_DIR, etc.
@@ -42474,6 +42478,7 @@ FROM debian:latest
 
 # Install dependencies (PostgreSQL + Valkey + Tor + Supervisor)
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
     ca-certificates \
     curl \
     postgresql \
@@ -48435,7 +48440,7 @@ fi
    - Server (`./src`)
    - client (`./src/client`) if exists
    - Agent (`./src/agent`) if exists
-3. Install test tools in container (Docker: `apk add --no-cache curl bash file jq`)
+3. Install test tools in container (Docker: `apk add --no-cache curl bash file jq tor i2pd tzdata ca-certificates`)
 4. Copy binaries to test container
 5. Start server and capture logs (for setup token extraction)
 6. Run full beta test suite:
@@ -48510,7 +48515,7 @@ docker run --rm \
     set -e
 
     # Install required tools for testing
-    apk add --no-cache curl bash file jq >/dev/null
+    apk add --no-cache curl bash file jq tor i2pd tzdata ca-certificates >/dev/null
 
     chmod +x /app/${PROJECT_NAME}
     [ -f /app/${PROJECT_NAME}-cli ] && chmod +x /app/${PROJECT_NAME}-cli
@@ -49092,7 +49097,7 @@ run_mode() {
         # The distro tor/i2pd services are NOT what is tested: the server runs its own dedicated, isolated instances (PART 31)
         incus exec "$container" -- systemctl disable --now tor.service tor@default.service i2pd.service 2>/dev/null || true
     else
-        incus exec "$container" -- sh -c 'apk add --no-cache bash curl jq file tor i2pd' >/dev/null
+        incus exec "$container" -- sh -c 'apk add --no-cache bash curl jq file tor i2pd tzdata ca-certificates' >/dev/null
         incus exec "$container" -- sh -c 'rc-service tor stop; rc-service i2pd stop; rc-update del tor; rc-update del i2pd' 2>/dev/null || true
     fi
 
@@ -49181,7 +49186,7 @@ fi
 | **Go cache** | Host cache dirs (`GO_CACHE`/`GO_BUILD`) bind-mounted into container |
 | **Build location** | `binaries/` in the project root (same output as `make build`) |
 | **Build all components** | Build server, client (if `src/client/` exists), agent (if `src/agent/` exists) |
-| **Test container tools** | Docker alpine MUST install: `apk add --no-cache curl bash file jq` |
+| **Test container tools** | Docker alpine MUST install: `apk add --no-cache curl bash file jq tor i2pd tzdata ca-certificates` |
 | **Test all binaries** | Test `--version` and `--help` for server, client, and agent if built |
 | **Binary rename test** | Copy binary with new name, verify `--help` shows renamed name (not hardcoded) |
 | **Admin setup** | Use setup token to create admin account, login, generate API token |
@@ -49562,7 +49567,7 @@ docker run --rm \
 
 # Test in Docker (quick) - install tools first
 docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $PWD/binaries:/app alpine:latest sh -c "
-  apk add --no-cache curl bash file jq >/dev/null
+  apk add --no-cache curl bash file jq tor i2pd tzdata ca-certificates >/dev/null
   /app/{project_name} --help
 "
 
@@ -49605,7 +49610,7 @@ docker run --rm \
 
 # Quick test in Docker (install tools first)
 docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -v $PWD/binaries:/app alpine:latest sh -c "
-  apk add --no-cache curl bash file jq >/dev/null
+  apk add --no-cache curl bash file jq tor i2pd tzdata ca-certificates >/dev/null
   /app/{project_name} --help
   /app/{project_name} --version
 "
