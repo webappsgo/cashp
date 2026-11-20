@@ -8434,7 +8434,8 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | `MODE` | `production` (default; shortcut `prod`) · `development` (shortcuts `dev`, `devel`) · `debug` (explicit opt-in only) |
 | `DEBUG` | Truthy value turns the debug flag on (`--debug` wins; precedence and the `/debug/*` endpoints are defined in PART 6 → Debug Flag). Independent of `MODE`: `MODE=debug` only defaults the flag on |
 | `DATABASE_DRIVER` | `sqlite` (+ `sqlite2`, `sqlite3`), `libsql` (+ `turso`), `postgres` (+ `pgsql`, `postgresql`), `mysql` (+ `mariadb`), `mssql`, `mongodb` (+ `mongo`) |
-| `DATABASE_URL` | Database connection string |
+| `DATABASE_URL` | Full database connection string; overrides `server.database.url` and the separate fields ("Connection Strings") |
+| `CACHE_URL` | Full cache connection string (`valkey://`, `redis://`); overrides `server.cache.url` and the separate fields |
 | `SMTP_HOST` | SMTP server hostname (if set, skips autodetect) |
 | `SMTP_PORT` | SMTP server port (default: 587) |
 | `SMTP_USERNAME` | SMTP authentication username |
@@ -8605,9 +8606,9 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 
 | Rule | Behavior |
 |------|----------|
-| **Keys** | Only these, for every one the project has: `server.token`; `server.security.encryption_key` and `server.security.encryption_key_version`; `server.notifications.email.smtp.password`; `server.cache.password`; `server.database.password` and `server.database.token`; `server.pages.contact.captcha_secret_key`; `server.ssl.letsencrypt.dns_credentials`; `data.cve.api_key`; `server.backup.encryption_password`; `server.metrics.auth.tokens.*`; every webhook URL and its `_secret` under `server.contact.{role}.webhooks`; `server.auth.ldap.providers[].bind_password`; `server.auth.oidc.providers[].client_secret`. `server.tokens.*` is token policy, not a secret. Every other key stays in its area file |
+| **Keys** | Only these, for every one the project has: `server.token`; `server.security.encryption_key` and `server.security.encryption_key_version`; `server.notifications.email.smtp.password`; `server.cache.password`; `server.database.password` and `server.database.token`; `server.database.url` and `server.cache.url` (each only while the URL carries a credential); `server.pages.contact.captcha_secret_key`; `server.ssl.letsencrypt.dns_credentials`; `data.cve.api_key`; `server.backup.encryption_password`; `server.metrics.auth.tokens.*`; every webhook URL and its `_secret` under `server.contact.{role}.webhooks`; `server.auth.ldap.providers[].bind_password`; `server.auth.oidc.providers[].client_secret`. `server.tokens.*` is token policy, not a secret. Every other key stays in its area file |
 | **Generated** | When one of these keys is empty or missing at start, the server generates it BEFORE it serves anything, writes it to `secrets.yml` (atomic, `0600`) and records `config.secret_generated` (the key name only) in `audit.log`: `server.token`; `server.security.encryption_key` (with `encryption_key_version: 1`); `server.metrics.auth.tokens.prometheus`, `.grafana` and `.loki`; and a `webhooks.<name>_secret` whenever its webhook URL is set. Bearer tokens use the spec's token format (`tok_` plus 32 random base62 characters) and the encryption key is 32 random bytes. Only `server.token` is printed, once, at first creation; every other value is read from `secrets.yml` |
-| **Never generated** | Credentials that someone else issues stay empty until the operator sets them: `server.notifications.email.smtp.password`, `server.cache.password`, `server.database.password` and `server.database.token`, `server.pages.contact.captcha_secret_key`, `server.ssl.letsencrypt.dns_credentials`, `data.cve.api_key`, `server.backup.encryption_password`, the LDAP bind password, the OIDC client secret and the webhook URLs |
+| **Never generated** | Credentials that someone else issues stay empty until the operator sets them: `server.notifications.email.smtp.password`, `server.cache.password`, `server.database.password` and `server.database.token`, `server.database.url` and `server.cache.url` with a credential in them, `server.pages.contact.captcha_secret_key`, `server.ssl.letsencrypt.dns_credentials`, `data.cve.api_key`, `server.backup.encryption_password`, the LDAP bind password, the OIDC client secret and the webhook URLs |
 | **Rotation** | Blank a generated key in `secrets.yml` and restart: a new value is generated. `--maintenance secret rotate {name}` rotates the encryption key and the HMAC secrets with their grace periods (PART 11) |
 | **Written by** | The server writes generated, rotated and moved secrets to `secrets.yml` and ONLY there, never to `server.yml` and never to a drop-in (this limits what the server writes; an operator may still hand-write a value elsewhere, see "Operator-set values"): the first-run `server.token`, `server.security.encryption_key` with its version, and every rotation (`--maintenance secret rotate encryption_key`) |
 | **Operator-set values** | An operator MAY write a secret key in `server.yml` or a drop-in (for example from configuration management). The automatic migration moves it to `secrets.yml` at the next start ("Area Files and Automatic Migration"), where it wins over any other file. A value may also be an environment reference such as `${DB_PASSWORD}`, which is moved like any other value. A plaintext DNS credential is rewritten as `enc:v1:` in the file that holds it. So `secrets.yml` is where a secret lives at rest, and a secret in `server.yml` or a drop-in is a hand-off that ends at the next start |
@@ -8618,6 +8619,59 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | **Backup** | Included in every backup whenever it exists (PART 22 → "Backup Contents"), so a restore brings back the same token and encryption key |
 | **Never exposed** | Secret values are never logged, never printed by `--config` (shown as `********`), and never returned by any API response (PART 11) |
 | **Cluster Mode** | `secrets.yml` is local to each node. Config sync (the remote `config` table and the area files) never carries a secret key. A value the cluster shares reaches a node by the mechanism the spec names for it (the join payload carries the database password, the encryption key and every generated shared secret: `server.token`, `server.metrics.auth.tokens.*` and the webhook `_secret` values, PART 34), and the receiving node writes it to ITS OWN `secrets.yml` (atomic, `0600`), never to `server.yml` and never to `_cache` |
+### Connection Strings (database and cache)
+
+**The database and the cache each accept ONE full connection string, so a container is configured with a single environment variable.** The URL form is complete on its own: scheme, credentials, host, port, name and TLS options.
+
+| Connection | Key | Environment variable |
+|------------|-----|----------------------|
+| Database | `server.database.url` | `DATABASE_URL` (the driver comes from the scheme; `DATABASE_DRIVER` is only needed for SQLite) |
+| Cache | `server.cache.url` | `CACHE_URL` (the type comes from the scheme) |
+
+| Rule | Behavior |
+|------|----------|
+| **Precedence** | The environment variable, then the `url` key, then the separate fields (`host`, `port`, `name`, `username`, `password`, `sslmode`, and the cache equivalents), which are ignored whenever a URL is set. The environment variable is checked on EVERY start and is never written to any file, so a container recreated with another URL follows it |
+| **Driver** | The scheme selects the driver ("Accepted forms"). When `DATABASE_DRIVER` disagrees with the scheme, the scheme wins, with one warning |
+| **Not accepted** | ADO.NET or key-value strings (`Server=...;Password=...`, `host=... user=...`) and `jdbc:` URLs. The server reports one error that names the key and says "use the URL form", never the value. The "Invalid → default" rule does NOT apply to a connection URL: a rejected database URL is never replaced by another database (not even SQLite) and is reported exactly like an unreachable database |
+| **Encoding** | Reserved characters in a user name, password or query value MUST be percent-encoded in the URL (`@` `:` `/` `?` `#` `%` `[` `]`; `p@ss` is `p%40ss`); the server decodes them before use. The separate `password` field takes the raw value and needs no encoding |
+| **Password only** | A cache URL may carry only a password: `valkey://:{password}@host:6379/0` (empty user name), or `valkey://{password}@host:6379/0` (no colon: the whole userinfo is the password) |
+| **Query options** | Driver options in the query (`sslmode`, `authToken`, `database`, `encrypt`, `tls`, ...) are read and passed to the driver; the TLS ones are mapped as in "TLS" below. An option in the URL wins over the matching separate field |
+| **Credentials** | A URL that carries a password or a token (in the userinfo, or as a `password`, `pwd`, `token` or `authToken` query value) is a secret: it lives in `secrets.yml` under the same key (`server.database.url`, `server.cache.url`) and the automatic migration moves it there from `server.yml` or a drop-in ("Secrets File"). A URL with no credential (`valkey://cache:6379`) stays in `server.yml` |
+| **Never shown** | Logs, `--config` output, the admin panel and error messages show only the redacted form `scheme://user:********@host:port/name?authToken=********`. The full URL is never logged, never returned by an API and never part of a health response (PART 11) |
+| **References** | `${NAME}` and `${NAME:-default}` inside any string value are replaced from the environment after the files are merged and are never written back. `url: ${DATABASE_URL}` therefore works, but is not needed: the variable is read directly. An unset name without a default becomes an empty string |
+
+**Accepted forms** (placeholders in braces; replace them, and percent-encode the credentials):
+
+| Driver (`driver` aliases) | URL schemes | Example |
+|---------------------------|-------------|---------|
+| `sqlite` (`sqlite2`, `sqlite3`) | a file path, or `file:` | `{data_dir}/db/server.db` (no credentials, no TLS) |
+| `libsql` (`turso`) | `libsql://`, `https://` | `libsql://{database}-{org}.turso.io?authToken={token}` |
+| `postgres` (`pgsql`, `postgresql`) | `postgres://`, `postgresql://` | `postgresql://{user}:{password}@host:5432/{database}?sslmode=require` |
+| `mysql` (`mariadb`) | `mysql://`, `mariadb://` | `mariadb://{user}:{password}@host:3306/{database}` |
+| `mssql` | `sqlserver://`, `mssql://` | `sqlserver://{user}:{password}@host:1433?database={database}&encrypt=true` |
+| `mongodb` (`mongo`) | `mongodb://`, `mongodb+srv://` | `mongodb://{user}:{password}@host:27017/{database}?tls=true` |
+| cache `valkey` | `valkey://`, `valkeys://` (TLS) | `valkey://:{password}@host:6379/0` |
+| cache `redis` | `redis://`, `rediss://` (TLS) | `rediss://{user}:{password}@host:6379/0` |
+
+**TLS ("the ssl equivalents").** One meaning for every driver, written as the existing `sslmode` key (database) or the `tls` and `tls_skip_verify` keys (cache), or as the URL option in the table:
+
+| Mode | Meaning | Cache keys |
+|------|---------|------------|
+| `disable` | No TLS | `tls: false` |
+| `require` | TLS, certificate NOT verified | `tls: true`, `tls_skip_verify: true` |
+| `verify-full` | TLS, certificate chain and host name verified; a private CA is added with `ssl_ca` (cache: `tls_ca`) | `tls: true` |
+
+`ssl_cert` and `ssl_key` (cache: `tls_cert`, `tls_key`) add a client certificate. The three file keys take a path inside `{config_dir}/ssl/` (a relative name is resolved there) and are private paths (PART 8). PostgreSQL's own `verify-ca` is accepted and passed through unchanged. A scheme that ends in TLS (`rediss://`, `valkeys://`, `libsql://`, `https://`, `mongodb+srv://`) turns TLS on; `http://` to a libsql host is rejected unless the host is loopback.
+
+| Driver | URL option that sets the mode |
+|--------|-------------------------------|
+| PostgreSQL | `sslmode=disable\|require\|verify-ca\|verify-full`, `sslrootcert`, `sslcert`, `sslkey` |
+| MySQL, MariaDB | `tls=false` (disable), `tls=skip-verify` (require), `tls=true` (verify-full) |
+| SQL Server | `encrypt=disable` (disable), `encrypt=true` with `TrustServerCertificate=true` (require), `encrypt=true` (verify-full) |
+| MongoDB | `tls=false`, `tls=true` with `tlsInsecure=true` (require), `tls=true` (verify-full), `tlsCAFile` |
+| libsql | always TLS |
+| Valkey, Redis | the scheme (`valkey://` and `redis://` off; `valkeys://` and `rediss://` on), or `tls=true` |
+
 ## Port Rules
 
 **Default port is a random unused port in the 64000-64999 range.**
@@ -20382,6 +20436,10 @@ server:
     # TLS settings (for secure connections)
     tls: false
     tls_skip_verify: false
+    # Private CA and client certificate: file names inside {config_dir}/ssl/ (see "Connection Strings")
+    tls_ca: ""
+    tls_cert: ""
+    tls_key: ""
 
     # Connection pool
     pool_size: 10
@@ -20409,7 +20467,7 @@ server:
 | `url` | Simple, single connection string, environment-friendly |
 | `host`/`port`/etc | More explicit, when fields come from different sources |
 
-**URL Format:**
+**URL Format** (every accepted scheme, TLS and secrets: "Connection Strings"):
 ```
 redis://[[username:]password@]host[:port][/database]
 valkey://[[username:]password@]host[:port][/database]
@@ -63474,6 +63532,10 @@ server:
     username: myapp
     password: ${DB_PASSWORD}
     sslmode: require
+    # Private CA and client certificate: file names inside {config_dir}/ssl/ (see "Connection Strings")
+    ssl_ca: ""
+    ssl_cert: ""
+    ssl_key: ""
 
     # Connection pool
     max_open: 25
@@ -63481,7 +63543,7 @@ server:
     max_lifetime: 5m
 ```
 
-**URL Format:**
+**URL Format** (every accepted scheme, TLS and secrets: "Connection Strings"):
 ```
 postgres://[username[:password]@]host[:port]/database[?sslmode=mode]
 mysql://[username[:password]@]host[:port]/database[?params]
@@ -64011,6 +64073,8 @@ NEW NODE                                    EXISTING NODE
   }
 }
 ```
+
+**Database configured by URL.** A node whose database is set with `server.database.url` ("Connection Strings") receives `url_encrypted` (the whole URL, encrypted like the other secrets) in place of `host`, `port`, `name`, `username`, `password_encrypted` and `sslmode`, and step 9 writes it to `secrets.yml` as `server.database.url`. A node started with the `DATABASE_URL` environment variable keeps using that variable, and the payload value is not written.
 
 #### Security: Encrypted Transfer
 
