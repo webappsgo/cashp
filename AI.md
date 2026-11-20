@@ -11806,6 +11806,18 @@ PHASE 5: Server startup (actual server start)
 
 **Key principle:** Drop the binary anywhere, run it, everything works. No setup scripts, no manual directory creation, no permission fixing.
 
+### Startup Output Rules
+
+| Rule | Behavior |
+|------|----------|
+| **One event, one line** | Every event is logged exactly once, as a plain-text log line (no icons, colors or box drawing: "Console Output Rules"). A decorated copy of the same event (`✅ GraphQL API enabled`, `⚠️ Failed to start ...`, `📡 For documentation see ...`, `🕐 Ready: ...`) is a second line and is forbidden. The startup banner and `--status` are the only decorated output |
+| **No extra console lines** | Nothing but the banner (step 20) and log lines is written to the console at startup. "Ready", "Documentation" and "feature enabled" announcements are NOT separate lines: the banner carries the URLs, and a feature is logged once at INFO when it starts |
+| **The banner is one write** | The banner is built as ONE string and written with ONE write while holding the lock the logger uses, so no log line from any goroutine (Tor, I2P, scheduler, file watcher) can land between two banner lines. Work that finishes after step 20 is logged after the banner |
+| **Banner header** | `{appName} · {version}` always shows the version. The first-run state is the separate setup block, never a replacement for the version |
+| **Disabled is silent** | An optional feature that is not active logs nothing at INFO or above: I2P with `server.i2p.enabled: false` (step 17b: "skip entirely"), or a feature the project does not have. A missing Tor binary logs only the one INFO line of step 17 |
+| **Failure wording** | `Failed to start {feature}: {reason}` is only for an enabled feature that failed, logged ONCE at WARN (step 17: "log WARN, continue") |
+| **Tests** | A startup test captures the console and asserts: no emoji outside the banner, every log message appears once, the banner lines are contiguous, and a default start (I2P off) has no I2P line |
+
 ### Daemonization (--daemon flag)
 
 **By default, the server runs in foreground.** Modern service managers (systemd, launchd) prefer this.
@@ -32505,6 +32517,8 @@ On first run, a one-time setup token is generated and displayed in console. Admi
 | 3 | User enters setup token |
 | 4 | Redirect to `/server/{admin_path}/setup` (setup wizard) |
 
+**The setup page calls ONLY the API routes listed for it.** Its JavaScript verifies the token with `POST /api/{api_version}/server/{admin_path}/setup/verify` and uses no other path: a `404` on a route such as `/server/admin/verify-token` means the page and the router disagree on the route or on `{admin_path}`. A test loads the setup page and asserts that every request target it makes exists in the router.
+
 **Setup Wizard Steps (`/server/{admin_path}/setup`):**
 
 **Step 1: Create Admin Account**
@@ -34465,6 +34479,21 @@ Email templates allow Server Admins to customize ALL notification messages, incl
 4. If fail → email disabled, log warning, continue running
 5. Retry on next startup
 
+#### SMTP TLS Mode `auto`
+
+**`tls: auto` (the default) is decided per connection by the port; implicit TLS is never tried on a plain-SMTP port.** Port 25 is plain SMTP, so a `tls: first record does not look like a TLS handshake` error means the client sent a TLS hello to a plain port: a bug.
+
+| Port | `auto` behavior |
+|------|-----------------|
+| `465` | Implicit TLS (SMTPS): TLS from the first byte |
+| `25`, `587`, any other port | Plain connection and EHLO, then STARTTLS when the server offers it; stay plain when it does not |
+
+- `AUTH` is sent only after TLS is established, so with `auto`, configured credentials and no TLS offered, the send fails with one clear error and the credentials are never sent in clear.
+- The explicit modes are unchanged: `tls` is implicit TLS on any port, `starttls` requires the upgrade, `none` is plain.
+- Auto-detection probes each `host:port` with this same rule and saves `host` and `port`; `tls` stays `auto`. The connection test at startup and every send use the same rule.
+- Certificate verification follows "SMTP TLS Verification".
+- **Tests:** `auto` on port 25 and 587 against a server with and without STARTTLS never sends a TLS hello first, and `auto` on 465 does.
+
 ### SMTP Config
 
 ```yaml
@@ -35913,6 +35942,14 @@ Every project MUST include these scheduled tasks:
 | `cluster_heartbeat` | Every 30 seconds | Cluster node heartbeat (cluster mode only) | No |
 
 Task activity is logged to log files only — the scheduler NEVER prints to the console (see Console vs Logs → Runtime Console Silence).
+
+### Scheduler Behavior Rules
+
+| Rule | Behavior |
+|------|----------|
+| **Mode-bound tasks** | A task marked "(cluster mode only)" in the table (`cluster_heartbeat`) and any task for a feature that is off (`tor_health` without Tor, `i2p_health` without I2P) is NOT registered: it never runs and never logs. In single-instance mode there is no `cluster_heartbeat`. |
+| **Run logging** | A successful run is logged at DEBUG; a failed run at WARN (ERROR when its retries are exhausted). A task that runs more often than every 5 minutes (`cluster_heartbeat`, `notification_queue`, project pollers) never logs success above DEBUG. Startup logs ONE INFO line listing the registered tasks |
+| **Timezone** | `server.scheduler.timezone` is an IANA name. The binary embeds the zone database (Go: `import _ "time/tzdata"` or the `timetzdata` build tag; Rust: `chrono-tz`), so a scratch or minimal image works without tzdata files. An unknown name logs ONE warning that names the key and the default, and the default is used; if the default itself cannot load, the scheduler uses `UTC` and the warning says so. A message such as `invalid scheduler.timezone "X", using default "X"` is a bug |
 
 ### Task Configuration
 
@@ -52507,6 +52544,7 @@ Tor integration uses **external Tor binary** via `github.com/cretz/bine`. This m
 **Key Architecture Points:**
 - **Server binary owns Tor** - starts, stops, and manages Tor process lifecycle
 - **Hidden service maps to a dedicated Tor backend port** - `.onion:80` → `localhost:{tor_backend_port}` (a random-unused loopback port bound just for Tor, never the clearnet port)
+- **The hidden service comes ONLY from the torrc block** (`HiddenServiceDir` plus `HiddenServicePort {virtual_port} 127.0.0.1:{tor_backend_port}`). The server never calls a library helper that creates a hidden service and a local listener by itself (for example bine's `Listen` or `CreateHiddenService`, or `ADD_ONION` with a locally bound port): those bind a loopback listener on the VIRTUAL port (80), which collides with the app's own port and fails with `listen tcp 127.0.0.1:80: bind: address already in use`. The only local listener Tor needs is the dedicated backend port. A test starts the app on its normal port and asserts that Tor reaches `healthy` and that no listener other than the backend port is bound for it
 - **Server enforces permissions** - creates all dirs/files with correct owner/group/perms
 - **HiddenServiceVersion 3** - v3 onion addresses (56 characters, ed25519) via torrc HiddenServiceDir
 - **Localhost auto control port** - Tor control uses `127.0.0.1:auto` on all OSes
@@ -54828,6 +54866,9 @@ func samReachable(addr string) bool {
     return true
 }
 
+// ErrI2PDisabled means I2P is not opted in: there is nothing to start, so it is never logged.
+var ErrI2PDisabled = errors.New("i2p disabled (opt-in)")
+
 // startDedicatedI2P creates the eepsite when I2P is enabled AND a provider is
 // available. It resolves the provider FIRST (i2pd binary, else a reachable SAM
 // bridge); if neither is available it returns an error and NO backend port is
@@ -54837,7 +54878,8 @@ func samReachable(addr string) bool {
 // The eepsite maps: .b32.i2p:{virtual_port} → 127.0.0.1:{backend port}.
 func startDedicatedI2P(ctx context.Context, cfg *I2PConfig) (*I2PService, error) {
     if !cfg.Enabled {
-        return nil, fmt.Errorf("i2p disabled (opt-in) - eepsite not started")
+        // Disabled is a normal state, not an error: callers log nothing
+        return nil, ErrI2PDisabled
     }
 
     // Resolve provider FIRST. No provider → return before allocating a port or
@@ -55296,6 +55338,9 @@ func (im *I2PManager) Start() error {
 
 func (im *I2PManager) startLocked() error {
     service, err := startDedicatedI2P(im.ctx, im.config)
+    if errors.Is(err, ErrI2PDisabled) {
+        return nil
+    }
     if err != nil {
         return err
     }
@@ -55372,10 +55417,11 @@ func main() {
     i2pConfig := config.I2P
 
     // Start I2P. startDedicatedI2P returns early (no port, no config) when I2P is
-    // disabled or no provider is available; both are logged, neither is fatal.
+    // disabled or no provider is available. Disabled is silent; a missing provider is
+    // ONE WARN; neither is fatal.
     i2pService, err := startDedicatedI2P(ctx, &i2pConfig)
-    if err != nil {
-        log.Printf("I2P not started: %v", err)
+    if err != nil && !errors.Is(err, ErrI2PDisabled) {
+        log.Printf("WARN: I2P not started: %v", err)
         // Continue without I2P (opt-in)
     }
 
