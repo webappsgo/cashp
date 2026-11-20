@@ -40336,7 +40336,8 @@ StandardOutput=journal
 StandardError=journal
 
 # Security hardening (binary drops privileges after port binding)
-# true: /usr and /boot are read-only; /etc stays writable so the server can rewrite its config and create its account
+# true: /usr and /boot are read-only; /etc stays writable so the binary can rewrite its config and run groupadd/useradd (they write /etc/passwd, group, shadow, gshadow and their locks)
+# NEVER tighten this to full or strict: both make /etc read-only, account creation fails and the privilege drop cannot happen
 ProtectSystem=true
 ProtectHome=yes
 PrivateTmp=yes
@@ -48561,6 +48562,8 @@ fi
 check "service enabled at boot" svc_enabled
 check "service active after install" wait_for 30 svc_active
 check "health endpoint answers after install" wait_for 60 healthz_up
+check "service account exists" getent passwd "$INTERNAL_NAME"
+check "server runs as the service account after the privilege drop" test "$(stat -c %U /proc/$(svc_pid))" = "$INTERNAL_NAME"
 
 echo "=== [$INIT_MODE] Service restart ==="
 OLD_PID=$(svc_pid)
