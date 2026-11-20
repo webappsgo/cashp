@@ -8146,6 +8146,8 @@ server:
 |---------|-----------------|--------------|-------------------|
 | Database connection (host, port, name, user) | server.yml | server.yml | server.yml |
 | Database password and token | secrets.yml | secrets.yml | secrets.yml |
+| Cache connection (type, host, port, db, URL without credential) | server.yml | server.yml (the cluster's cache, written by node setup from the join payload) | server.yml |
+| Cache password and a URL with a credential | secrets.yml | secrets.yml | secrets.yml |
 | Operator token, encryption key, other credentials | secrets.yml | secrets.yml (shared values arrive by join or sync) | secrets.yml |
 | Admin credentials | Local SQLite | Remote DB | ❌ Unavailable |
 | Shared settings (area files) | yaml.d/*.yml | Remote DB (synced to every node's yaml.d/) | yaml.d/ (last synced copy) |
@@ -8473,7 +8475,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | `DATABASE_URL` | First run: the full database connection string, saved to `secrets.yml` (when it carries a credential) or `server.yml`; ignored afterwards ("Connection Strings") |
 | `CACHE_URL` | First run: the full cache connection string (`valkey://`, `redis://`), saved the same way |
 
-**Init-only variables are used ONCE during first run to seed `server.yml` (and `secrets.yml` for a credential), then ignored.** The database and cache connection variables are init-only because the saved connection belongs to the node's setup: a node that is added to a cluster receives its database connection in the join payload, and a database migrated from the admin panel must not be reverted by an environment variable at the next start.
+**Init-only variables are used ONCE during first run to seed `server.yml` (and `secrets.yml` for a credential), then ignored.** The database and cache connection variables are init-only because the saved connections belong to the node's setup: a node added to a cluster receives the cluster's database and cache connections, not its environment's, and a database migrated from the admin panel must not be reverted by an environment variable at the next start.
 
 ---
 
@@ -8662,7 +8664,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | `require` | TLS, certificate NOT verified. This is what any TLS request in a connection string means, unless verification is asked for below | `tls: true`, `tls_skip_verify: true` (the default whenever `tls` is on) |
 | `verify-full` | TLS, certificate chain and host name verified. Chosen explicitly: `sslmode: verify-full`, the PostgreSQL URL option `sslmode=verify-full` or `verify-ca`, `tls_skip_verify: false`, or by setting `ssl_ca` (cache: `tls_ca`) (a private CA only makes sense when it is checked) | `tls: true`, `tls_skip_verify: false` |
 
-`ssl_cert` and `ssl_key` (cache: `tls_cert`, `tls_key`) add a client certificate. The three file keys take a path inside `{config_dir}/ssl/` (a relative name is resolved there) and are private paths (PART 8). The files are node-local and Cluster Mode does not sync them, but node initialization sets them up: the join payload carries the database files (`ssl_ca`, `ssl_cert`, `ssl_key`) and step 9 of "Join Cluster Flow" writes them into the new node's `{config_dir}/ssl/`. The cache files belong to `server.cache`, which is node-local, so they are placed on each node with the cache settings. PostgreSQL's own `verify-ca` is accepted and passed through unchanged. A scheme or URL option that turns TLS on (`rediss://`, `valkeys://`, `libsql://`, `https://`, `mongodb+srv://`, `tls=true`, `encrypt=true`) selects `require`. `http://` to a libsql host is rejected unless the host is loopback (`127.0.0.0/8`, `::1`) or a private address (RFC 1918 `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, or IPv6 unique-local `fc00::/7`); a host name counts only when EVERY address it resolves to is in those ranges.
+`ssl_cert` and `ssl_key` (cache: `tls_cert`, `tls_key`) add a client certificate. The three file keys take a path inside `{config_dir}/ssl/` (a relative name is resolved there) and are private paths (PART 8). The files are node-local and Cluster Mode does not sync them, but node initialization sets them up: the join payload carries the files of both connections (`ssl_ca`, `ssl_cert`, `ssl_key`, `tls_ca`, `tls_cert`, `tls_key`) and step 9 of "Join Cluster Flow" writes them into the new node's `{config_dir}/ssl/`. PostgreSQL's own `verify-ca` is accepted and passed through unchanged. A scheme or URL option that turns TLS on (`rediss://`, `valkeys://`, `libsql://`, `https://`, `mongodb+srv://`, `tls=true`, `encrypt=true`) selects `require`. `http://` to a libsql host is rejected unless the host is loopback (`127.0.0.0/8`, `::1`) or a private address (RFC 1918 `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, or IPv6 unique-local `fc00::/7`); a host name counts only when EVERY address it resolves to is in those ranges.
 
 | Driver | URL option that sets the mode |
 |--------|-------------------------------|
@@ -63600,13 +63602,16 @@ mysql://[username[:password]@]host[:port]/database[?params]
 4. Ready to migrate to cluster?
          │
          ▼
-5. Setup remote database (PostgreSQL/MySQL)
+5. Setup the remote database (PostgreSQL/MySQL)
+   and the shared Valkey/Redis instance
          │
          ▼
-6. Update config: driver: postgres (or use WebUI)
+6. Update config: driver: postgres and
+   cache type: valkey (or use WebUI)
          │
          ▼
-7. Restart - app auto-migrates local data to remote
+7. Restart - app auto-migrates local data to remote,
+   switches the cache to Valkey/Redis
    and seeds the config table from its area files
    (including app.yml) and assets/ ("Config Sync")
          │
@@ -63621,7 +63626,9 @@ mysql://[username[:password]@]host[:port]/database[?params]
 1. Deploy new node
          │
          ▼
-2. Configure with SAME remote database connection
+2. Configure with SAME remote database and cache
+   connections (or join through the WebUI, which
+   delivers both)
    driver: postgres
    host: db.example.com (same as first node)
          │
@@ -64008,7 +64015,8 @@ NEW NODE                                    EXISTING NODE
    - Database connection (encrypted)             │
    - Encryption key for secrets                  │
    - Shared generated secrets                    │
-   - Database TLS files (CA, client cert and key)│
+   - Cache connection (Valkey/Redis)             │
+   - Connection TLS files (database and cache)   │
    - Cluster ID                                  │
     │                                            │
     ▼                                            │
@@ -64030,10 +64038,12 @@ NEW NODE                                    EXISTING NODE
     │                                            │
     ▼                                            │
 9. Write minimal server.yml and secrets.yml      │
-   - server.yml: database connection, no password│
-   - secrets.yml: database password, encryption  │
-     key (with version) and synced secrets       │
-   - ssl/: the database TLS files, 0600          │
+   - server.yml: database and cache connection,  │
+     no passwords                                │
+   - secrets.yml: database and cache passwords,  │
+     encryption key (with version) and synced    │
+     secrets                                     │
+   - ssl/: the connection TLS files, 0600        │
    - yaml.d/*: area files from the database      │
     │                                            │
     ▼                                            │
@@ -64069,6 +64079,19 @@ NEW NODE                                    EXISTING NODE
       "ssl_cert": "",
       "ssl_key": ""
     },
+    "cache": {
+      "type": "valkey",
+      "host": "cache.example.com",
+      "port": 6379,
+      "db": 0,
+      "username": "",
+      "password_encrypted": "base64_encrypted_password",
+      "tls": false,
+      "tls_skip_verify": true,
+      "tls_ca": "",
+      "tls_cert": "",
+      "tls_key": ""
+    },
     "encryption": {
       "key_encrypted": "base64_encrypted_key"
     },
@@ -64085,7 +64108,9 @@ NEW NODE                                    EXISTING NODE
 }
 ```
 
-**Database configured by URL.** A node whose database is set with `server.database.url` ("Connection Strings") receives `url_encrypted` (the whole URL, encrypted like the other secrets) in place of `host`, `port`, `name`, `username`, `password_encrypted` and `sslmode`, and step 9 writes it to `secrets.yml` as `server.database.url`. The payload value replaces whatever the node seeded at its first run, `DATABASE_URL` included: an environment variable never overrides the cluster setup. The database TLS files travel in `tls_files` in both forms.
+**Connection set by URL.** A node whose database or cache is set with `server.database.url` or `server.cache.url` ("Connection Strings") receives `url_encrypted` (the whole URL, encrypted like the other secrets) in that object in place of its separate fields, and step 9 writes it to `secrets.yml` as `server.database.url` or `server.cache.url`. The payload values replace whatever the node seeded at its first run, `DATABASE_URL` and `CACHE_URL` included: an environment variable never overrides the cluster setup. The TLS files of both connections travel in `tls_files`.
+
+**The cache is part of the cluster setup.** A cluster needs one Valkey/Redis instance shared by every node ("Database Modes"), so the first node's cache connection is delivered to each joining node exactly like the database connection and is never taken from the joining node's own environment.
 
 #### Security: Encrypted Transfer
 
@@ -64116,7 +64141,8 @@ func decryptBootstrapData(encrypted []byte, token string) []byte {
 **What's encrypted:**
 - Database password
 - Encryption key for secrets (TOTP secrets, etc.)
-- Database TLS files (`tls_files`; the client key is a secret)
+- Cache password
+- Connection TLS files, database and cache (`tls_files`; a client key is a secret)
 
 **What's NOT encrypted (not sensitive):**
 - Database host/port/name
@@ -64270,11 +64296,13 @@ Clicks "Generate Token"
          ▼
 Wizard prompts: "Enable cluster mode?"
   - Requires remote database connection
-  - Enter PostgreSQL/MySQL details
+  - Requires a Valkey/Redis connection
+  - Enter PostgreSQL/MySQL and Valkey/Redis details
          │
          ▼
 On confirm:
   - Migrates local data to remote DB
+  - Switches the cache to Valkey/Redis
   - Generates join token
   - Node is now cluster-ready
 ```
