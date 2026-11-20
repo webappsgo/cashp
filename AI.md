@@ -8593,7 +8593,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | `server.https_port` | when `server.port` is a single number and `https_port` is greater than 0, folded into `server.port` as the quoted string `"{port},{https_port}"` ("Dual Port Support"); otherwise removed. An already-dual `server.port` is kept as written, and `server.ssl.enabled` is never changed by the migration |
 | `server.ssl.dns01.*`, `server.ssl.letsencrypt.provider`, `.credentials_encrypted` | `server.ssl.letsencrypt.dns_provider`, `server.ssl.letsencrypt.dns_credentials` (`validated_at`, `domain` and `domains` are removed) |
 | `server.security.installation_secret`, `.installation_secret_previous`, `.installation_secret_previous_expires`, `.encryption_key_previous`, `.encryption_key_previous_expires` | imported into the database `app_secrets` row of the same name when that row is missing, then removed from the file (PART 11 → "Rotation contract") |
-| Settings that no longer exist | removed: `server.privacy.content.*`, `server.mcp`, `server.rate_limit.enabled`, `server.rate_limit.requests`, `server.rate_limit.window`, `server.maintenance_mode`, `server.i18n.auto_detect`, `.rtl_languages`, `.show_selector`, `.translations_dir`, `server.geoip.dir`, `.databases`, `.country_mode`, `server.database.sqlite`, `server.metrics.endpoint`, `server.notifications.email_enabled`, `.webhook_enabled`, `server.secret_key`, `web.permissions_policy`, `web.honor_dnt`, `web.robots.ai_bots` |
+| Settings that no longer exist | removed: `server.privacy.content.*`, `server.mcp`, `server.rate_limit.enabled`, `server.rate_limit.requests`, `server.rate_limit.window`, `server.scheduler.enabled`, `server.maintenance_mode`, `server.i18n.auto_detect`, `.rtl_languages`, `.show_selector`, `.translations_dir`, `server.geoip.dir`, `.databases`, `.country_mode`, `server.database.sqlite`, `server.metrics.endpoint`, `server.notifications.email_enabled`, `.webhook_enabled`, `server.secret_key`, `web.permissions_policy`, `web.honor_dnt`, `web.robots.ai_bots` |
 
 **Scheduler tasks.** A task under `server.scheduler.tasks` has exactly the keys `enabled`, `schedule`, `retry_on_fail` and `retry_delay` (and `retention` for `backup`). Any other per-task key is removed by the migration, and a built-in task that still has its default values is not written at all.
 
@@ -8601,7 +8601,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 
 ### Secrets File (`secrets.yml`)
 
-**Credentials live in `{config_dir}/secrets.yml`, never in `server.yml`, so `server.yml` can be read, shared, diffed and kept in configuration management without exposing anything.** It is the same YAML with the same dotted paths, and it is merged LAST.
+**Credentials live at rest in `{config_dir}/secrets.yml`, never in `server.yml` (a secret hand-written there is moved to `secrets.yml` at the next start, "Operator-set values"), so `server.yml` can be read, shared, diffed and kept in configuration management without exposing anything.** It is the same YAML with the same dotted paths, and it is merged LAST.
 
 | Rule | Behavior |
 |------|----------|
@@ -9418,7 +9418,6 @@ server:
 
   # Scheduler - manages all background tasks
   scheduler:
-    enabled: true
     # Built-in tasks with sane defaults (all enabled by default)
     tasks:
       # Security database updates
@@ -12593,7 +12592,7 @@ MongoDB is available but NOT used for standard schema (config, sessions, admins,
 ```yaml
 # Project-specific MongoDB connection (NOT for standard schema)
 mongodb:
-  # mongodb://user:pass@host:27017/dbname
+  # mongodb://{user}:{password}@host:27017/dbname
   url: ${MONGODB_URL}
   database: myapp
   # Replica set for HA
@@ -12669,7 +12668,7 @@ server:
     replicas:
       - name: mariadb-1
         driver: mysql
-        url: mysql://user:pass@mariadb1.example.com:3306/myapp
+        url: mysql://{user}:{password}@mariadb1.example.com:3306/myapp
         # Failover priority (lower = higher priority)
         priority: 1
         # Read replica
@@ -12677,20 +12676,20 @@ server:
 
       - name: mariadb-2
         driver: mysql
-        url: mysql://user:pass@mariadb2.example.com:3306/myapp
+        url: mysql://{user}:{password}@mariadb2.example.com:3306/myapp
         priority: 2
         read_only: true
 
       - name: postgres-backup
         driver: postgres
-        url: postgres://user:pass@pg-backup.example.com:5432/myapp
+        url: postgres://{user}:{password}@pg-backup.example.com:5432/myapp
         priority: 3
         # Can be promoted to primary
         read_only: false
 
       - name: mssql-legacy
         driver: mssql
-        url: sqlserver://user:pass@mssql.example.com:1433?database=myapp
+        url: sqlserver://{user}:{password}@mssql.example.com:1433?database=myapp
         priority: 10
         # Sync data to this DB
         sync: true
@@ -20369,7 +20368,7 @@ server:
 
     # Connection: Use EITHER url OR host/port/password (not both)
     # url takes precedence if both are specified
-    # Format: redis://user:password@host:port/db or valkey://...
+    # Format: redis://{user}:{password}@host:port/db or valkey://...
     url: ""
 
     # Individual connection settings (alternative to url)
@@ -20425,7 +20424,7 @@ rediss://...
 server:
   cache:
     type: valkey
-    # valkey://user:pass@valkey.example.com:6379/0
+    # valkey://{user}:{password}@valkey.example.com:6379/0
     url: ${CACHE_URL}
     prefix: "{project_name}:"
 ```
@@ -20833,7 +20832,7 @@ type StatsInfo struct {
 
 **Database/cache checks MUST be vague:**
 - ✅ `"database": "ok"` or `"database": "error"`
-- ❌ `"database": "postgresql://user:pass@host:5432/db"`
+- ❌ `"database": "postgresql://{user}:{password}@host:5432/db"`
 - ❌ `"database": {"host": "10.0.0.5", "port": 5432}`
 
 ### /server/healthz Response Formats
@@ -63460,7 +63459,7 @@ All nodes need shared access to:
 server:
   database:
     driver: postgres
-    # postgres://user:pass@host:5432/dbname?sslmode=require
+    # postgres://{user}:{password}@host:5432/dbname?sslmode=require
     url: ${DATABASE_URL}
 ```
 
