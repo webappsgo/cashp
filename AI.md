@@ -11735,7 +11735,7 @@ PHASE 5: Server startup (actual server start)
     ├─ Resolve {port}: server listen port from step 13, else proto default
     │  (priority 3-4)
     ├─ Resolve {app_mode} via GetAppModeString()
-    ├─ Resolve {startup_datetime} = current UTC timestamp at this step
+    ├─ Resolve {startup_datetime} = the current time at this step in the server's timezone (`TZ`, default `America/New_York`), human-readable as `%B %d, %Y at %H:%M:%S %Z` ("Human-Readable Values (Frontend)")
     └─ Build `urls` from the resolved {proto}/{fqdn}/{port} and call
        PrintServerStartupBanner(appName, version, appMode, urls,
        forceColor) — the banner's "Listening on" line ALWAYS shows the
@@ -14045,7 +14045,7 @@ All templates, Swagger/OpenAPI, GraphQL, email links, etc. MUST use these resolv
 | `{i2p_address}` | I2P address (if enabled) | `abc...xyz.b32.i2p` |
 | `{smtp_address}` | SMTP server address (if configured) | `172.17.0.1` |
 | `{smtp_port}` | SMTP server port | `25` |
-| `{startup_datetime}` | Server start timestamp, ALWAYS UTC (the one user-facing timestamp that is not in the server's local timezone: a console banner must read the same on every host and in every container) | `January 15, 2025 at 09:00:00 UTC` |
+| `{startup_datetime}` | Server start time in the server's timezone (`TZ`, default `America/New_York`), human-readable like every user-facing timestamp (`%B %d, %Y at %H:%M:%S %Z`) | `January 15, 2025 at 09:00:00 EST` |
 | `{setup_token}` | First-run setup token (shown ONCE) | `a1b2c3d4e5f67890abcdef1234567890` |
 
 **URL Format:** `{proto}://{fqdn}/path` or `{proto}://{fqdn}:{port}/path`
