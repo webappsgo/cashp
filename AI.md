@@ -8551,12 +8551,45 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 |------|----------|
 | **When** | After the full configuration load (PART 8 startup, step 13), as the service user, on every start |
 | **Nothing to move** | Nothing is written |
-| **Moving** | A section the table assigns to another file moves there (the file is created `0600` when missing); the credentials listed in "Secrets File" move to `secrets.yml` wherever they are found. If that file already sets the same key it wins, and the `server.yml` value is dropped (debug log). A section the table does not know goes to `app.yml` |
+| **Moving** | The renames and removals of "Legacy Keys" run first. Then a section the table assigns to another file moves there (the file is created `0600` when missing); the credentials listed in "Secrets File" move to `secrets.yml` wherever they are found. If that file already sets the same key it wins, and the `server.yml` value is dropped (debug log). A section the table does not know goes to `app.yml` |
 | **Order** | (1) copy the original to `server.yml.bak` (`0600`, replaced by each migration that changes something), (2) write every area file atomically (temporary file, fsync, rename), (3) rewrite `server.yml` without the moved keys and with the header comment. A crash in between leaves both copies, and the next start finishes the job because the merged result is the same either way |
 | **Values** | Never changed or re-validated by the migration. Comments inside moved sections are lost |
 | **Not possible** | A read-only configuration directory (for example a mounted ConfigMap): the migration is skipped with ONE warning per start and the server runs on the merged result as it is. A `server.yml` that cannot be parsed is not migrated ("Validation" above) |
 | **Database** | The migration only moves keys between files. It writes nothing to the database, because the merged values do not change |
 
+
+### Legacy Keys
+
+**Older deployments used other names for the same settings. The automatic migration applies this table on every start, before it moves sections between files.** A row either renames a key (the value is kept) or removes it (the value stays in `server.yml.bak`). When both the old and the new key exist, the new one wins and the old one is dropped. A key the table does not list, inside a section the spec defines, is ignored with ONE warning and is never deleted.
+
+| Legacy key | Becomes |
+|------------|---------|
+| `server.logging.*` | `server.logs.*` (`access_format` becomes `server.logs.access.format`, `level` becomes `server.logs.level`; the per-kind `filename`, `format`, `rotate` and `keep` keep their names) |
+| `server.schedule.*` | `server.scheduler.*` (a bare word such as `schedule.geoip_update: weekly` is removed) |
+| `server.web.*` | `web.*` |
+| `server.web.cookie_consent.message`, `.policy_url` | `server.privacy.consent.message`, `server.privacy.consent.policy.url` (`cookie_consent.enabled` is removed) |
+| `server.security_headers.hsts`, `.hsts_max_age` | `web.hsts.enabled`, `web.hsts.max_age_seconds` (the other `security_headers.*` keys are removed: the spec fixes them) |
+| `server.security.hsts.*` | `web.hsts.*` |
+| `server.security.nel.*` | `web.headers.nel.*` |
+| `server.security.headers.clear_site_data.*` | `web.headers.clear_site_data.*` (the other `server.security.headers.*` keys are removed) |
+| `server.security.csrf.*`, `web.csrf.*` | `server.csrf.*` |
+| `server.title`, `server.description` | `server.branding.title`, `server.branding.description` |
+| `server.branding.logo_url`, `.favicon_url`, `.primary_color` | `server.branding.logo`, `server.branding.favicon`, `web.ui.accent` |
+| `server.branding.footer_text` | `server.branding.content.footer` (format `html`, body: the text HTML-escaped inside a `<p>`) |
+| `server.branding.theme_color`, `.source_code_url` | removed |
+| `web.favicon_url`, `web.ui.favicon`, `web.ui.logo` | `server.branding.favicon`, `server.branding.favicon`, `server.branding.logo` |
+| `web.footer.custom_html` | `server.branding.content.footer` (format `html`, body: the old value) |
+| `server.pages.about.content`, `.privacy.content`, `.terms.content` | `server.branding.content.about`, `.privacy`, `.terms` (format `md`, body: the old value) |
+| `server.admin.email`, `server.admin.path` | `server.contact.admin.email`, `server.admin_path` |
+| `server.admin.password`, `.token`, `.username`, `.two_factor.*` | removed (the operator token is `server.token`; there are no admin passwords) |
+| `server.https_port` | folded into `server.port` as `"{port},{https_port}"` when greater than 0, otherwise removed |
+| `server.ssl.dns01.*`, `server.ssl.letsencrypt.provider`, `.credentials_encrypted` | `server.ssl.letsencrypt.dns_provider`, `server.ssl.letsencrypt.dns_credentials` (`validated_at`, `domain` and `domains` are removed) |
+| `server.security.installation_secret`, `.installation_secret_previous`, `.installation_secret_previous_expires`, `.encryption_key_previous`, `.encryption_key_previous_expires` | imported into the database `app_secrets` row of the same name when that row is missing, then removed from the file (PART 11 → "Rotation contract") |
+| Settings that no longer exist | removed: `server.privacy.content.*`, `server.mcp`, `server.rate_limit.enabled`, `server.rate_limit.requests`, `server.rate_limit.window`, `server.maintenance_mode`, `server.i18n.auto_detect`, `.rtl_languages`, `.show_selector`, `.translations_dir`, `server.geoip.dir`, `.databases`, `.country_mode`, `server.database.sqlite`, `server.metrics.endpoint`, `server.notifications.email_enabled`, `.webhook_enabled`, `server.secret_key`, `web.permissions_policy`, `web.honor_dnt`, `web.robots.ai_bots` |
+
+**Scheduler tasks.** A task under `server.scheduler.tasks` has exactly the keys `enabled`, `schedule`, `retry_on_fail` and `retry_delay` (and `retention` for `backup`). Any other per-task key is removed by the migration, and a built-in task that still has its default values is not written at all.
+
+**Layout.** Sections and keys are written in the order this specification lists them, so a rewrite never reshuffles a file and diffs stay small.
 
 ### Secrets File (`secrets.yml`)
 
@@ -8564,7 +8597,10 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 
 | Rule | Behavior |
 |------|----------|
-| **Keys** | Only these, for every one the project has: `server.token`; `server.security.encryption_key` and `server.security.encryption_key_version`; `server.notifications.email.smtp.password`; `server.cache.password`; `server.database.password` and `server.database.token`; `server.pages.contact.captcha_secret_key`; `server.ssl.letsencrypt.dns_credentials`; `data.cve.api_key`; `server.backup.encryption_password`; `server.metrics.auth.tokens.*`; every webhook URL and its `_secret` under `server.contact.{role}.webhooks`; `server.auth.ldap.providers[].bind_password`; `server.auth.oidc.providers[].client_secret`. Every other key stays in `server.yml` |
+| **Keys** | Only these, for every one the project has: `server.token`; `server.security.encryption_key` and `server.security.encryption_key_version`; `server.notifications.email.smtp.password`; `server.cache.password`; `server.database.password` and `server.database.token`; `server.pages.contact.captcha_secret_key`; `server.ssl.letsencrypt.dns_credentials`; `data.cve.api_key`; `server.backup.encryption_password`; `server.metrics.auth.tokens.*`; every webhook URL and its `_secret` under `server.contact.{role}.webhooks`; `server.auth.ldap.providers[].bind_password`; `server.auth.oidc.providers[].client_secret`. `server.tokens.*` is token policy, not a secret. Every other key stays in its area file |
+| **Generated** | When one of these keys is empty or missing at start, the server generates it BEFORE it serves anything, writes it to `secrets.yml` (atomic, `0600`) and records `config.secret_generated` (the key name only) in `audit.log`: `server.token`; `server.security.encryption_key` (with `encryption_key_version: 1`); `server.metrics.auth.tokens.prometheus`, `.grafana` and `.loki`; and a `webhooks.<name>_secret` whenever its webhook URL is set. Bearer tokens use the spec's token format (`tok_` plus 32 random base62 characters) and the encryption key is 32 random bytes. Only `server.token` is printed, once, at first creation; every other value is read from `secrets.yml` |
+| **Never generated** | Credentials that someone else issues stay empty until the operator sets them: `server.notifications.email.smtp.password`, `server.cache.password`, `server.database.password` and `server.database.token`, `server.pages.contact.captcha_secret_key`, `server.ssl.letsencrypt.dns_credentials`, `data.cve.api_key`, `server.backup.encryption_password`, the LDAP bind password, the OIDC client secret and the webhook URLs |
+| **Rotation** | Blank a generated key in `secrets.yml` and restart: a new value is generated. `--maintenance secret rotate {name}` rotates the encryption key and the HMAC secrets with their grace periods (PART 11) |
 | **Written by** | The server writes generated, rotated and moved secrets to `secrets.yml` and ONLY there, never to `server.yml` and never to a drop-in: the first-run `server.token`, `server.security.encryption_key` with its version, and every rotation (`--maintenance secret rotate encryption_key`) |
 | **Operator-set values** | An operator MAY write a secret key in `server.yml` or a drop-in (for example from configuration management). The automatic migration moves it to `secrets.yml` at the next start ("Area Files and Automatic Migration"), where it wins over any other file. A value may also be an environment reference such as `${DB_PASSWORD}`, which is moved like any other value. A plaintext DNS credential is rewritten as `enc:v1:` in the file that holds it |
 | **Migration** | At start, if `server.token` or `server.security.encryption_key` is found in `server.yml` and `secrets.yml` does not hold it, the server writes `secrets.yml` first (atomic, `0600`, fsynced) and only then rewrites `server.yml` without those keys, so a secret is never in both files and never lost |
@@ -8573,7 +8609,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | **Reload** | The file watcher watches it with `server.yml` and `yaml.d/`; a change re-merges everything and an invalid result keeps the last good config |
 | **Backup** | Included in every backup whenever it exists (PART 22 → "Backup Contents"), so a restore brings back the same token and encryption key |
 | **Never exposed** | Secret values are never logged, never printed by `--config` (shown as `********`), and never returned by any API response (PART 11) |
-| **Cluster Mode** | `secrets.yml` is local to each node. Config sync (the remote `config` table and the area files) never carries a secret key. A value the cluster shares reaches a node by the mechanism the spec names for it (the join payload for the database password and the encryption key, PART 34; the synced configuration for `server.token`, PART 5), and the receiving node writes it to ITS OWN `secrets.yml` (atomic, `0600`), never to `server.yml` and never to `_cache` |
+| **Cluster Mode** | `secrets.yml` is local to each node. Config sync (the remote `config` table and the area files) never carries a secret key. A value the cluster shares reaches a node by the mechanism the spec names for it (the join payload carries the database password, the encryption key and every generated shared secret: `server.token`, `server.metrics.auth.tokens.*` and the webhook `_secret` values, PART 34), and the receiving node writes it to ITS OWN `secrets.yml` (atomic, `0600`), never to `server.yml` and never to `_cache` |
 ## Port Rules
 
 **Default port is a random unused port in the 64000-64999 range.**
@@ -15853,7 +15889,7 @@ When `DEBUG=true` is active and an error occurs, the canonical error body (PART 
 | Logging | The raw value is never logged after the first-start banner, never returned by any API response, never included in a backup export or a support bundle |
 | Presented as | `Authorization: Bearer tok_...` |
 | Admin WebUI | Shown masked at `/server/{admin_path}/security` with a "Regenerate" action (sensitive operation per PART 5: re-prompt the admin password, log `security.operator_token_regenerated` to `audit.log`). The new value is displayed once on screen; the previous value stops working immediately |
-| Rotation | Regenerate in the admin WebUI, or blank `server.token` in `secrets.yml` and restart (a new value is generated and printed once). Cluster Mode: the value is part of the synced configuration (PART 5), and each node writes it to its own `secrets.yml`, never to `server.yml` or `_cache` |
+| Rotation | Regenerate in the admin WebUI, or blank `server.token` in `secrets.yml` and restart (a new value is generated and printed once). Cluster Mode: a rotated value reaches every node and each node writes it to its own `secrets.yml`, never to `server.yml` |
 | Scope | Never implied by `--debug` or development mode: debug only turns endpoints on, it never replaces authentication |
 
 ## Cryptographic Keys
@@ -36343,7 +36379,7 @@ it in a compliance-sensitive form.
 | **Per-service tokens** | Each service (`prometheus`, `grafana`, `loki`) has its own token in `secrets.yml` — rotating one service's token never breaks the others |
 | **Header only** | `Authorization: Bearer {token}` — query-string tokens are FORBIDDEN (they leak into access logs and proxies) |
 | **Constant-time compare** | Token comparison uses constant-time equality |
-| **Empty token = service disabled** | An empty token disables that service's endpoints → `403` with an empty body; the reason is logged once at startup (log files, not console) |
+| **Tokens are generated** | A service token that is empty at start is generated and written to `secrets.yml` ("Secrets File"), so a missing token never disables a service; the operator reads the value from `secrets.yml` |
 | **Never logged, always redacted** | Tokens never appear in logs, error messages, `/server/healthz`, or any config dump — display as `xxxxx` |
 | **Firewalled escape hatch** | `auth.allow_unauthenticated: true` (default `false`) skips token checks for ALL metrics services — for firewalled internal networks only; setting it while the server is reachable publicly is a deployment bug |
 | **Still INTERNAL** | Metrics remain internal/operational endpoints — never advertised, never in FeaturesInfo, firewall/proxy rules still apply as defense in depth |
@@ -36383,7 +36419,7 @@ server:
       # ONLY for firewalled internal networks - never on a public server
       allow_unauthenticated: false
 
-      # Per-service bearer tokens - empty disables that service (403)
+      # Per-service bearer tokens - generated into secrets.yml when unset
       tokens:
         prometheus: ""
         grafana: ""
@@ -63835,6 +63871,9 @@ NEW NODE                                    EXISTING NODE
     },
     "encryption": {
       "key_encrypted": "base64_encrypted_key"
+    },
+    "secrets": {
+      "encrypted": "base64_encrypted_map_of_generated_shared_secrets"
     },
     "node": {
       "suggested_id": "server-2"
