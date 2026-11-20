@@ -8131,6 +8131,8 @@ server:
 | **Changes** | The admin panel, the CLI and the API write to the database first. The node then writes the owning area file, and every other node applies the row and writes its own copy ("Sync to files"). The panel and the CLI are the preferred way to change settings |
 | **Hand edits** | A hand edit of an area file is detected by the file watcher, validated and imported as a change (`updated_by: node:{id}`), exactly like a panel change, so it is never lost and never left on one node. A node's own sync writes are recognized by content hash and are not re-imported |
 | **Sync to files** | A node writes the area file that owns a changed key atomically (temporary file, fsync, rename), `0600`, creating it when missing. Values only: comments are not kept |
+| **`app.yml`** | The project-defined sections in `yaml.d/app.yml` are an area file like every other: each dotted key is imported into the `config` table, synced and written to every node's `app.yml`. Values are kept as written (the specification defines no schema for them); the project's own validation and its "Invalid → default" rule apply on each node |
+| **New node** | Setup is automatic, with no admin input: a node that joins a cluster writes every area file (including `app.yml`) and every `assets/` file from the database before it serves, and it replaces its own first-run generated secrets with the ones in the join payload ("Join Cluster Flow") |
 | **Conflicts** | Per key the newest `updated_at` wins; equal timestamps go to the higher node id |
 | **Priority** | The database layer is above the file layer (PART 5 priority). At start, a file value that differs from the database is imported when the file is newer than the row's `updated_at`; otherwise the database value wins and the file is rewritten |
 | **Database unavailable** | The node keeps running on its area files, which are the last synced copy. Changes made on that node wait and are imported when the database returns |
@@ -8574,6 +8576,10 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | `server.security.headers.clear_site_data.*` | `web.headers.clear_site_data.*` (the other `server.security.headers.*` keys are removed) |
 | `server.security.csrf.*`, `web.csrf.*` | `server.csrf.*` |
 | `server.title`, `server.description` | `server.branding.title`, `server.branding.description` |
+| `server.seo.default_title`, `.default_description` | `server.branding.title`, `server.branding.description` (only when that key is unset or empty) |
+| `server.seo.opengraph.image`, `.opengraph.description` | `server.seo.og_image` (when unset), the description is removed |
+| `server.seo.twitter.site` | `server.seo.twitter_handle` (when unset) |
+| `server.seo.enabled`, `.sitemap.enabled`, `.feed.enabled` | removed (the tags, the sitemap and the feeds are always on) |
 | `server.branding.logo_url`, `.favicon_url`, `.primary_color` | `server.branding.logo`, `server.branding.favicon`, `web.ui.accent` |
 | `server.branding.footer_text` | `server.branding.content.footer` (format `html`, body: the text HTML-escaped inside a `<p>`) |
 | `server.branding.theme_color`, `.source_code_url` | removed |
@@ -8582,7 +8588,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | `server.pages.about.content`, `.privacy.content`, `.terms.content` | `server.branding.content.about`, `.privacy`, `.terms` (format `md`, body: the old value) |
 | `server.admin.email`, `server.admin.path` | `server.contact.admin.email`, `server.admin_path` |
 | `server.admin.password`, `.token`, `.username`, `.two_factor.*` | removed (the operator token is `server.token`; there are no admin passwords) |
-| `server.https_port` | folded into `server.port` as `"{port},{https_port}"` when greater than 0, otherwise removed |
+| `server.https_port` | when `server.port` is a single number and `https_port` is greater than 0, folded into `server.port` as the quoted string `"{port},{https_port}"` ("Dual Port Support"); otherwise removed. An already-dual `server.port` is kept as written, and `server.ssl.enabled` is never changed by the migration |
 | `server.ssl.dns01.*`, `server.ssl.letsencrypt.provider`, `.credentials_encrypted` | `server.ssl.letsencrypt.dns_provider`, `server.ssl.letsencrypt.dns_credentials` (`validated_at`, `domain` and `domains` are removed) |
 | `server.security.installation_secret`, `.installation_secret_previous`, `.installation_secret_previous_expires`, `.encryption_key_previous`, `.encryption_key_previous_expires` | imported into the database `app_secrets` row of the same name when that row is missing, then removed from the file (PART 11 → "Rotation contract") |
 | Settings that no longer exist | removed: `server.privacy.content.*`, `server.mcp`, `server.rate_limit.enabled`, `server.rate_limit.requests`, `server.rate_limit.window`, `server.maintenance_mode`, `server.i18n.auto_detect`, `.rtl_languages`, `.show_selector`, `.translations_dir`, `server.geoip.dir`, `.databases`, `.country_mode`, `server.database.sqlite`, `server.metrics.endpoint`, `server.notifications.email_enabled`, `.webhook_enabled`, `server.secret_key`, `web.permissions_policy`, `web.honor_dnt`, `web.robots.ai_bots` |
@@ -29336,6 +29342,28 @@ server:
     og_image: ""
     # Twitter @handle for cards
     twitter_handle: ""
+    # Separator between the title and the tagline in <title>
+    title_separator: " - "
+    # Extra <meta name="..." content="..."> tags: a map of name to content (at most 20 entries)
+    meta_tags: {}
+    # Absolute https URL that replaces the request origin in canonical and og:url links; empty = the request origin
+    canonical: ""
+    # true = every page is marked noindex,nofollow (a private instance); the sitemap and the feeds are still served
+    noindex: false
+    opengraph:
+      # false = no og:* tags
+      enabled: true
+      # og:type
+      type: website
+      # og:site_name; empty = server.branding.title
+      site_name: ""
+    twitter:
+      # false = no twitter:* tags
+      enabled: true
+      # summary or summary_large_image
+      card: summary_large_image
+      # @handle of the content creator
+      creator: ""
 
 web:
   ui:
@@ -29351,6 +29379,7 @@ web:
 | **Never generated** | The server creates it only when the automatic migration moves branding keys into it or an admin or setup save writes it. No file means the built-in defaults (the title is `{project_name}`). The operator creates it by hand, or the setup flow or the admin panel does |
 | **Writes** | The admin panel, the setup flow and `--admin config set branding.*` write `branding.yml` (atomic, `0600`); the whole file is rewritten and comments are not kept. They never write these keys to `server.yml`. An operator may also edit it by hand; the file watcher applies the change |
 | **Images** | `logo`, `favicon` and `seo.og_image` take an `https://` URL, a `data:` URI or a file name in `{config_dir}/assets/` ("Image Files"); empty means the embedded default |
+| **SEO tags** | `{canonical_url}` is `seo.canonical` (when set) plus the request path, otherwise the request origin plus the path; sitemap, feeds and `robots.txt` always use `BuildURL(r, path)`. `seo.noindex: true` forces `{robots}` to `noindex,nofollow` on every route and adds `X-Robots-Tag: noindex, nofollow`. `opengraph.enabled: false` or `twitter.enabled: false` omits that whole tag group. `meta_tags` names are limited to `[a-z0-9:_.-]`, contents are HTML-escaped, and a name this specification already generates (`description`, `keywords`, `author`, `robots`, `viewport`) is ignored. `title_separator` is at most 8 characters. An invalid value is replaced by its default (PART 5 → "Invalid → default") |
 | **Accent** | `web.ui.accent` is a 6-digit hex color (`#RRGGBB`) that sets `--color-primary` (links, buttons, focus ring) and its `--color-primary-bg` tint in both themes. It must reach a 4.5:1 contrast ratio against the background of BOTH themes; a value that is not valid hex or fails the ratio is ignored, the built-in color is used, and one warning names the key. The server emits it in `/static/css/accent.css`, linked after the app stylesheet (never an inline style, CSP); no valid key, no file |
 | **Sync** | In Cluster Mode, SERVER and HYBRID sync `branding.yml` like every other area file ("Config Sync"), so all nodes show the same branding, theme, page content and images (`assets/` is mirrored too, "Image Files"). A branding key found in `server.yml` is still honored (it merges below `branding.yml`) and is moved by the automatic migration |
 
@@ -29427,26 +29456,28 @@ SVG is rendered only through `<img>`, never inline. `assets/` is optional, `0700
 
 ```html
 <head>
-  <title>{title} - {tagline}</title>
+  <title>{title}{title_separator}{tagline}</title>
   <meta name="description" content="{description}">
   <meta name="keywords" content="{keywords}">
   <meta name="author" content="{author}">
   <meta name="robots" content="{robots}">
-  <link rel="canonical" href="{current_url}">
+  <link rel="canonical" href="{canonical_url}">
 
   <!-- OpenGraph -->
   <meta property="og:title" content="{title}">
   <meta property="og:description" content="{description}">
   <meta property="og:image" content="{og_image}">
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="{current_url}">
+  <meta property="og:type" content="{opengraph.type}">
+  <meta property="og:url" content="{canonical_url}">
+  <meta property="og:site_name" content="{opengraph.site_name}">
 
   <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:card" content="{twitter.card}">
   <meta name="twitter:title" content="{title}">
   <meta name="twitter:description" content="{description}">
   <meta name="twitter:image" content="{og_image}">
   <meta name="twitter:site" content="{twitter_handle}">
+  <meta name="twitter:creator" content="{twitter.creator}">
 
   <!-- Structured Data -->
   <script type="application/ld+json">
@@ -29713,6 +29744,12 @@ server:
 | Author | Text input | Author/organization |
 | OG Image | File upload / URL | Social sharing image |
 | Twitter Handle | Text input | @handle |
+| Title Separator | Text input | Text between title and tagline in `<title>` |
+| Extra Meta Tags | Key/value list | Extra `<meta name>` tags |
+| Canonical Base | Text input | Origin for canonical and `og:url` links |
+| No Index | Toggle | Marks every page `noindex,nofollow` |
+| OpenGraph | Toggle, text inputs | `og:*` tags: enabled, type, site name |
+| Twitter Card | Toggle, dropdown, text input | `twitter:*` tags: enabled, card, creator |
 | Favicon | File upload / URL | Custom favicon |
 | Logo | File upload / URL | Custom logo (header) |
 
@@ -33042,6 +33079,12 @@ Admin Panel Header:
 | `author` | Text | (empty) | No | Author/org name |
 | `og_image` | File | (none) | No | OpenGraph image |
 | `twitter_handle` | Text | (empty) | No | Twitter @handle |
+| `title_separator` | Text | ` - ` | No | Text between title and tagline |
+| `meta_tags` | Key/value | (empty) | No | Extra meta tags |
+| `canonical` | Text | (empty) | No | Origin for canonical and `og:url` links |
+| `noindex` | Toggle | Off | No | Marks every page `noindex,nofollow` |
+| `opengraph.enabled`, `.type`, `.site_name` | Toggle, text | On, `website`, (empty) | No | `og:*` tags |
+| `twitter.enabled`, `.card`, `.creator` | Toggle, dropdown, text | On, `summary_large_image`, (empty) | No | `twitter:*` tags |
 
 #### Security Section (`/server/{admin_path}/security`)
 
@@ -63420,6 +63463,8 @@ mysql://[username[:password]@]host[:port]/database[?params]
          │
          ▼
 7. Restart - app auto-migrates local data to remote
+   and seeds the config table from its area files
+   (including app.yml) and assets/ ("Config Sync")
          │
          ▼
 8. Now using remote DB
@@ -63442,7 +63487,9 @@ mysql://[username[:password]@]host[:port]/database[?params]
          ▼
 4. SKIP initialization - inherit everything:
    - Admin credentials (same login)
-   - Server settings (same config)
+   - Server settings: area files (including app.yml)
+     and assets/ written from the database
+   - Shared secrets (replace its first-run values)
    - Users (same accounts)
    - Sessions (shared)
          │
@@ -63456,7 +63503,7 @@ mysql://[username[:password]@]host[:port]/database[?params]
 |----------|----------|
 | **First node + SQLite** | Create admin, init settings |
 | **First node + empty remote DB** | Create admin, init settings (becomes source of truth) |
-| **New node + remote DB with data** | Skip init, inherit everything from DB |
+| **New node + remote DB with data** | Skip init, write area files and `assets/` from the DB, take the shared secrets from the join payload, inherit everything else from the DB |
 | **Any node + settings change** | Write to DB, all nodes see change |
 
 #### Migration Methods
@@ -63816,17 +63863,19 @@ NEW NODE                                    EXISTING NODE
 5. Receive bootstrap data:                       │
    - Database connection (encrypted)             │
    - Encryption key for secrets                  │
+   - Shared generated secrets                    │
    - Cluster ID                                  │
     │                                            │
     ▼                                            │
 6. Connect to remote database                    │
     │                                            │
     ▼                                            │
-7. Read all configuration from database          │
-   - Server settings                             │
-   - Branding, SEO, theme, page content  │
-   - SSL settings                                │
-   - All other config                            │
+7. Read all shared configuration from database   │
+   - Every area file, including app.yml          │
+   - Branding images (assets/)                   │
+   - Node-local settings (server.yml: listen,    │
+     SSL, paths) stay as the node already has    │
+     them                                        │
     │                                            │
     ▼                                            │
 8. Register self in nodes table                  │
