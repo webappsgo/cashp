@@ -31480,7 +31480,7 @@ func trackingScript(r *http.Request) template.HTML {
 | Email | Email | Yes | Sender's email (for reply) | 254 |
 | Subject | Text | Yes | Message subject | 200 |
 | Message | Textarea | Yes | Message body | 5000 |
-| Type | Dropdown | Yes | `abuse`, `dmca` or `privacy`. `security` is offered only in security mode (a valid `security_id`, see PART 11). There is no general, support or bug type | null |
+| Type | Hidden field on the web form (chosen on the chooser page), enum in the API | Yes | `abuse`, `dmca` or `privacy`. `security` is offered only in security mode (a valid `security_id`, see PART 11). There is no general, support or bug type | null |
 | Reported URL | Text | No, but required when Type is `abuse` or `dmca` (published as `required_when`) | The URL on THIS site the report is about; its host MUST match the link rule in "Who can reach the form" | 2048 |
 | Reason | Dropdown | No, but required when Type is `abuse` | `illegal_content`, `terms_violation`, `harassment`, `malware_phishing`, `other` | null |
 | Copyrighted work | Textarea | No, but required when Type is `dmca` | Identification of the copyrighted work claimed to be infringed | 2000 |
@@ -31494,6 +31494,30 @@ func trackingScript(r *http.Request) template.HTML {
 | Step | Hidden | No (default `submit`) | `submit`, `confirm` or `edit`: the review flow in "Contact antispam" | 10 |
 | Review token | Hidden | Only on `confirm` | Signed token issued by the review step | 300 |
 | Confirmed | Checkbox | Only on `confirm`, and it must be true | "This email address is correct, and this is a genuine report, not an advertisement, a solicitation or spam" | null |
+
+**One form per type: the page never renders a field that does not apply to the chosen type.** A page that shows the Reported URL, the DMCA statements and the privacy request kind at once, whatever the type, is a bug.
+
+| Request | What the page renders |
+|---------|-----------------------|
+| `GET /server/contact` (no `type`) | The purpose notice, then a CHOOSER: one plain link per offered type to `/server/contact?type={type}` (`abuse` "Report abuse", `dmca` "Send a DMCA notice", `privacy` "Make a privacy request"; `security` only in security mode). No form fields. Below it, one line: "To report a security vulnerability, see `/server/security`". It works without JavaScript |
+| `GET /server/contact?type={type}` | The purpose notice and ONE form for that type. The type is shown as the page heading and posted as a hidden `type` field; there is no Type dropdown on the web form. An unknown or not-offered `type` renders the chooser |
+| `POST /server/contact` | Validated against that type's field set. A field that is not in the set is an unknown field and fails layer 1; a required field that is missing fails `VALIDATION_FAILED` on that field |
+
+| Type | Fields, in this order (all required unless marked) |
+|------|-----------------------------------------------------|
+| `abuse` | Name, Email, Reported URL, Reason, Subject, Message, Captcha |
+| `dmca` | Name, Email, Reported URL, Copyrighted work, Good-faith statement, Accuracy statement, Signature, Subject, Message, Captcha |
+| `privacy` | Name, Email, Request kind, Subject, Message, Captcha. The Reported URL is not part of this form |
+| `security` (security mode) | The security report fields of PART 11, then Captcha |
+
+| Rendering rule | Detail |
+|----------------|--------|
+| **Order** | Name, Email, the type's own fields, Subject, Message, Captcha, then the Send button. The honeypot is rendered off-screen and is not part of the visible order |
+| **Required** | Every required field has the `required` attribute and a visible "required" cue; the checkboxes of a DMCA notice are required. Optional fields are marked "(optional)" |
+| **Reported URL** | `type="url"`, `maxlength` 2048, a help line "A page on this site, for example `https://{fqdn}/...`" and the `{fqdn}` of the request. Its host must match the link rule ("Who can reach the form") |
+| **Labels** | The label text is the Field column of the table above, translated (PART 30 → "I18N & A11Y"). No field is rendered twice and no label belongs to a field that is not on the page |
+| **Below the form** | Only the security pointer ("To report a security vulnerability, see `/server/security`"). There is no "Abuse Reports: use this contact form" section: the user is already on the form |
+| **Tests** | A golden-HTML test per type asserts the exact set of `name` attributes, that none of another type's fields appears, that every required field has `required`, and that the chooser renders no input |
 
 **Routing by type:** `abuse` and `dmca` go to the `abuse` role (`server.contact.abuse.email`, then `general`, then `admin`; PART 12 → "Resolution Order Per Role"); `privacy` goes to `server.contact.dpo.email`, then `general`, then `admin`; `security` follows the security pipeline (PART 11 → "Submission Flow"). The Type, Reason, Reported URL and DMCA statements are part of the plain-text body.
 
