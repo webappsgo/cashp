@@ -8638,6 +8638,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | **Query options** | Driver options in the query (`sslmode`, `authToken`, `database`, `encrypt`, `tls`, ...) are read and passed to the driver; the TLS ones are mapped as in "TLS" below. An option in the URL wins over the matching separate field |
 | **Credentials** | A URL that carries a password or a token (in the userinfo, or as a `password`, `pwd`, `token` or `authToken` query value) is a secret: it lives in `secrets.yml` under the same key (`server.database.url`, `server.cache.url`) and the automatic migration moves it there from `server.yml` or a drop-in ("Secrets File"). A URL with no credential (`valkey://cache:6379`) stays in `server.yml` |
 | **Never shown** | Logs, `--config` output, the admin panel and error messages show only the redacted form `scheme://user:********@host:port/name?authToken=********`. The full URL is never logged, never returned by an API and never part of a health response (PART 11) |
+| **Backup** | A backup holds the URL (and so its credential) through `secrets.yml` and `server.yml`, and the TLS files named by the six file keys, even without `--include-ssl` (PART 22 → "Backup Contents"). A connection URL that exists only as the `DATABASE_URL` or `CACHE_URL` environment variable is never in a backup: a restore on a host without the variable uses the restored `server.database.url` or `server.cache.url`, or the separate fields |
 | **References** | `${NAME}` and `${NAME:-default}` inside any string value are replaced from the environment after the files are merged and are never written back. `url: ${DATABASE_URL}` therefore works, but is not needed: the variable is read directly. An unset name without a default becomes an empty string |
 
 **Accepted forms** (placeholders in braces; replace them with the real values, typed as they are):
@@ -8661,7 +8662,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | `require` | TLS, certificate NOT verified. This is what any TLS request in a connection string means, unless verification is asked for below | `tls: true`, `tls_skip_verify: true` (the default whenever `tls` is on) |
 | `verify-full` | TLS, certificate chain and host name verified. Chosen explicitly: `sslmode: verify-full`, the PostgreSQL URL option `sslmode=verify-full` or `verify-ca`, `tls_skip_verify: false`, or by setting `ssl_ca` (cache: `tls_ca`) (a private CA only makes sense when it is checked) | `tls: true`, `tls_skip_verify: false` |
 
-`ssl_cert` and `ssl_key` (cache: `tls_cert`, `tls_key`) add a client certificate. The three file keys take a path inside `{config_dir}/ssl/` (a relative name is resolved there) and are private paths (PART 8). PostgreSQL's own `verify-ca` is accepted and passed through unchanged. A scheme or URL option that turns TLS on (`rediss://`, `valkeys://`, `libsql://`, `https://`, `mongodb+srv://`, `tls=true`, `encrypt=true`) selects `require`. `http://` to a libsql host is rejected unless the host is loopback (`127.0.0.0/8`, `::1`) or a private address (RFC 1918 `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, or IPv6 unique-local `fc00::/7`); a host name counts only when EVERY address it resolves to is in those ranges.
+`ssl_cert` and `ssl_key` (cache: `tls_cert`, `tls_key`) add a client certificate. The three file keys take a path inside `{config_dir}/ssl/` (a relative name is resolved there) and are private paths (PART 8). The files are node-local: Cluster Mode does not sync them and the join payload does not carry them, so place them in the joining node's `{config_dir}/ssl/` before it joins. PostgreSQL's own `verify-ca` is accepted and passed through unchanged. A scheme or URL option that turns TLS on (`rediss://`, `valkeys://`, `libsql://`, `https://`, `mongodb+srv://`, `tls=true`, `encrypt=true`) selects `require`. `http://` to a libsql host is rejected unless the host is loopback (`127.0.0.0/8`, `::1`) or a private address (RFC 1918 `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, or IPv6 unique-local `fc00::/7`); a host name counts only when EVERY address it resolves to is in those ranges.
 
 | Driver | URL option that sets the mode |
 |--------|-------------------------------|
@@ -38039,6 +38040,7 @@ groups:
 | `users.db` | ✓ Always | User database (admins table holds admin credentials) |
 | `{config_dir}/template/` | ✓ If exists | Custom email templates |
 | `{config_dir}/ssl/` | Optional | SSL certificates (flag: `--include-ssl`) |
+| Connection TLS files | ✓ Always, when referenced | The files named by `ssl_ca`, `ssl_cert`, `ssl_key` (database) and `tls_ca`, `tls_cert`, `tls_key` (cache), even without `--include-ssl`; only those files, not the whole `ssl/` directory ("Connection Strings") |
 | `{data_dir}/` | Optional | Data files (flag: `--include-data`) |
 
 ### Admin Credentials in Backup
