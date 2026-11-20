@@ -21392,21 +21392,19 @@ When not in cluster mode:
   "mode": "production",
   "timestamp": "2024-01-15T10:30:00Z",
   "cluster": {
-    "enabled": false,
-    "primary": "",
-    "nodes": []
+    "enabled": false
   },
   "features": {
     "tor": {
       "enabled": false,
       "running": false,
-      "status": "",
+      "status": "disabled",
       "hostname": ""
     },
     "i2p": {
       "enabled": false,
       "running": false,
-      "status": "",
+      "status": "disabled",
       "hostname": "",
       "provider": "none"
     },
@@ -21438,10 +21436,10 @@ When not in cluster mode:
 | `status` | healthy, degraded, unhealthy, restart_required, maintenance, shutting_down (see Health Status Values & HTTP Codes) |
 | `pending_restart` | Present (`true`) only when a config change requires a restart |
 | `restart_reason` | Settings that changed (only with `pending_restart`) |
-| `version` | Application version (SemVer) |
+| `version` | The version `--version` reports: SemVer for a release, `YYYYMMDDHHMMSS-beta` for a beta, the short commit id for a devel build; never the word `devel` ("Health Output Invariants") |
 | `mode` | production, development, debug |
-| `uptime` | Human-readable uptime |
-| `timestamp` | ISO 8601 timestamp |
+| `uptime` | Compact uptime `{d}d {h}h {m}m` (zero leading units dropped, `45s` under a minute); the frontend shows `format.Duration()` |
+| `timestamp` | RFC 3339, UTC, whole seconds (`2026-11-20T17:21:53Z`) |
 | `go_version` | Go runtime version |
 | `build.commit` | Git commit hash (short) |
 | `build.date` | Build timestamp |
@@ -21469,6 +21467,54 @@ When not in cluster mode:
 **Cluster fields for agent/CLI failover:**
 - `cluster.primary` - The primary server URL
 - `cluster.nodes` - All available nodes (agents/CLI use for automatic failover)
+
+### Server Statistics (`stats`)
+
+**`stats` is the public-safe aggregate view of the server's own activity: a fixed core, then the project's own counters.** The same set appears in every format (HTML, text, JSON), in the same order.
+
+| Key | Meaning | Rule |
+|-----|---------|------|
+| `requests_total` | HTTP requests served since the database was created | Counted by the outermost middleware for EVERY response (HTML, API, static files, errors). Health probes (`/server/healthz`, `/healthz`, `/api/**/healthz`) and the `/server/metrics` scrape are NOT counted. The value is kept in the database (written in batches, at most every 60 seconds and at shutdown) so a restart does not reset it; in Cluster Mode every node adds to the shared row, so it is cluster-wide |
+| `requests_24h` | Requests in the last 24 hours | A rolling window of 24 hourly buckets (the current partial hour counts), same counting rule |
+| `active_connections` | In-flight requests right now | The health request itself counts, so the minimum is `1` |
+
+| Rule | Detail |
+|------|--------|
+| **Types** | Non-negative JSON integers, never strings, never omitted: a counter with nothing to count is `0` |
+| **Project counters** | Named `{noun}_total` (lifetime), `{noun}_24h` (rolling day) or `{noun}_active` (right now), snake_case (`pastes_total`, `searches_total`, `engines_healthy`). They register once, like checks: `health.RegisterStat(key, fn)`, and follow the core keys in registration order |
+| **Aggregates only** | No per-user, per-IP, per-query or per-resource values (Security: Public Info Only) |
+| **Cost** | A request reads in-memory counters and cached values; it never runs a database query of its own. Database-backed counters are refreshed by the scheduler at most every 60 seconds |
+| **Labels** | i18n keys `health.stat.{key}`; a key with no translation falls back to the humanized key (`searches_total` → `Searches total`) |
+
+### Project Components in Health (upstreams, engines, providers, workers)
+
+**Any project-specific part that can fail on its own (search engines, upstream APIs, data providers, queue workers) is a dependency check, so its state is part of health and a detail endpoint never has to be the only place it shows.**
+
+| Rule | Detail |
+|------|--------|
+| **One check per component** | `checks.{kind}_{id}` (`engine_duckduckgo`, `upstream_nominatim`), registered like a dataset check ("Dataset & Dependency Checks"), with the same `ok` / `degraded` / `error` meaning. A disabled component is omitted |
+| **One aggregate check** | `checks.{kind}s` (`engines`): `ok` when every enabled component is `ok`, `degraded` when some fail and at least one works, `error` when none works. It is registered `critical` when the app cannot do its core job without any of them (a metasearch with no working engine is `unhealthy`) |
+| **Counters** | `stats.{kind}s_total` (enabled components) and `stats.{kind}s_healthy` (currently `ok`) |
+| **Detail endpoints** | A route such as `/api/{api_version}/engines` may return richer data (priority, categories, last check time, response time), but it reads the SAME registry as health and never disagrees with it. Error text, cooldown times and response times stay in the detail endpoint and never reach a health response |
+| **Stable ids** | `{id}` is a stable snake_case identifier, never a URL or a name with spaces |
+
+### Health Output Invariants
+
+**These hold for every project, every format and every health route. A response that breaks one is a bug.**
+
+| Invariant | Rule |
+|-----------|------|
+| **Key order** | JSON keys follow the struct order of this specification, written by a custom marshaller. Alphabetical or map order is a bug. A golden-order test covers JSON and both text formats |
+| **Always present** | `project`, `status`, `version`, `go_version`, `build`, `uptime`, `mode`, `timestamp`, `cluster`, `features`, `checks` and `stats` are in every response. In a single instance `cluster` is `{"enabled": false}` |
+| **`version`** | Exactly what `--version` prints as `{project_version}`: SemVer for a release, `YYYYMMDDHHMMSS-beta` for a beta, the short commit id for a devel build, `dev` only when the build has none of these. Never the word `devel` |
+| **`timestamp`, `build.date`** | RFC 3339, UTC, whole seconds, `Z` suffix (`2026-11-20T17:21:53Z`); never nanoseconds |
+| **`uptime` (JSON, API text)** | Compact `{d}d {h}h {m}m`: the leading zero units are dropped and seconds appear only under one minute. `45s`, `24m`, `2h 16m`, `1d 1h 4m`. Never `0h 10m 57s` |
+| **`uptime` (frontend)** | `format.Duration()`: `2 hours 16 minutes`, `1 day 1 hour` ("Frontend Human-Readable Rules") |
+| **Status precedence** | `shutting_down`, then `maintenance`, then `unhealthy`, then `degraded`, then `restart_required`, then `healthy`. The first that applies is the overall `status` |
+| **Frontend text** | `/server/healthz` and `/healthz` return the human layout of "Plain Text — Frontend" for curl and other CLI clients. The dotted `key: value` layout is ONLY for the API text routes; a frontend route that prints `project.name:` is a bug |
+| **Frontend HTML sections** | Project header, Status banner, then one card per section in this order with these default headings (i18n keys `health.section.{name}`): `version` Version, `runtime` Runtime, `cluster` Cluster, `features` Features, `checks` Component Status, `stats` Server Statistics. Every section is always rendered, including Runtime |
+| **Coherence** | `features.{tor,i2p}.status` and `checks.{tor,i2p}` follow the table in "Overlay Network Health" exactly; `enabled: false` with any status but `disabled` is a bug, and an `unavailable` network with an overall `healthy` is a bug |
+| **Tests** | Table-driven tests per format for key order, the always-present keys, the `uptime` and `timestamp` formats, the status precedence, a frontend `curl` request, and the overlay states |
 
 ### Overlay Network Health (Tor & I2P)
 
