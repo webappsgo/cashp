@@ -8662,7 +8662,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | `require` | TLS, certificate NOT verified. This is what any TLS request in a connection string means, unless verification is asked for below | `tls: true`, `tls_skip_verify: true` (the default whenever `tls` is on) |
 | `verify-full` | TLS, certificate chain and host name verified. Chosen explicitly: `sslmode: verify-full`, the PostgreSQL URL option `sslmode=verify-full` or `verify-ca`, `tls_skip_verify: false`, or by setting `ssl_ca` (cache: `tls_ca`) (a private CA only makes sense when it is checked) | `tls: true`, `tls_skip_verify: false` |
 
-`ssl_cert` and `ssl_key` (cache: `tls_cert`, `tls_key`) add a client certificate. The three file keys take a path inside `{config_dir}/ssl/` (a relative name is resolved there) and are private paths (PART 8). The files are node-local: Cluster Mode does not sync them and the join payload does not carry them, so place them in the joining node's `{config_dir}/ssl/` before it joins. PostgreSQL's own `verify-ca` is accepted and passed through unchanged. A scheme or URL option that turns TLS on (`rediss://`, `valkeys://`, `libsql://`, `https://`, `mongodb+srv://`, `tls=true`, `encrypt=true`) selects `require`. `http://` to a libsql host is rejected unless the host is loopback (`127.0.0.0/8`, `::1`) or a private address (RFC 1918 `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, or IPv6 unique-local `fc00::/7`); a host name counts only when EVERY address it resolves to is in those ranges.
+`ssl_cert` and `ssl_key` (cache: `tls_cert`, `tls_key`) add a client certificate. The three file keys take a path inside `{config_dir}/ssl/` (a relative name is resolved there) and are private paths (PART 8). The files are node-local and Cluster Mode does not sync them, but node initialization sets them up: the join payload carries the database files (`ssl_ca`, `ssl_cert`, `ssl_key`) and step 9 of "Join Cluster Flow" writes them into the new node's `{config_dir}/ssl/`. The cache files belong to `server.cache`, which is node-local, so they are placed on each node with the cache settings. PostgreSQL's own `verify-ca` is accepted and passed through unchanged. A scheme or URL option that turns TLS on (`rediss://`, `valkeys://`, `libsql://`, `https://`, `mongodb+srv://`, `tls=true`, `encrypt=true`) selects `require`. `http://` to a libsql host is rejected unless the host is loopback (`127.0.0.0/8`, `::1`) or a private address (RFC 1918 `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, or IPv6 unique-local `fc00::/7`); a host name counts only when EVERY address it resolves to is in those ranges.
 
 | Driver | URL option that sets the mode |
 |--------|-------------------------------|
@@ -64008,6 +64008,7 @@ NEW NODE                                    EXISTING NODE
    - Database connection (encrypted)             │
    - Encryption key for secrets                  │
    - Shared generated secrets                    │
+   - Database TLS files (CA, client cert and key)│
    - Cluster ID                                  │
     │                                            │
     ▼                                            │
@@ -64032,6 +64033,7 @@ NEW NODE                                    EXISTING NODE
    - server.yml: database connection, no password│
    - secrets.yml: database password, encryption  │
      key (with version) and synced secrets       │
+   - ssl/: the database TLS files, 0600          │
    - yaml.d/*: area files from the database      │
     │                                            │
     ▼                                            │
@@ -64062,13 +64064,19 @@ NEW NODE                                    EXISTING NODE
       "name": "myapp",
       "username": "myapp",
       "password_encrypted": "base64_encrypted_password",
-      "sslmode": "require"
+      "sslmode": "require",
+      "ssl_ca": "",
+      "ssl_cert": "",
+      "ssl_key": ""
     },
     "encryption": {
       "key_encrypted": "base64_encrypted_key"
     },
     "secrets": {
       "encrypted": "base64_encrypted_map_of_generated_shared_secrets"
+    },
+    "tls_files": {
+      "encrypted": "base64_encrypted_map_of_file_name_to_content"
     },
     "node": {
       "suggested_id": "server-2"
@@ -64077,7 +64085,7 @@ NEW NODE                                    EXISTING NODE
 }
 ```
 
-**Database configured by URL.** A node whose database is set with `server.database.url` ("Connection Strings") receives `url_encrypted` (the whole URL, encrypted like the other secrets) in place of `host`, `port`, `name`, `username`, `password_encrypted` and `sslmode`, and step 9 writes it to `secrets.yml` as `server.database.url`. A node started with the `DATABASE_URL` environment variable keeps using that variable, and the payload value is not written.
+**Database configured by URL.** A node whose database is set with `server.database.url` ("Connection Strings") receives `url_encrypted` (the whole URL, encrypted like the other secrets) in place of `host`, `port`, `name`, `username`, `password_encrypted` and `sslmode`, and step 9 writes it to `secrets.yml` as `server.database.url`. A node started with the `DATABASE_URL` environment variable keeps using that variable, and the payload value is not written. The database TLS files travel in `tls_files` in both forms.
 
 #### Security: Encrypted Transfer
 
@@ -64108,6 +64116,7 @@ func decryptBootstrapData(encrypted []byte, token string) []byte {
 **What's encrypted:**
 - Database password
 - Encryption key for secrets (TOTP secrets, etc.)
+- Database TLS files (`tls_files`; the client key is a secret)
 
 **What's NOT encrypted (not sensitive):**
 - Database host/port/name
