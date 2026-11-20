@@ -8653,22 +8653,22 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | cache `valkey` | `valkey://`, `valkeys://` (TLS) | `valkey://:{password}@host:6379/0` |
 | cache `redis` | `redis://`, `rediss://` (TLS) | `rediss://{user}:{password}@host:6379/0` |
 
-**TLS ("the ssl equivalents").** One meaning for every driver, written as the existing `sslmode` key (database) or the `tls` and `tls_skip_verify` keys (cache), or as the URL option in the table:
+**TLS ("the ssl equivalents").** There is NO default mode and no separate switch: TLS is on only when the connection string (or the fields) asks for it, and then it is enabled automatically and the certificate is NOT verified, so a self-signed certificate just works. Verification is opt-in. One meaning for every driver, written as the `sslmode` key (database) or the `tls` and `tls_skip_verify` keys (cache), or as the URL option in the table:
 
 | Mode | Meaning | Cache keys |
 |------|---------|------------|
 | `disable` | No TLS | `tls: false` |
-| `require` | TLS, certificate NOT verified | `tls: true`, `tls_skip_verify: true` |
-| `verify-full` | TLS, certificate chain and host name verified; a private CA is added with `ssl_ca` (cache: `tls_ca`) | `tls: true` |
+| `require` | TLS, certificate NOT verified. This is what any TLS request in a connection string means, unless verification is asked for below | `tls: true`, `tls_skip_verify: true` (the default whenever `tls` is on) |
+| `verify-full` | TLS, certificate chain and host name verified. Chosen explicitly: `sslmode: verify-full`, the PostgreSQL URL option `sslmode=verify-full` or `verify-ca`, `tls_skip_verify: false`, or by setting `ssl_ca` (cache: `tls_ca`) (a private CA only makes sense when it is checked) | `tls: true`, `tls_skip_verify: false` |
 
-`ssl_cert` and `ssl_key` (cache: `tls_cert`, `tls_key`) add a client certificate. The three file keys take a path inside `{config_dir}/ssl/` (a relative name is resolved there) and are private paths (PART 8). PostgreSQL's own `verify-ca` is accepted and passed through unchanged. A scheme that ends in TLS (`rediss://`, `valkeys://`, `libsql://`, `https://`, `mongodb+srv://`) turns TLS on; `http://` to a libsql host is rejected unless the host is loopback.
+`ssl_cert` and `ssl_key` (cache: `tls_cert`, `tls_key`) add a client certificate. The three file keys take a path inside `{config_dir}/ssl/` (a relative name is resolved there) and are private paths (PART 8). PostgreSQL's own `verify-ca` is accepted and passed through unchanged. A scheme or URL option that turns TLS on (`rediss://`, `valkeys://`, `libsql://`, `https://`, `mongodb+srv://`, `tls=true`, `encrypt=true`) selects `require`. `http://` to a libsql host is rejected unless the host is loopback (`127.0.0.0/8`, `::1`) or a private address (RFC 1918 `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, or IPv6 unique-local `fc00::/7`); a host name counts only when EVERY address it resolves to is in those ranges.
 
 | Driver | URL option that sets the mode |
 |--------|-------------------------------|
 | PostgreSQL | `sslmode=disable\|require\|verify-ca\|verify-full`, `sslrootcert`, `sslcert`, `sslkey` |
-| MySQL, MariaDB | `tls=false` (disable), `tls=skip-verify` (require), `tls=true` (verify-full) |
-| SQL Server | `encrypt=disable` (disable), `encrypt=true` with `TrustServerCertificate=true` (require), `encrypt=true` (verify-full) |
-| MongoDB | `tls=false`, `tls=true` with `tlsInsecure=true` (require), `tls=true` (verify-full), `tlsCAFile` |
+| MySQL, MariaDB | `tls=false` (disable), `tls=skip-verify` or `tls=true` (require); verification only through the keys above |
+| SQL Server | `encrypt=disable` (disable), `encrypt=true` (require, the server certificate is trusted); verification only through the keys above |
+| MongoDB | `tls=false` (disable), `tls=true` (require, `tlsInsecure` is implied); verification only through the keys above, `tlsCAFile` |
 | libsql | always TLS |
 | Valkey, Redis | the scheme (`valkey://` and `redis://` off; `valkeys://` and `rediss://` on), or `tls=true` |
 
@@ -20435,7 +20435,8 @@ server:
 
     # TLS settings (for secure connections)
     tls: false
-    tls_skip_verify: false
+    # true = accept any certificate (self-signed); false = verify it (see "Connection Strings")
+    tls_skip_verify: true
     # Private CA and client certificate: file names inside {config_dir}/ssl/ (see "Connection Strings")
     tls_ca: ""
     tls_cert: ""
