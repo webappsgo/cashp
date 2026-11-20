@@ -2235,8 +2235,10 @@ This distinction exists for clarity. When referring to OS-level resources that b
 |------|------------|
 | **Managed Node** | An EXTERNAL resource the app controls/monitors (NOT an app instance) - e.g., Docker hosts, monitored servers |
 | **HA (High Availability)** | Automatic failover for critical apps - specialized, not standard |
-| **API Token** | Authentication credential for API access - prefixed by owner type (`adm_`, `usr_`, `org_`) |
-| **Agent Token** | Scoped API token for agents - includes owner prefix (`adm_agt_`, `usr_agt_`, `org_agt_`) |
+| **API Token** | Authentication credential for API access - prefixed by holder (`adm_`, `usr_`, `org_`) |
+| **Owner (agents, tokens)** | The admin, user or org that owns an agent or a token. Not the API/HYBRID "owner token", which is the `own_` credential of a resource owner |
+| **Operator Token** | The built-in admin token `server.token`, kept in `secrets.yml`; an admin token like any other, and the only one that works without the database |
+| **Agent Token** | An `adm_`, `usr_` or `org_` token with scope `agent`: it may only register, send heartbeats and report for its own agent |
 | **Rate Limiting** | Server protection against abuse/DDoS - NOT usage limits for monetization (we never do that) |
 | **Background Job** | Server-side scheduled or queued task (backup, sync, cleanup) - managed by internal scheduler, NOT cron |
 | **Primary Election** | Process where cluster nodes elect a Primary Node for cluster-wide tasks |
@@ -3351,7 +3353,7 @@ Implemented core server functionality and API.
 - third-party actions pinned to full SHA
 - no secrets/write tokens exposed to fork PRs
 - ci.yml security jobs (secret-scan, vuln-scan, workflow-policy) exist and block on failures
-- `.github/trufflehog-exclude.txt` exists and lists only `AI.md` and `go.sum` (plus any other file the project does not author, with a reason in its commit)
+- `.github/trufflehog-exclude.txt` exists and lists only `AI.md`, `go.sum` and the fixtures directory `testdata/` (plus any other non-production file, with a reason in its commit)
 
 ### Step 4: AI Tool Configuration (Rule Files)
 **Do AI rule files exist and follow the required format?**
@@ -8610,7 +8612,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | Rule | Behavior |
 |------|----------|
 | **Keys** | Only these, for every one the project has: `server.token`; `server.security.encryption_key` and `server.security.encryption_key_version`; `server.notifications.email.smtp.password`; `server.cache.password`; `server.database.password` and `server.database.token`; `server.database.url` and `server.cache.url` (each only while the URL carries a credential); `server.pages.contact.captcha_secret_key`; `server.ssl.letsencrypt.dns_credentials`; `data.cve.api_key`; `server.backup.encryption_password`; `server.metrics.auth.tokens.*`; every webhook URL and its `_secret` under `server.contact.{role}.webhooks`; `server.auth.ldap.providers[].bind_password`; `server.auth.oidc.providers[].client_secret`. `server.tokens.*` is token policy, not a secret. Every other key stays in its area file |
-| **Generated** | When one of these keys is empty or missing at start, the server generates it BEFORE it serves anything, writes it to `secrets.yml` (atomic, `0600`) and records `config.secret_generated` (the key name only) in `audit.log`: `server.token`; `server.security.encryption_key` (with `encryption_key_version: 1`); `server.metrics.auth.tokens.prometheus`, `.grafana` and `.loki`; and a `webhooks.<name>_secret` whenever its webhook URL is set. Bearer tokens use the spec's token format (`tok_` plus 32 random base62 characters) and the encryption key is 32 random bytes. Only `server.token` is printed, once, at first creation; every other value is read from `secrets.yml` |
+| **Generated** | When one of these keys is empty or missing at start, the server generates it BEFORE it serves anything, writes it to `secrets.yml` (atomic, `0600`) and records `config.secret_generated` (the key name only) in `audit.log`: `server.token`; `server.security.encryption_key` (with `encryption_key_version: 1`); `server.metrics.auth.tokens.prometheus`, `.grafana` and `.loki`; and a `webhooks.<name>_secret` whenever its webhook URL is set. `server.token` is an `adm_` token and each metrics token an `mtr_` token, each plus 32 random base62 characters ("Token Catalogue") and the encryption key is 32 random bytes. Only `server.token` is printed, once, at first creation; every other value is read from `secrets.yml` |
 | **Never generated** | Credentials that someone else issues stay empty until the operator sets them: `server.notifications.email.smtp.password`, `server.cache.password`, `server.database.password` and `server.database.token`, `server.database.url` and `server.cache.url` with a credential in them, `server.pages.contact.captcha_secret_key`, `server.ssl.letsencrypt.dns_credentials`, `data.cve.api_key`, `server.backup.encryption_password`, the LDAP bind password, the OIDC client secret and the webhook URLs |
 | **Rotation** | Blank a generated key in `secrets.yml` and restart: a new value is generated. `--maintenance secret rotate {name}` rotates the encryption key and the HMAC secrets with their grace periods (PART 11) |
 | **Written by** | The server writes generated, rotated and moved secrets to `secrets.yml` and ONLY there, never to `server.yml` and never to a drop-in (this limits what the server writes; an operator may still hand-write a value elsewhere, see "Operator-set values"): the first-run `server.token`, `server.security.encryption_key` with its version, and every rotation (`--maintenance secret rotate encryption_key`) |
@@ -15973,16 +15975,16 @@ When `DEBUG=true` is active and an error occurs, the canonical error body (PART 
 
 ## Operator Token (`server.token`)
 
-**The operator token is the single global credential for `/debug/*`, `--maintenance` actions and operator-only API/admin operations. It is a server setting, not a user account.**
+**The operator token is the built-in ADMIN token: the single global credential for `/debug/*`, `--maintenance` actions and operator-only API/admin operations, kept in `secrets.yml` so it works without the database. It is a server setting, not a user account, and every admin API accepts it exactly like a Server Admin API token.**
 
 | Aspect | Rule |
 |--------|------|
 | Key | `server.token` in `secrets.yml` (PART 5) |
-| Format | `tok_` prefix + 32 URL-safe random base62 chars |
-| Generated | First start, when the key is absent or empty; written back to `server.yml` (mode `0600`) and printed once in the startup log banner |
+| Format | `adm_` prefix + 32 URL-safe random base62 chars: the operator token is an ADMIN token ("Token Catalogue") |
+| Generated | First start, when the key is absent or empty; written to `secrets.yml` (mode `0600`) and printed once in the startup banner |
 | Storage | Never stored in the database or in any API token table. Only `SHA-256(server.token)` is cached in memory at startup; inbound tokens are hashed and compared with a constant-time compare |
 | Logging | The raw value is never logged after the first-start banner, never returned by any API response, never included in a backup export or a support bundle |
-| Presented as | `Authorization: Bearer tok_...` |
+| Presented as | `Authorization: Bearer adm_...` |
 | Admin WebUI | Shown masked at `/server/{admin_path}/security` with a "Regenerate" action (sensitive operation per PART 5: re-prompt the admin password, log `security.operator_token_regenerated` to `audit.log`). The new value is displayed once on screen; the previous value stops working immediately |
 | Rotation | Regenerate in the admin WebUI, or blank `server.token` in `secrets.yml` and restart (a new value is generated and printed once). Cluster Mode: a rotated value reaches every node and each node writes it to its own `secrets.yml`, never to `server.yml` |
 | Scope | Never implied by `--debug` or development mode: debug only turns endpoints on, it never replaces authentication |
@@ -16404,17 +16406,15 @@ The middleware substitutes `{request_nonce}` per response and adds the same nonc
 ### Token Format
 
 ```
-{prefix}_{random_32_alphanumeric}
+{prefix}_{random_32_base62}
 
 Examples:
-  adm_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6        (admin token)
+  adm_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6        (admin token, including the operator token)
   usr_x9y8z7w6v5u4t3s2r1q0p9o8n7m6l5k4        (user token - if multi-user)
   org_q1w2e3r4t5y6u7i8o9p0a1s2d3f4g5h6        (org token - if orgs)
+  mtr_k4j3h2g1f0d9s8a7p6o5i4u3y2t1r0e9        (metrics scrape token)
 
-Agent tokens (scoped to owner):
-  adm_agt_z1x2c3v4b5n6m7l8k9j0h1g2f3d4s5a6   (admin agent - server infrastructure)
-  usr_agt_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6   (user agent - user's personal agent)
-  org_agt_q1w2e3r4t5y6u7i8o9p0a1s2d3f4g5h6   (org agent - organization agent)
+Agent tokens use the same prefixes: an agent token is an adm_, usr_ or org_ token with scope `agent`.
 ```
 
 ### Token Prefixes
@@ -16425,6 +16425,21 @@ Agent tokens (scoped to owner):
 | `usr_` | User token | If multi-user (PART 34) | Regular user API access |
 | `org_` | Organization token | If orgs (PART 35) | Organization-level API access |
 
+### Token Catalogue
+
+**Every bearer credential is `{prefix}_{32 base62 characters}`. The PREFIX says who holds it; the SCOPE says what it may do.** One-shot links and identifiers are listed below the table because they are not bearer credentials.
+
+| Prefix | Holder | Lives in | Shown | Notes |
+|--------|--------|----------|-------|-------|
+| `adm_` | Server admin | `tokens` table (`owner_type` `admin`); the OPERATOR token `server.token` is the built-in admin token and lives in `secrets.yml` | Once, at creation (`server.token`: printed once at first start) | The operator token and a Server Admin API token are both ADMIN tokens: same prefix, same admin API. Only the operator token also works without the database, so only it can authorize the actions that must work without it: `/debug/*`, `--maintenance` confirmations and secret rotation |
+| `usr_` | User (PART 34) | `tokens` table (`owner_type` `user`) | Once | Reaches the user's own resources and, by role, the orgs the user belongs to |
+| `org_` | Organization (PART 35) | `tokens` table (`owner_type` `org`) | Once | Automation owned by one org that must outlive any member; reaches that org only |
+| `mtr_` | Metrics scraper | `server.metrics.auth.tokens.*` in `secrets.yml` | Read from the file | `GET /server/metrics` only |
+
+**Agent tokens are not a separate format.** An agent token is an `adm_`, `usr_` or `org_` token whose scope is `agent` (see "Token Properties"): it may only register, send heartbeats and report for its own agent, on the `agents/*` routes of its owner type.
+
+**Not bearer credentials:** the setup token (32 hex characters, first run), `node_{32 base62}` cluster join tokens (one use, 15 minutes), the rotating `{security_id}`, `sec_{16 hex}` report tracking ids (an identifier, not a secret), the contact `form_token` and `review_token`, and one-shot link tokens in emailed links ("Auth Token Presentation").
+
 ### Token Properties
 
 **All tokens (adm_, usr_, org_) support these properties:**
@@ -16432,13 +16447,14 @@ Agent tokens (scoped to owner):
 | Property | Options | Default |
 |----------|---------|---------|
 | **Name** | User-defined string | "default" |
-| **Scope** | `global`, `read-write`, `read` | `global` |
+| **Scope** | `global`, `read-write`, `read`, `agent` | `global` |
 | **Expiration** | Never, 7 days, 1 month, 6 months, 1 year, custom | Never |
 
 **Scope definitions:**
 - `global` - All permissions the owner has access to (auto-detected)
 - `read-write` - Read and write operations (no delete, no admin actions)
 - `read` - Read-only operations
+- `agent` - Only the agent routes of the owner type (register, heartbeat, report for its own agent). Created only by "Create agent", never by the normal token form, and rejected on every other route
 
 **Token actions:**
 - **Create** - Generate new token with name, scope, expiration
@@ -16452,15 +16468,15 @@ adm_def456...  "ci-cd"        read-write 6 months
 adm_ghi789...  "monitoring"   read       1 year
 ```
 
-### Agent Token Prefixes (If PART 33 Agent Implemented)
+### Agent Tokens (If PART 33 Agent Implemented)
 
-| Prefix | Scope | Route | Description |
-|--------|-------|-------|-------------|
-| `adm_agt_` | Admin | `/api/{api_version}/server/{admin_path}/agents/*` | Server infrastructure agents |
-| `usr_agt_` | User | `/api/{api_version}/users/agents/*` | User's personal agents (SaaS) |
-| `org_agt_` | Org | `/api/{api_version}/orgs/{slug}/agents/*` | Organization agents |
+| Owner | Prefix | Scope | Route | Description |
+|-------|--------|-------|-------|-------------|
+| Admin | `adm_` | `agent` | `/api/{api_version}/server/{admin_path}/agents/*` | Server infrastructure agents |
+| User | `usr_` | `agent` | `/api/{api_version}/users/agents/*` | User's personal agents (SaaS) |
+| Org | `org_` | `agent` | `/api/{api_version}/orgs/{slug}/agents/*` | Organization agents |
 
-**Same setup procedure across all scopes** - one-line config, same registration flow.
+**Same setup procedure across all scopes** - one-line config, same registration flow. The agent token is a `tokens` row (scope `agent`, `agent_id` set); the `agents` table holds the agent itself and points at that row.
 
 ### Token Storage
 
@@ -16491,8 +16507,10 @@ CREATE TABLE tokens (
     token_prefix  TEXT NOT NULL,
 
     -- Token properties
-    -- 'global', 'read-write', 'read'
+    -- 'global', 'read-write', 'read', 'agent'
     scope         TEXT NOT NULL DEFAULT 'global',
+    -- agents.id, set only when scope = 'agent'
+    agent_id      TEXT,
     -- NULL = never expires
     expires_at    TIMESTAMP,
 
@@ -16525,17 +16543,6 @@ var ExpirationOptions = map[string]time.Duration{
 
 ```go
 func ValidateToken(token string) (*TokenInfo, error) {
-    // Check for compound agent prefixes first (adm_agt_, usr_agt_, org_agt_)
-    if strings.HasPrefix(token, "adm_agt_") {
-        return validateAgentToken(token, ScopeAdmin)
-    }
-    if strings.HasPrefix(token, "usr_agt_") {
-        return validateAgentToken(token, ScopeUser)
-    }
-    if strings.HasPrefix(token, "org_agt_") {
-        return validateAgentToken(token, ScopeOrg)
-    }
-
     // Standard single-prefix tokens: {prefix}_{32_chars}
     parts := strings.SplitN(token, "_", 2)
     if len(parts) != 2 || len(parts[1]) != 32 {
@@ -16546,6 +16553,7 @@ func ValidateToken(token string) (*TokenInfo, error) {
 
     switch prefix {
     case "adm_":
+        // server.token (the operator token) is compared first, in constant time, then the tokens table
         return validateAdminToken(token)
     case "usr_":
         // Only if multi-user
@@ -16558,27 +16566,8 @@ func ValidateToken(token string) (*TokenInfo, error) {
     }
 }
 
-// Agent token validation with scope
-func validateAgentToken(token string, scope TokenScope) (*TokenInfo, error) {
-    // Extract the random part after compound prefix
-    var prefix string
-    switch scope {
-    case ScopeAdmin:
-        prefix = "adm_agt_"
-    case ScopeUser:
-        prefix = "usr_agt_"
-    case ScopeOrg:
-        prefix = "org_agt_"
-    }
-
-    random := strings.TrimPrefix(token, prefix)
-    if len(random) != 32 {
-        return nil, ErrInvalidTokenFormat
-    }
-
-    // Validate against appropriate agents table based on scope
-    return lookupAgentByScope(token, scope)
-}
+// A token with scope `agent` is looked up like any other token; its scope then limits it to the
+// agent routes of its owner type ("Server-Side Context from URL"). There is no compound prefix.
 ```
 
 ### Server-Side Context from URL
@@ -16592,10 +16581,8 @@ func validateAgentToken(token string, scope TokenScope) (*TokenInfo, error) {
 | `adm_` | `/api/{api_version}/server/{admin_path}/*` | Server admin panel |
 | `usr_` | `/api/{api_version}/users/*`, `/api/{api_version}/orgs/{allowed}/*` | User + orgs they belong to |
 | `org_` | `/api/{api_version}/orgs/{specific}/*` | Single org only |
-| `adm_agt_` | `/api/{api_version}/server/{admin_path}/agents/*` | Admin infrastructure agent |
-| `usr_agt_` | `/api/{api_version}/users/agents/*` | User's personal agent |
-| `org_agt_` | `/api/{api_version}/orgs/{slug}/agents/*` | Organization agent |
 | (no token) | `/api/{api_version}/`, `/api/{api_version}/server/*`, `/api/{api_version}/{resource}/*` | Public routes (no auth) |
+| any prefix, scope `agent` | the `agents/*` routes of its owner type ONLY | Agent register, heartbeat, report; a `403` anywhere else |
 
 **Context Types:**
 
@@ -24976,7 +24963,7 @@ fi
 | IPv6 address | 39 chars | `2001:0db8:85a3:0000:0000:8a2e:0370:7334` |
 | Tor v3 .onion | 62 chars | `duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion` |
 | I2P .b32.i2p | 60 chars | `ukeu3k5oycgaauneqgtnvselmt4yemvoilkln7jpvamvfx7dnkdq.b32.i2p` |
-| API token | 32-64 chars | `tok_EXAMPLE1234567890abcdefghij...` |
+| API token | 36 chars | `usr_EXAMPLE1234567890abcdefghij...` |
 | SHA-256 hash | 64 chars | `e3b0c44298fc1c149afbf4c8996fb924...` |
 | UUID | 36 chars | `550e8400-e29b-41d4-a716-446655440000` |
 | Base64 data | Variable | Long encoded strings |
@@ -34263,14 +34250,14 @@ The admin panel MUST include a scheduler section with:
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
 │  │ curl -q -LSsf https://app.example.com/install-agent | sh -s -- \    │    │
 │  │   --server https://app.example.com \                                │    │
-│  │   --token adm_agt_abc123def456ghi789jkl012mno345pqr678              │    │
+│  │   --token adm_abc123def456ghi789jkl012mno345pqr6              │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 │  [Copy to Clipboard]                                                        │
 │                                                                             │
 │  Or manually:                                                               │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
 │  │ projectname-agent --server https://app.example.com \                │    │
-│  │   --token adm_agt_abc123def456ghi789jkl012mno345pqr678              │    │
+│  │   --token adm_abc123def456ghi789jkl012mno345pqr6              │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 │  [Copy to Clipboard]                                                        │
 │                                                                             │
@@ -34387,44 +34374,44 @@ func getDefaultAgentName() string {
 
 **Agents can belong to admin, user, or org scope. Same API pattern, different routes.**
 
-| Scope | Base Route | Owner Token | Agent Token |
+| Scope | Base Route | Account Token | Agent Token |
 |-------|------------|-------------|-------------|
-| Admin | `/api/{api_version}/server/{admin_path}/agents/` | `adm_` | `adm_agt_` |
-| User | `/api/{api_version}/users/agents/` | `usr_` | `usr_agt_` |
-| Org | `/api/{api_version}/orgs/{slug}/agents/` | `org_` | `org_agt_` |
+| Admin | `/api/{api_version}/server/{admin_path}/agents/` | `adm_` | `adm_` with scope `agent` |
+| User | `/api/{api_version}/users/agents/` | `usr_` | `usr_` with scope `agent` |
+| Org | `/api/{api_version}/orgs/{slug}/agents/` | `org_` | `org_` with scope `agent` |
 
 **Same endpoints for all scopes (replace `{base}` with scope route above):**
 
 | Endpoint | Method | Token | Description |
 |----------|--------|-------|-------------|
-| `{base}` | GET | Owner | List agents |
-| `{base}` | POST | Owner | Create agent token |
-| `{base}/{name}` | GET | Owner | Get agent details |
-| `{base}/{name}` | PATCH | Owner | Update agent (tags, name) |
-| `{base}/{name}` | DELETE | Owner | Remove agent |
-| `{base}/{name}/token` | POST | Owner | Regenerate agent token |
-| `{base}/{name}/metrics` | GET | Owner | Get agent metrics history |
+| `{base}` | GET | Account | List agents |
+| `{base}` | POST | Account | Create agent token |
+| `{base}/{name}` | GET | Account | Get agent details |
+| `{base}/{name}` | PATCH | Account | Update agent (tags, name) |
+| `{base}/{name}` | DELETE | Account | Remove agent |
+| `{base}/{name}/token` | POST | Account | Regenerate agent token |
+| `{base}/{name}/metrics` | GET | Account | Get agent metrics history |
 | `{base}/register` | POST | Agent | Agent self-registration (one-time) |
 | `{base}/heartbeat` | POST | Agent | Agent health check / keepalive |
 | `{base}/report` | POST | Agent | Submit collected data (project-specific) |
 
 **Token Access:**
-- Owner tokens (`adm_`, `usr_`, `org_`): Full agent management (CRUD, view metrics)
-- Agent tokens (`adm_agt_`, `usr_agt_`, `org_agt_`): Limited to register, heartbeat, report (own data only)
+- Account tokens (`adm_`, `usr_`, `org_` with a scope other than `agent`): Full agent management (CRUD, view metrics)
+- Agent tokens (`adm_`, `usr_`, `org_` with scope `agent`): Limited to register, heartbeat, report (own data only)
 
 **Examples:**
 ```
 # Admin agent (server infrastructure)
 POST /api/{api_version}/server/{admin_path}/agents/register
-Authorization: Bearer adm_agt_abc123...
+Authorization: Bearer adm_abc123... (scope agent)
 
 # User agent (personal SaaS monitoring)
 POST /api/{api_version}/users/agents/register
-Authorization: Bearer usr_agt_xyz789...
+Authorization: Bearer usr_xyz789... (scope agent)
 
 # Org agent (organization resources)
 POST /api/{api_version}/orgs/acme-corp/agents/register
-Authorization: Bearer org_agt_def456...
+Authorization: Bearer org_def456... (scope agent)
 ```
 
 **Agent Data Views (Project-Specific):**
@@ -34455,10 +34442,8 @@ CREATE TABLE agents (
     scope TEXT NOT NULL,
     -- NULL for admin, user_id for user, org_id for org
     owner_id TEXT,
-    -- 'adm_agt_', 'usr_agt_', 'org_agt_'
-    token_prefix TEXT NOT NULL,
-    -- SHA-256 hash of full token
-    token_hash TEXT NOT NULL,
+    -- The agent's credential: a tokens row (scope 'agent') whose prefix is adm_, usr_ or org_
+    token_id INTEGER NOT NULL REFERENCES tokens(id),
 
     -- System info (from agent)
     hostname TEXT,
@@ -43523,7 +43508,8 @@ jobs:
 | **Flag** | `--results=verified,unknown` or `--results=verified`, always with `--exclude-paths=.github/trufflehog-exclude.txt`. The old `--only-verified` flag is not used. `unknown` means verification was attempted and could not complete; `unverified` (checked and found inactive) is reported and does not fail the job |
 | **Never `default_branch`** | `base` is never `repository.default_branch`: after a push it equals the pushed commit and truffleHog skips the scan ("BASE and HEAD commits are the same") |
 | **Documentation examples** | `AI.md`, `IDEA.md`, `README.md` and `docs/` never contain a credential-shaped string. Connection strings use `{user}:{password}` placeholders; a flagged example is rewritten, not allowlisted, because a copied spec file is read-only in the projects that receive it |
-| **Excluded paths** | `.github/trufflehog-exclude.txt` (the same path on every provider), passed as `--exclude-paths=.github/trufflehog-exclude.txt`. One regex per line, no comments (it is a data file). It lists ONLY files the project does not author: `^go\.sum$` (dependency hashes) and `^AI\.md$` (the read-only copy of this specification, which carries example values; the template repository scans the original itself). Source, tests, docs, configuration and the exclude file itself are never listed. Adding a path needs a reason in the commit message. Everything else is handled by the placeholder rule or the allowlist below |
+| **Excluded paths** | `.github/trufflehog-exclude.txt` (the same path on every provider), passed as `--exclude-paths=.github/trufflehog-exclude.txt`. One regex per line, no comments (it is a data file). It lists ONLY files that are not production code: `^go\.sum$` (dependency hashes), `(^|/)testdata/` (test fixtures) and `^AI\.md$` (the read-only copy of this specification, which carries example values; the template repository scans the original itself). Source, test code, docs, configuration and the exclude file itself are never listed. Adding a path needs a reason in the commit message. Everything else is handled by the placeholder rule or the allowlist below |
+| **Test fixtures** | Fixtures live ONLY in `testdata/` (the one directory the exclude file lists). Their values are obviously fake (`EXAMPLE`, `xxxx`, `{placeholder}`) and never a real credential, because that directory is not scanned. A test that needs a credential-shaped string builds it at run time in the test code, which IS scanned |
 | **Allowlist** | Only a reviewed true false positive in project code or a test fixture, with truffleHog's inline `trufflehog:ignore` comment on that line. There is no root config file for it |
 | **Other providers** | GitLab and Jenkins run the same contract in Docker: `trufflehog git file://. --since-commit HEAD~1 --results=verified,unknown --exclude-paths=.github/trufflehog-exclude.txt --fail` for a range, `trufflehog git file://. --results=verified --exclude-paths=.github/trufflehog-exclude.txt --fail` for the full history |
 
@@ -56058,7 +56044,7 @@ Token: usr_abc123... (user: alice)
 └── Org context: open-source-proj (alice is owner)
 ```
 
-**One token, multiple contexts - no need for separate org tokens.**
+**One user token, multiple contexts.** A user token reaches the user's own orgs by role. An `org_` token is different: it belongs to the org (automation that must outlive any member) and reaches that org only.
 
 ### Server-Side Smart Detection
 
@@ -56563,7 +56549,7 @@ Only CLI has a built-in wizard. Server serves web pages for setup.
 
 **Agent connection string example (provided by server admin panel):**
 ```
-{project_name}-agent --connect "https://api.example.com?token=agt_xxx&name=office-pc"
+{project_name}-agent --connect "https://api.example.com?token=adm_xxx&name=office-pc"
 ```
 
 ### CLI: Full TUI/GUI App with Setup Wizard
@@ -56776,7 +56762,7 @@ User double-clicks {project_name}-cli:
 ```
 Agent is configured via server-provided connection string:
 
-{project_name}-agent --connect "https://api.example.com?token=agt_xxx&name=office-pc"
+{project_name}-agent --connect "https://api.example.com?token=adm_xxx&name=office-pc"
 
 First run without connection string:
 - Show error: "No connection configured. Use --connect flag with server-provided URL."
@@ -59738,7 +59724,7 @@ Shells: bash, zsh, fish, sh, dash, ksh, powershell, pwsh
   ✅ Agent registered
 
 # Connect: one-liner from server panel (preferred)
-{project_name}-agent --server https://monitor.example.com --token adm_agt_abc123def456...
+{project_name}-agent --server https://monitor.example.com --token adm_abc123def456...
   Connecting to https://monitor.example.com...
   ✅ Connection successful
   ✅ Token validated
@@ -59803,20 +59789,20 @@ func GenerateAgentCommand(serverURL, token string) string {
 
 | Scope | Token Prefix | Issued By | Route |
 |-------|--------------|-----------|-------|
-| Admin | `adm_agt_` | Admin panel | `/api/{api_version}/server/{admin_path}/agents/*` |
-| User | `usr_agt_` | User settings | `/api/{api_version}/users/agents/*` |
-| Org | `org_agt_` | Org settings | `/api/{api_version}/orgs/{slug}/agents/*` |
+| Admin | `adm_` (scope `agent`) | Admin panel | `/api/{api_version}/server/{admin_path}/agents/*` |
+| User | `usr_` (scope `agent`) | User settings | `/api/{api_version}/users/agents/*` |
+| Org | `org_` (scope `agent`) | Org settings | `/api/{api_version}/orgs/{slug}/agents/*` |
 
 ```go
 // Agent token generation (server-side) - scoped by owner type
 func GenerateAgentToken(scope AgentScope) string {
     switch scope {
     case ScopeAdmin:
-        return "adm_agt_" + generateSecureRandom(32)
+        return "adm_" + generateSecureRandom(32) // stored with scope "agent"
     case ScopeUser:
-        return "usr_agt_" + generateSecureRandom(32)
+        return "usr_" + generateSecureRandom(32) // stored with scope "agent"
     case ScopeOrg:
-        return "org_agt_" + generateSecureRandom(32)
+        return "org_" + generateSecureRandom(32) // stored with scope "agent"
     }
     return ""
 }
@@ -59837,7 +59823,7 @@ func GenerateAgentToken(scope AgentScope) string {
 **Request:**
 ```json
 {
-  "token": "adm_agt_abc123def456ghi789jkl012mno345pqr678",
+  "token": "adm_abc123def456ghi789jkl012mno345pqr6",
   "hostname": "web-server-01",
   "os": "linux",
   "arch": "amd64",
@@ -59904,7 +59890,7 @@ server:
 
 # Authentication
 auth:
-  # Agent token ({scope}_agt_xxx, see PART 11)
+  # Agent token (adm_, usr_ or org_ with scope agent, see PART 11)
   token: ""
   # Read token from file instead
   token_file: ""
@@ -59979,7 +59965,7 @@ mode: ""
 ```bash
 # Pattern: {PROJECT_NAME}_AGENT_{KEY} or {PROJECT_NAME}_{KEY}
 {PROJECT_NAME}_AGENT_SERVER_PRIMARY="https://example.com"
-{PROJECT_NAME}_AGENT_TOKEN="adm_agt_abc123..."
+{PROJECT_NAME}_AGENT_TOKEN="adm_abc123..."
 {PROJECT_NAME}_AGENT_HOSTNAME="web-server-01"
 {PROJECT_NAME}_AGENT_COLLECTION_INTERVAL=30
 {PROJECT_NAME}_DEBUG=true
@@ -63063,17 +63049,15 @@ curl -q -LSsf https://api.example.com/api/autodiscover
 
 | Token Type | Prefix | Use For | Stored In |
 |------------|--------|---------|-----------|
-| Admin token | `adm_` | Admin operations, CLI | `tokens` table |
+| Admin token | `adm_` | Admin operations, CLI (the operator token `server.token` is an admin token kept in `secrets.yml`) | `tokens` table, or `secrets.yml` for the operator token |
 | User token | `usr_` | User operations | `tokens` table |
 | Org token | `org_` | Org operations | `tokens` table |
-| Admin agent | `adm_agt_` | Admin infrastructure agent | `tokens` table |
-| User agent | `usr_agt_` | User's personal agent | `tokens` table |
-| Org agent | `org_agt_` | Organization agent | `tokens` table |
+| Metrics scraper | `mtr_` | `GET /server/metrics` only | `secrets.yml` |
 
 **Unified Tokens Table (`tokens`):**
 - All token types stored in single table with `owner_type` (admin/user/org)
 - Each token has: name, scope (`global`/`read-write`/`read`), expiration
-- `token_prefix` stores first 8 chars for display: `"adm_abc1..."`
+- `tokens.token_prefix` stores the first 8 chars for display: `"adm_abc1"`
 - Multiple tokens per owner allowed
 
 **Web Session Cookies:**
@@ -67507,8 +67491,10 @@ make docker
 
 ### Token Security
 
-- [ ] Token prefixes enforced: `adm_` (admin), `usr_` (user), `org_` (org)
-- [ ] Agent token prefixes enforced: `adm_agt_`, `usr_agt_`, `org_agt_` (scoped to owner)
+- [ ] Token prefixes enforced: `adm_` (admin, including the operator token), `usr_` (user), `org_` (org), `mtr_` (metrics)
+- [ ] Agent tokens use the owner prefixes with scope `agent` and are rejected on every non-agent route
+- [ ] `mtr_` metrics tokens reach `/server/metrics` only
+- [ ] `server.token` is an `adm_` token kept in `secrets.yml`, never in the `tokens` table
 - [ ] Setup token: 32 hex characters, no dashes
 - [ ] Tokens hashed before storage (SHA-256)
 - [ ] Token expiration enforced
