@@ -694,7 +694,7 @@ if cacheSize > 1024*1024*1024 {
 |------|-------------|
 | **NEVER use Makefile in CI** | Workflows have explicit commands with all env vars |
 | **GitHub/Gitea/Jenkins must match** | Same platforms, same env vars, same logic |
-| **VERSION precedence** | `release.txt` wins when present; otherwise use the workflow/build-specific fallback (tag, beta timestamp, etc.) |
+| **VERSION precedence** | `VERSION` env var (user override, AI never sets it) > channel (devel = short commit id, beta = `YYYYMMDDHHMMSS-beta`; `release.txt` ignored) > `release.txt` > `devel` |
 | **LDFLAGS** | `-s -w -X 'main.Version=...' -X 'main.CommitID=...' -X 'main.BuildEpoch=...' -X 'main.OfficialSite=...'` (BuildDate is NOT an ldflag — derived from BuildEpoch in `init()`) |
 | **Docker builds on EVERY push** | Any branch push triggers Docker image build |
 | **Docker tags** | Any push → `{commit_id}`; beta → adds `beta`; tag → `{version}`, `latest`, `{yymm}`, `{commit_id}` |
@@ -21564,9 +21564,10 @@ When not in cluster mode:
 
 ### Sources (Priority Order)
 
-1. `release.txt` in project root
-2. Git tag (if available)
-3. Fallback: `dev`
+1. `VERSION` environment variable, only when explicitly set by the user (local/manual builds; CI workflows never read it); AI agents never set it
+2. Channel rule (CI): devel = `git rev-parse --short=7 HEAD`, beta = `YYYYMMDDHHMMSS-beta`; `release.txt` is never consulted for these channels
+3. `release.txt` in project root (stable releases and local builds); release workflows fall back to the pushed tag with `v` stripped only when `release.txt` is absent
+4. Fallback: `devel` — create `release.txt` with `0.1.0` before the first release
 
 ### --version Output
 
@@ -40875,7 +40876,7 @@ func (ws *windowsService) Execute(args []string, r <-chan svc.ChangeRequest, s c
 
 - Canonical single-line version source (see PART 13)
 - Semantic versioning: `MAJOR.MINOR.PATCH` (e.g., `1.2.3`)
-- If `release.txt` exists, it wins over derived/tag defaults; an explicitly set `VERSION` env var overrides it (see Version Priority)
+- Used for stable releases and local builds; devel and beta CI builds derive their own version and ignore it; an explicitly set `VERSION` env var overrides it (user only, AI never sets it)
 
 ### Official Site File: `site.txt` (Optional)
 
@@ -40910,8 +40911,8 @@ https://api.example.com
 
 **When extracting VERSION variable from tag:**
 - Git tag `v1.2.3` → VERSION=`1.2.3` (strip v for internal use)
-- Git tag `dev` → VERSION=`dev` (no v to strip)
-- Git tag `beta` → VERSION=`beta` (no v to strip)
+- Git tag `devel` (rolling) → VERSION=short commit id of the built commit, not the tag name
+- Git tag `YYYYMMDDHHMMSS-beta` → VERSION=`YYYYMMDDHHMMSS-beta` (same string, no v to strip)
 
 | Tag Input | Type | Add `v`? | Display As | Why |
 |-----------|------|----------|------------|-----|
@@ -40971,9 +40972,10 @@ format_version_tag() {
 
 ### Version Priority
 
-1. `VERSION` environment variable (if set)
-2. `release.txt` file (if exists)
-3. Create `release.txt` with `0.1.0` (first release)
+1. `VERSION` environment variable, only when explicitly set by the user (local/manual builds; CI workflows never read it); AI agents never set it
+2. Channel rule (CI): devel = `git rev-parse --short=7 HEAD`, beta = `YYYYMMDDHHMMSS-beta`; `release.txt` is never consulted for these channels
+3. `release.txt` in project root (stable releases and local builds); release workflows fall back to the pushed tag with `v` stripped only when `release.txt` is absent
+4. Fallback: `devel` — create `release.txt` with `0.1.0` before the first release
 
 ## Binary Naming
 
@@ -41042,7 +41044,7 @@ binaries/
 PROJECT_NAME := $(shell git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)(\.git)?$$|\1|' || basename "$$(pwd)")
 PROJECT_ORG := $(shell git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+(\.git)?$$|\1|' || basename "$$(dirname "$$(pwd)")")
 
-# Version precedence: VERSION env (?= respects it) > release.txt > "devel" fallback
+# Version precedence: VERSION env (user override, AI never sets it) > release.txt > "devel" fallback
 VERSION ?= $(shell cat release.txt 2>/dev/null || echo "devel")
 
 # BuildEpoch — Unix build timestamp (seconds, UTC); the single captured time
@@ -41900,7 +41902,7 @@ FROM casjaysdev/go:latest AS builder
 RUN apk add --no-cache git bash
 
 ARG TARGETARCH
-ARG VERSION=dev
+ARG VERSION=devel
 ARG BUILD_DATE
 ARG BUILD_EPOCH
 ARG COMMIT_ID
@@ -41925,7 +41927,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
 FROM alpine:latest
 
 # ARGs for build-time values (set by docker build --build-arg)
-ARG VERSION=dev
+ARG VERSION=devel
 ARG BUILD_DATE
 ARG BUILD_EPOCH
 ARG COMMIT_ID
@@ -42476,7 +42478,7 @@ RUN go mod download
 COPY src/ ./src/
 
 # Build static binary (CGO_ENABLED=0)
-ARG VERSION=dev
+ARG VERSION=devel
 ARG COMMIT_ID=unknown
 ARG BUILD_DATE=unknown
 ARG BUILD_EPOCH=0
@@ -43793,11 +43795,7 @@ jobs:
         id: v
         run: |
           STAMP="$(date -u +%Y%m%d%H%M%S)"
-          if [ -f release.txt ]; then
-            VERSION="$(cat release.txt)"
-          else
-            VERSION="${STAMP}-beta"
-          fi
+          VERSION="${STAMP}-beta"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           # Release tag is always the timestamped beta form - the update channel matches the -beta suffix
           echo "tag=${STAMP}-beta" >> "$GITHUB_OUTPUT"
@@ -44369,7 +44367,7 @@ jobs:
           provenance: false
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:devel
           build-args: |
-            VERSION=devel
+            VERSION=${{ env.COMMIT_ID }}
             BUILD_DATE=${{ env.BUILD_DATE }}
             BUILD_EPOCH=${{ env.BUILD_EPOCH }}
             COMMIT_ID=${{ env.COMMIT_ID }}
@@ -44379,7 +44377,7 @@ jobs:
             org.opencontainers.image.title=${{ env.PROJECT_NAME }}-devel
             org.opencontainers.image.base.name=${{ env.PROJECT_NAME }}
             org.opencontainers.image.description=${{ env.PROJECT_NAME }} - development image (alpine, debug mode)
-            org.opencontainers.image.version=devel
+            org.opencontainers.image.version=${{ env.COMMIT_ID }}
             org.opencontainers.image.created=${{ env.BUILD_DATE }}
             org.opencontainers.image.revision=${{ env.COMMIT_ID }}
             org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
@@ -44392,7 +44390,7 @@ jobs:
             manifest:org.opencontainers.image.title=${{ env.PROJECT_NAME }}-devel
             manifest:org.opencontainers.image.base.name=${{ env.PROJECT_NAME }}
             manifest:org.opencontainers.image.description=${{ env.PROJECT_NAME }} - development image (alpine, debug mode)
-            manifest:org.opencontainers.image.version=devel
+            manifest:org.opencontainers.image.version=${{ env.COMMIT_ID }}
             manifest:org.opencontainers.image.created=${{ env.BUILD_DATE }}
             manifest:org.opencontainers.image.revision=${{ env.COMMIT_ID }}
             manifest:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
@@ -44962,11 +44960,7 @@ jobs:
         id: v
         run: |
           STAMP="$(date -u +%Y%m%d%H%M%S)"
-          if [ -f release.txt ]; then
-            VERSION="$(cat release.txt)"
-          else
-            VERSION="${STAMP}-beta"
-          fi
+          VERSION="${STAMP}-beta"
           echo "version=$VERSION" >> "$GITEA_OUTPUT"
           # Release tag is always the timestamped beta form - the update channel matches the -beta suffix
           echo "tag=${STAMP}-beta" >> "$GITEA_OUTPUT"
@@ -45512,7 +45506,7 @@ jobs:
           provenance: false
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:devel
           build-args: |
-            VERSION=devel
+            VERSION=${{ env.COMMIT_ID }}
             BUILD_DATE=${{ env.BUILD_DATE }}
             BUILD_EPOCH=${{ env.BUILD_EPOCH }}
             COMMIT_ID=${{ env.COMMIT_ID }}
@@ -45522,7 +45516,7 @@ jobs:
             org.opencontainers.image.title=${{ env.PROJECT_NAME }}-devel
             org.opencontainers.image.base.name=${{ env.PROJECT_NAME }}
             org.opencontainers.image.description=${{ env.PROJECT_NAME }} - development image (alpine, debug mode)
-            org.opencontainers.image.version=devel
+            org.opencontainers.image.version=${{ env.COMMIT_ID }}
             org.opencontainers.image.created=${{ env.BUILD_DATE }}
             org.opencontainers.image.revision=${{ env.COMMIT_ID }}
             org.opencontainers.image.url=${{ gitea.server_url }}/${{ gitea.repository }}
@@ -45535,7 +45529,7 @@ jobs:
             manifest:org.opencontainers.image.title=${{ env.PROJECT_NAME }}-devel
             manifest:org.opencontainers.image.base.name=${{ env.PROJECT_NAME }}
             manifest:org.opencontainers.image.description=${{ env.PROJECT_NAME }} - development image (alpine, debug mode)
-            manifest:org.opencontainers.image.version=devel
+            manifest:org.opencontainers.image.version=${{ env.COMMIT_ID }}
             manifest:org.opencontainers.image.created=${{ env.BUILD_DATE }}
             manifest:org.opencontainers.image.revision=${{ env.COMMIT_ID }}
             manifest:org.opencontainers.image.url=${{ gitea.server_url }}/${{ gitea.repository }}
@@ -46347,10 +46341,10 @@ docker:build:
         YYMM=$(date +%y%m)
         TAGS="-t $CI_REGISTRY_IMAGE:$VERSION -t $CI_REGISTRY_IMAGE:latest -t $CI_REGISTRY_IMAGE:$YYMM -t $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:7}"
       elif [ "$CI_COMMIT_BRANCH" = "beta" ]; then
-        VERSION="beta-${CI_COMMIT_SHA:0:7}"
+        VERSION="$(date -u +%Y%m%d%H%M%S)-beta"
         TAGS="-t $CI_REGISTRY_IMAGE:beta -t $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:7}"
       else
-        VERSION="dev-${CI_COMMIT_SHA:0:7}"
+        VERSION="${CI_COMMIT_SHA:0:7}"
         TAGS="-t $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:7}"
       fi
       BUILD_EPOCH="$(date -u +%s)"
@@ -46419,10 +46413,10 @@ docker:build-aio:
         YYMM=$(date +%y%m)
         TAGS="-t ${IMAGE}:${VERSION}-aio -t ${IMAGE}:latest-aio -t ${IMAGE}:${YYMM}-aio -t ${IMAGE}:${CI_COMMIT_SHA:0:7}-aio"
       elif [ "$CI_COMMIT_BRANCH" = "beta" ]; then
-        VERSION="beta-${CI_COMMIT_SHA:0:7}"
+        VERSION="$(date -u +%Y%m%d%H%M%S)-beta"
         TAGS="-t ${IMAGE}:beta-aio -t ${IMAGE}:${CI_COMMIT_SHA:0:7}-aio"
       else
-        VERSION="dev-${CI_COMMIT_SHA:0:7}"
+        VERSION="${CI_COMMIT_SHA:0:7}"
         TAGS="-t ${IMAGE}:${CI_COMMIT_SHA:0:7}-aio"
       fi
       BUILD_EPOCH="$(date -u +%s)"
@@ -46493,7 +46487,7 @@ docker:build-devel:
       docker buildx build \
         -f docker/Dockerfile.dev \
         --platform linux/amd64,linux/arm64 \
-        --build-arg VERSION="devel" \
+        --build-arg VERSION="${CI_COMMIT_SHA:0:7}" \
         --build-arg COMMIT_ID="${CI_COMMIT_SHA:0:7}" \
         --build-arg BUILD_DATE="${BUILD_DATE}" \
         --build-arg BUILD_EPOCH="${BUILD_EPOCH}" \
@@ -46504,7 +46498,7 @@ docker:build-devel:
         --label "org.opencontainers.image.base.name=${PROJECT_NAME}" \
         --label "org.opencontainers.image.description=${PROJECT_NAME} - development image (alpine, debug mode)" \
         --label "org.opencontainers.image.licenses=MIT" \
-        --label "org.opencontainers.image.version=devel" \
+        --label "org.opencontainers.image.version=${CI_COMMIT_SHA:0:7}" \
         --label "org.opencontainers.image.created=${BUILD_DATE}" \
         --label "org.opencontainers.image.revision=${CI_COMMIT_SHA:0:7}" \
         --label "org.opencontainers.image.url=${CI_PROJECT_URL}" \
@@ -46516,7 +46510,7 @@ docker:build-devel:
         --annotation "manifest:org.opencontainers.image.base.name=${PROJECT_NAME}" \
         --annotation "manifest:org.opencontainers.image.description=${PROJECT_NAME} - development image (alpine, debug mode)" \
         --annotation "manifest:org.opencontainers.image.licenses=MIT" \
-        --annotation "manifest:org.opencontainers.image.version=devel" \
+        --annotation "manifest:org.opencontainers.image.version=${CI_COMMIT_SHA:0:7}" \
         --annotation "manifest:org.opencontainers.image.created=${BUILD_DATE}" \
         --annotation "manifest:org.opencontainers.image.revision=${CI_COMMIT_SHA:0:7}" \
         --annotation "manifest:org.opencontainers.image.url=${CI_PROJECT_URL}" \
@@ -47445,7 +47439,7 @@ pipeline {
                         docker buildx build \
                             -f docker/Dockerfile.dev \
                             --platform linux/amd64,linux/arm64 \
-                            --build-arg VERSION="devel" \
+                            --build-arg VERSION="${COMMIT_ID}" \
                             --build-arg COMMIT_ID="${COMMIT_ID}" \
                             --build-arg BUILD_DATE="${BUILD_DATE}" \
                             --build-arg BUILD_EPOCH="${BUILD_EPOCH}" \
@@ -47456,7 +47450,7 @@ pipeline {
                             --label "org.opencontainers.image.base.name=${PROJECT_NAME}" \
                             --label "org.opencontainers.image.description=${PROJECT_NAME} - development image (alpine, debug mode)" \
                             --label "org.opencontainers.image.licenses=MIT" \
-                            --label "org.opencontainers.image.version=devel" \
+                            --label "org.opencontainers.image.version=${COMMIT_ID}" \
                             --label "org.opencontainers.image.created=${BUILD_DATE}" \
                             --label "org.opencontainers.image.revision=${COMMIT_ID}" \
                             --label "org.opencontainers.image.url=https://${GIT_FQDN}/${PROJECT_ORG}/${INTERNAL_NAME}" \
@@ -47468,7 +47462,7 @@ pipeline {
                             --annotation "manifest:org.opencontainers.image.base.name=${PROJECT_NAME}" \
                             --annotation "manifest:org.opencontainers.image.description=${PROJECT_NAME} - development image (alpine, debug mode)" \
                             --annotation "manifest:org.opencontainers.image.licenses=MIT" \
-                            --annotation "manifest:org.opencontainers.image.version=devel" \
+                            --annotation "manifest:org.opencontainers.image.version=${COMMIT_ID}" \
                             --annotation "manifest:org.opencontainers.image.created=${BUILD_DATE}" \
                             --annotation "manifest:org.opencontainers.image.revision=${COMMIT_ID}" \
                             --annotation "manifest:org.opencontainers.image.url=https://${GIT_FQDN}/${PROJECT_ORG}/${INTERNAL_NAME}" \
