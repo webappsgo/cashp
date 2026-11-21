@@ -8519,7 +8519,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | **Reload** | The file watcher watches `server.yml`, `yaml.d/`, `secrets.yml` and `assets/`. A change, add or remove re-merges everything; an invalid value resets that key to its default and an unparseable file keeps its last good copy ("Validation") |
 | **Generated values** | The server writes generated values (the saved random port) to `server.yml` and the secrets to `secrets.yml`. It writes area files only for the automatic migration, the admin panel, the setup flow, the CLI and the database sync. If two files set the same key, the later one wins and the startup log says which file did |
 | **Permissions** | `server.yml`, `secrets.yml` and every drop-in are ALWAYS `0600`, and `yaml.d/` is `0700` (PART 8 → "Directory Validation Rules": private paths); a wrong mode is fixed at start, and a drop-in that is group or world writable and cannot be fixed is refused: it is ignored and the error is logged |
-| **Early read** | Before the privileged bind (PART 8 startup, step 8e), ONLY `server.port` and `server.address` are read, from the same merged view (`server.yml`, then drop-ins in order). So a drop-in MAY set either key and it takes effect on the first start; neither key is rebound later (`server.address` and `server.port` need a restart, PART 12) |
+| **Early read** | Before the privileged bind (PART 8 startup, step 8e), ONLY `server.port`, `server.address` and `server.daemonize` are read, from the same merged view (`server.yml`, then drop-ins in order). So a drop-in MAY set either key and it takes effect on the first start; neither key is rebound later (`server.address` and `server.port` need a restart, PART 12) |
 | **Backup** | `{config_dir}/yaml.d/` and `{config_dir}/secrets.yml` are included in backups whenever they exist (PART 22 → "Backup Contents") |
 - **Admin panel:** the panel writes each setting to the file that owns it ("Area Files and Automatic Migration"), `secrets.yml` for the secret keys ("Secrets File") and `assets/` for uploaded images ("Image Files"). A setting that a file OTHER than its owner sets is shown read-only with the file name (`set by yaml.d/90-local.yml`) and cannot be changed in the panel; edit that file instead.
 - **Cluster Mode:** the area files are synced through the database ("Config Sync"); `server.yml` and `secrets.yml` are node-local.
@@ -8531,7 +8531,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 
 | File | Holds |
 |------|-------|
-| `server.yml` | This node only: `server.port`, `server.address`, `server.fqdn`, `server.mode`, `server.api_version`, `server.baseurl`, `server.user`, `server.group`, `server.pidfile`, `server.daemonize`, `server.debug`, `server.database`, `server.cache`, `server.ssl`, `server.trusted_proxies`, `server.cluster` |
+| `server.yml` | This node only: `server.port`, `server.address`, `server.fqdn`, `server.mode`, `server.api_version`, `server.baseurl`, `server.pidfile`, `server.daemonize`, `server.debug`, `server.database`, `server.cache`, `server.ssl`, `server.trusted_proxies`, `server.cluster` |
 | `yaml.d/branding.yml` | `server.branding`, `server.seo`, `web.ui` ("Branding File") |
 | `yaml.d/web.yml` | `web.*` except `web.ui`; `server.cors`, `server.csrf`, `server.url_detection`, `server.compression`, `server.healthz`, `server.i18n` |
 | `yaml.d/pages.yml` | `server.pages` (the report form and its antispam, the help pages) |
@@ -8618,7 +8618,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | **Written by** | The server writes generated, rotated and moved secrets to `secrets.yml` and ONLY there, never to `server.yml` and never to a drop-in (this limits what the server writes; an operator may still hand-write a value elsewhere, see "Operator-set values"): the first-run `server.token`, `server.security.encryption_key` with its version, and every rotation (`--maintenance secret rotate encryption_key`) |
 | **Operator-set values** | An operator MAY write a secret key in `server.yml` or a drop-in (for example from configuration management). The automatic migration moves it to `secrets.yml` at the next start ("Area Files and Automatic Migration"), where it wins over any other file. A value may also be an environment reference such as `${DB_PASSWORD}`, which is moved like any other value. A plaintext DNS credential is rewritten as `enc:v1:` in the file that holds it. So `secrets.yml` is where a secret lives at rest, and a secret in `server.yml` or a drop-in is a hand-off that ends at the next start |
 | **Migration** | At start, if `server.token` or `server.security.encryption_key` is found in `server.yml` and `secrets.yml` does not hold it, the server writes `secrets.yml` first (atomic, `0600`, fsynced) and only then rewrites `server.yml` without those keys, so a secret is never in both files and never lost |
-| **Early read** | The early config read (PART 8 startup, step 8e) never opens `secrets.yml`: it needs only `server.port` and `server.address` |
+| **Early read** | The early config read (PART 8 startup, step 8e) never opens `secrets.yml`: it needs only `server.port`, `server.address` and `server.daemonize` |
 | **Permissions** | Always `0600` (PART 8 → "Directory Validation Rules": private paths); a wrong mode is fixed at start |
 | **Reload** | The file watcher watches it with `server.yml` and `yaml.d/`; a change re-merges everything and an invalid result keeps the last good config |
 | **Backup** | Included in every backup whenever it exists (PART 22 → "Backup Contents"), so a restore brings back the same token and encryption key |
@@ -8765,8 +8765,8 @@ Service start (automatic after install):
     ├─ Start as root (service manager)
     ├─ Create user/dirs if needed
     ├─ Bind port 80/443 (root)
-    ├─ Spawn Tor with service-user creds (never as root)
-    ├─ Drop to {project_name} user
+    ├─ Drop to {internal_name} user
+    ├─ Start Tor (and I2P when enabled) as {internal_name}, never as root
     └─ Serve requests (user)
 ```
 
@@ -11588,6 +11588,7 @@ PHASE 5: Server startup (actual server start)
    a. Check/create system user:
       ├─ User {project_name} exists → use it
       └─ User missing → create {internal_name}:{internal_name} (see PART 24)
+      The service identity is fixed to `{internal_name}:{internal_name}`: no config key selects another user or group, so the early peek never reads one.
    b. Create ALL directories (while still root):
       ├─ {config_dir}/ and subdirs (ssl/, tor/)
       ├─ {data_dir}/ and subdirs (db/, security/, tor/, tor/site/)
@@ -11607,9 +11608,10 @@ PHASE 5: Server startup (actual server start)
       │   ├─ First port = HTTP
       │   └─ Second port = HTTPS
       ├─ No --port? → check PORT env var (same format)
-      ├─ No env var? → EARLY CONFIG PEEK: read ONLY `server.port` and `server.address` from the merged view of {config_dir}/server.yml and the ordered {config_dir}/yaml.d/* drop-ins (same file selection, order and replace-whole-value rule as PART 5 → "Drop-in Config Directory"; read-only, as root, after the step 8d permission fix; no other key is read or validated here, and a file that does not parse is skipped for these two keys, its error is reported by the full load at step 13)
+      ├─ No env var? → EARLY CONFIG PEEK: read ONLY `server.port`, `server.address` and `server.daemonize` from the merged view of {config_dir}/server.yml and the ordered {config_dir}/yaml.d/* drop-ins (same file selection, order and replace-whole-value rule as PART 5 → "Drop-in Config Directory"; read-only, as root, after the step 8d permission fix; no other key is read or validated here, and a file that does not parse is skipped for these two keys, its error is reported by the full load at step 13)
       └─ No file, or no `server.port` in it? → random port in 64000-64999 range (single, HTTP); step 13 writes it to the new config
       Listen address (resolved in the same early step): `--address` flag > `LISTEN` env > the early peek of `server.address` > default `[::]` (IPv4 `0.0.0.0` fallback when the kernel has no IPv6, logged once as a warning). `[::]` and `::` are both accepted for `--address`, `LISTEN` and `server.address`; the brackets are stripped before the value is parsed as an IP. Privileged sockets are bound to THIS address and never to a broader one; step 13 never rebinds (`server.address` needs a restart, PART 12)
+   e2. Daemonize (manual start only; never for `--service start` or in a container, see "Daemonization"): when `--daemon` was given, or the early peek found `server.daemonize: true`, re-execute now (marker `_DAEMON_CHILD=1`) and exit the parent with 0. This happens BEFORE any privileged socket is bound, so the child repeats steps 6-8e (all idempotent) and binds the ports itself; a bound socket never has to cross the re-execute.
    f. Bind ALL privileged ports (< 1024) NOW while still root:
       ├─ For each port < 1024: create and bind a socket on the resolved listen address, store fd
       ├─ If ANY privileged port fails: exit with error
@@ -11625,7 +11627,8 @@ PHASE 5: Server startup (actual server start)
    ├─ Create {log_dir} (~/.local/log/{internal_org}/{internal_name}/)
    ├─ Create {backup_dir} (system backup dir if writable, else ~/.local/share/Backups/{internal_org}/{internal_name}/ — PART 8 GetBackupDir)
    ├─ Set permissions: 0700 on all dirs (user-only access)
-   └─ Note: port must be >1024 (user mode cannot bind privileged ports)
+   ├─ Daemonize (manual start only; skipped for `--service start` and containers): when `--daemon` was not given, read ONLY `server.daemonize` from the merged config view (same peek rules as step 8e: read-only, a missing or unparsable value means false) and, when daemonizing, re-execute as in step 8e2 and exit the parent before step 10
+   └─ Note: port must be >= 1024 (user mode cannot bind privileged ports)
 
 10. Initialize logging:
     ├─ Open {log_dir}/server.log for writing
@@ -11852,6 +11855,8 @@ PHASE 5: Server startup (actual server start)
 1. `--daemon` CLI flag (highest)
 2. `server.daemonize` config setting
 3. Default: `false` (foreground)
+
+`server.daemonize` is startup-only: it is read by the early peek (PART 8 startup steps 8e and 9) so the re-execute happens before any privileged socket is bound. The full configuration load in step 13 does not act on it, and changing it needs a restart.
 
 | Flag/Config | Behavior |
 |-------------|----------|
