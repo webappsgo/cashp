@@ -165,7 +165,7 @@ Free-form prose. This is the human-readable elevator pitch.)
 
 (All project variables in `key: value` form. Values are the canonical source used to
 resolve placeholders referenced in AI.md. Required keys at minimum: `project_name`, `project_org`,
-`internal_name`, `internal_org`. Add more as the project needs — `app_name`, `official_site`,
+`internal_name`, `internal_org`. Add more as the project needs — `app_name`, `official_site` (only when the user supplies it — never invented),
 `maintainer_name`, `maintainer_email`, etc. Use lower_snake_case for keys.)
 
 Example:
@@ -177,7 +177,7 @@ Example:
     # STABLE — set at first-time setup; change only on an explicit rename or fork reset
     internal_org:  casjay
     app_name:      jokes
-    official_site: https://jokes.example.com
+    # official_site is OPTIONAL: add it only when the user gives the real URL; omit the key otherwise
     # Optional UI labels (defaults: item / items)
     resource_label: joke
     resource_label_plural: jokes
@@ -2156,7 +2156,7 @@ See the single authoritative table earlier in this file (search: `### Allowed Ro
 | `{project_org}` | Organization/owner name (lowercase) | `sneak`, `acme`, `mycompany` |
 | `{project_version}` | Current version (semver format) | `1.0.0`, `2.3.1` |
 | `{PROJECT_NAME}` | Uppercase project name (for constants, env vars) | `JOKES`, `ECHOIP` |
-| `{official_site}` | Official project website | `https://jokes.example.com` |
+| `{official_site}` | Official project website — OPTIONAL, unset unless the user supplies it (never guessed) | the user's real URL, or unset |
 | `{fqdn}` | Fully qualified domain name | `api.example.com` |
 | `{baseurl}` | URL path prefix (auto-detected from reverse proxy) | `/`, `/myproject` |
 | `{admin_path}` | Admin panel URL path (configurable, default: `administration`) | `administration`, `manage`, `control` |
@@ -5441,7 +5441,7 @@ if cfg.Server.Healthz.Root.Enabled {
 
 {Brief description of what the project does - 1-3 sentences}
 
-## Official Site
+## Official Site  <!-- include only when {official_site} is defined; otherwise omit this heading and the line below -->
 
 {official_site}
 
@@ -5499,6 +5499,7 @@ sudo mv {project_name}-cli-linux-amd64 /usr/local/bin/{project_name}-cli
 
 ```bash
 # Connect to official server (creates ~/.config/{internal_org}/{internal_name}/cli.yml)
+# {official_site} not defined: use --server https://YOUR_SERVER instead
 {project_name}-cli --server {official_site} --token YOUR_API_TOKEN
 ```
 
@@ -6160,7 +6161,7 @@ package main
 |-------|-------|
 | **Name** | {project_name} |
 | **Organization** | {project_org} |
-| **Official Site** | `{official_site}` (e.g. `https://{project_name}.example.com`) |
+| **Official Site** | `{official_site}` when defined; omitted otherwise |
 | **Repository** | {PLATFORM_REPO_URL} |
 | **README** | README.md |
 | **License** | MIT > LICENSE.md |
@@ -40893,19 +40894,20 @@ func (ws *windowsService) Execute(args []string, r <-chan svc.ChangeRequest, s c
 ### Official Site File: `site.txt` (Optional)
 
 - **OPTIONAL** - only create if project has an official hosted instance
-- Single line containing the official site URL (e.g., `https://api.example.com`)
-- **NEVER guess or assume** - must be explicitly created by user
+- Single line containing the official site URL, exactly as the user gave it
+- **NEVER guess or assume** - must be explicitly created by the user, and never written by AI
 - Canonical single-line official site source when present
 - If `site.txt` exists, it wins over `IDEA.md`, README, env vars, CI secrets, and other fallbacks
 - If `site.txt` and `IDEA.md ## Project variables` both exist, `IDEA.md` should match `site.txt`; `site.txt` is the easy-to-update operational override
 - If not present, CLI/Agent users must always specify `--server` flag
 - Sources checked in order:
   1. File: `site.txt` in project root
-  2. Environment variable: `OFFICIAL_SITE=https://example.com`
+  2. Environment variable: `OFFICIAL_SITE=<url>`
   3. CI/CD secrets (repository secrets)
   4. Empty (self-hosted projects)
+- **Unset means unset:** when the user has not given an official site, `official_site` is absent from IDEA.md, there is no `site.txt`, `OFFICIAL_SITE` is empty in the Makefile, Docker build args and CI, the embedded `OfficialSite` is the empty string, and the CLI requires `--server`. Never fill it from the project name, the organization, `server.fqdn`, a git remote, or an `example.com` / `example.org` domain, and never use a placeholder host such as `xxx.example.com`; the Official Site README section is omitted and every `{official_site}` example uses its not-defined form. Reserved example domains appear only inside this specification's illustrations, never in a project file or variable.
 
-**Example:**
+**Illustration only** (`example.com` is a reserved documentation domain; never write it into a project):
 ```
 https://api.example.com
 ```
@@ -41079,7 +41081,7 @@ COMMIT_ID := $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo "N/A")
 # Official site URL (OPTIONAL - never guess or assume)
 # Sources (in order of precedence):
 #   1. File: site.txt in project root (single line, URL only)
-#   2. Environment variable: OFFICIAL_SITE=https://example.com
+#   2. Environment variable: OFFICIAL_SITE=<url>
 #   3. Empty (self-hosted projects - users must use --server flag)
 # NEVER infer from project name, domain, or any other source
 OFFICIAL_SITE := $(shell [ -f site.txt ] && cat site.txt || echo "$${OFFICIAL_SITE:-}")
@@ -41344,7 +41346,7 @@ Every binary MUST have these values embedded at build time:
 | `CommitID` | `a1b2c3d` | Git short commit hash |
 | `BuildDate` | `2025-12-04T13:05:13Z` | Build timestamp (ISO 8601 / RFC 3339 UTC per `version_conventions.md`) — derived from `BuildEpoch` in `init()`, NOT set via `-ldflags` |
 | `BuildEpoch` | `1765112713` | Unix build timestamp (seconds, UTC), set via `-ldflags` — the single captured time source; used by the updater's devel-channel check and to derive `BuildDate` |
-| `OfficialSite` | `https://api.example.com` | Default server URL (empty if self-hosted) |
+| `OfficialSite` | the user's URL, or empty | Default server URL (empty when no official site is defined) |
 
 **Go code requirement** (in `main.go` or `version.go`):
 
