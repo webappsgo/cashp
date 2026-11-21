@@ -698,7 +698,7 @@ if cacheSize > 1024*1024*1024 {
 | **LDFLAGS** | `-s -w -X 'main.Version=...' -X 'main.CommitID=...' -X 'main.BuildEpoch=...' -X 'main.OfficialSite=...'` (BuildDate is NOT an ldflag — derived from BuildEpoch in `init()`) |
 | **Docker builds on EVERY push** | Any branch push triggers Docker image build |
 | **Docker tags** | Any push → `{commit_id}`; beta → adds `beta`; tag → `{version}`, `latest`, `{yymm}`, `{commit_id}` |
-| **Devel image is a job in docker.yml** | `:devel` is built from `docker/Dockerfile.dev` by the `build-devel` job inside the same `docker.yml` workflow (schedule + non-tag push, gated by `if:`) — never a separate file |
+| **Devel image is a job in docker.yml** | `:devel` is built from `docker/Dockerfile.dev` by the `build-devel` job inside the same `docker.yml` workflow (schedule + push to `main`/`master`, gated by `if:`) — never a separate file |
 | **Workflow permissions** | Default to read-only / least privilege; grant write only to the specific release/publish job that needs it |
 | **Third-party action pinning** | External actions MUST be pinned to a full commit SHA — never float on `@main`, `@master`, or broad tags; verify runtime and maintenance status on every SHA update |
 | **Unsafe PR triggers forbidden by default** | Do NOT use `pull_request_target` for untrusted code execution, build, test, or artifact upload paths |
@@ -43399,6 +43399,8 @@ networks:
 
 **Tag release auto-cancel policy:** Tag-only release workflows like `release.yml` MUST also use workflow concurrency, but only per exact tag ref. A newer run for `refs/tags/v1.2.3` should cancel the older `refs/tags/v1.2.3` run. A run for `v1.2.4` must NOT cancel `v1.2.3`.
 
+**Pull requests and merges:** a pull request runs `ci.yml` only (build, test, lint, coverage, secret scan, workflow policy) — it never publishes an image or a release, and a fork PR receives no secrets. Merging into `main`/`master` is simply a push to that branch, so the merge triggers `ci.yml`, `devel.yml` (the rolling `devel` release) and `docker.yml` (the `{commit_id}` image and the `:devel` image). Merging into `beta` triggers `beta.yml`; a stable release is a tag push, never a merge. A PR and its target branch have different refs, so their concurrency groups never cancel each other.
+
 ## Build Info Variables
 
 All workflows MUST set these environment variables:
@@ -44208,7 +44210,7 @@ jobs:
 - Built for `linux/amd64` and `linux/arm64` using `docker buildx`
 - Registry: `ghcr.io`
 - Standard uses `latest`, All-in-One uses `latest-aio`
-- `:devel` (Standard only — no `Dockerfile.dev.aio` variant is defined, so there is no `:devel-aio` tag) is built by the `build-devel` job inside this same `docker.yml` workflow, from `docker/Dockerfile.dev`, on a daily schedule (`0 4 * * *`) and on every non-tag push — see the YAML below
+- `:devel` (Standard only — no `Dockerfile.dev.aio` variant is defined, so there is no `:devel-aio` tag) is built by the `build-devel` job inside this same `docker.yml` workflow, from `docker/Dockerfile.dev`, on a daily schedule (`0 4 * * *`) and on every push to `main`/`master` — see the YAML below
 - All-in-One (`-aio` tags) is built by its own dedicated workflow, `docker-aio.yml` — it is the only image type that gets a separate workflow file, since it is a materially different image (debian base, extra services), not just a different build mode; see "Docker AIO Workflow" below
 
 **File:** `.github/workflows/docker.yml`
@@ -44337,7 +44339,7 @@ jobs:
 
   build-devel:
     runs-on: ubuntu-26.04
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/'))
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     permissions:
       contents: read
       packages: write
@@ -45465,7 +45467,7 @@ jobs:
 
   build-devel:
     runs-on: ubuntu-26.04
-    if: gitea.event_name == 'schedule' || gitea.event_name == 'workflow_dispatch' || (gitea.event_name == 'push' && !startsWith(gitea.ref, 'refs/tags/'))
+    if: (gitea.event_name == 'schedule' || gitea.event_name == 'workflow_dispatch' || gitea.event_name == 'push') && (gitea.ref == 'refs/heads/main' || gitea.ref == 'refs/heads/master')
     permissions:
       contents: read
       packages: write
@@ -46526,8 +46528,9 @@ docker:build-devel:
         --push \
         .
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "master"
 ```
 
 ## GitLab CI Variables
@@ -46565,7 +46568,7 @@ Create a second pipeline schedule so `docker:build-devel` also runs daily, indep
 | Target Branch | `main` or `master` |
 | Activated | Yes |
 
-This schedule, combined with the `docker:build-devel` job's push rule, gives `:devel` the same "every push + daily" cadence as GitHub/Gitea's `docker.yml` `build-devel` job.
+This schedule, combined with the `docker:build-devel` job's push rule, gives `:devel` the same "main/master push + daily" cadence as GitHub/Gitea's `docker.yml` `build-devel` job.
 
 ## Variable Mapping
 
@@ -47430,7 +47433,7 @@ pipeline {
         stage('Docker Devel') {
             agent { label 'amd64' }
             when {
-                not { buildingTag() }
+                anyOf { branch 'main'; branch 'master' }
             }
             steps {
                 script {
