@@ -6831,7 +6831,7 @@ require (
 | **OIDC** | `github.com/coreos/go-oidc/v3` | OpenID Connect client |
 | **OAuth2** | `golang.org/x/oauth2` | OAuth2 flows |
 | **LDAP** | `github.com/go-ldap/ldap/v3` | LDAP/Active Directory |
-| **SAML** | `github.com/crewjam/saml` | SAML 2.0 Service Provider |
+| **SAML** | `github.com/crewjam/saml` (default) | SAML 2.0 Service Provider. The `govulncheck` gate (PART 28) is mandatory and is never waived. Advisory GO-2026-6909 affects every upstream `crewjam/saml` release and has no fixed version, so an unpatched upstream module fails the gate. A project therefore uses EITHER any maintained SAML 2.0 SP library whose `govulncheck` result is clean, OR `crewjam/saml` through a pinned, patched fork (a `go.mod` `replace` directive) that `govulncheck` reports clean. The chosen library or fork, its origin and the advisory it avoids are recorded in IDEA.md |
 | **Sessions** | `github.com/gorilla/sessions` | Cookie-based sessions |
 
 **Server Admin MFA (Recommended):**
@@ -7074,7 +7074,7 @@ require (
 	golang.org/x/oauth2 {version}
 	// LDAP/AD
 	github.com/go-ldap/ldap/v3 {version}
-	// SAML 2.0 Service Provider
+	// SAML 2.0 Service Provider (or the approved alternative, see "Authentication (REQUIRED - ALL PROJECTS)")
 	github.com/crewjam/saml {version}
 	// Cookie sessions
 	github.com/gorilla/sessions {version}
@@ -8508,7 +8508,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | **Clean & Intuitive** | Easy to read and understand |
 | **Everything Configurable** | If it has a setting, it's in the config |
 | **Sane Defaults** | Built-in defaults (no 1000-line configs) |
-| **Comprehensive** | All options present (commented/defaulted) |
+| **Comprehensive** | Every option is documented in this specification and has a built-in default, so none has to be present in a file: a fresh install writes only `server.yml`, and an area file appears only through the workflows named in "Drop-in Config Directory" (never as a commented template) |
 | **Comments** | Single-line, under 140 characters |
 
 ### Location
@@ -8530,7 +8530,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 |------|----------|
 | **Files** | `*.yml` and `*.yaml`, regular files only (a symlink is followed only when its target stays inside `yaml.d/`). Hidden files, backups (`*.bak`, `*~`, `*.orig`), other extensions and subdirectories are ignored |
 | **Order** | Built-in defaults, then `server.yml`, then every drop-in in byte-wise filename order (`10-tls.yml`, `20-mail.yml`), and finally `secrets.yml`; a later file overrides an earlier one. CLI flags and environment variables keep their higher priority |
-| **Merge** | Maps merge key by key and recursively. A scalar or a list in a later file REPLACES the earlier value whole; lists are never appended; an explicit `null` is invalid (the key resets to its default), not a reset to nothing |
+| **Merge** | Maps merge key by key and recursively. A scalar or a list in a later file REPLACES the earlier value whole; lists are never appended, except `server.auth.ldap.providers` and `server.auth.oidc.providers`, whose entries are matched by `name` (a later file's fields overwrite the matching entry's fields, so `secrets.yml` adds `bind_password` or `client_secret` without repeating the provider, and an entry with a new `name` is appended); an explicit `null` is invalid (the key resets to its default), not a reset to nothing |
 | **Keys** | Same dotted paths as `server.yml`. The area table in "Area Files and Automatic Migration" says where each section belongs; the merge still accepts any section in any file |
 | **Validation** | Every value goes through the normal config validation, and an invalid value is replaced by its default with ONE warning that names the file, line and key (PART 12 → "Invalid → default"). A duplicate scalar key inside one file and an explicit `null` make that key invalid. A file that cannot be parsed at all is ignored (the last good copy of that file stays active, else the built-in defaults) and the error is logged. The server never fails to start because of configuration |
 | **Reload** | The file watcher watches `server.yml`, `yaml.d/`, `secrets.yml` and `assets/`. A change, add or remove re-merges everything; an invalid value resets that key to its default and an unparseable file keeps its last good copy ("Validation") |
@@ -8628,7 +8628,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 
 | Rule | Behavior |
 |------|----------|
-| **Keys** | Only these, for every one the project has: `server.token`; `server.security.encryption_key` and `server.security.encryption_key_version`; `server.notifications.email.smtp.password`; `server.cache.password`; `server.database.password` and `server.database.token`; `server.database.url` and `server.cache.url` (each only while the URL carries a credential); `server.pages.contact.captcha_secret_key`; `server.ssl.letsencrypt.dns_credentials`; `data.cve.api_key`; `server.backup.encryption_password`; `server.metrics.auth.tokens.*`; every webhook URL and its `_secret` under `server.contact.{role}.webhooks`; `server.auth.ldap.providers[].bind_password`; `server.auth.oidc.providers[].client_secret`. `server.tokens.*` is token policy, not a secret. Every other key stays in its area file |
+| **Keys** | Only these, for every one the project has: `server.token`; `server.security.encryption_key` and `server.security.encryption_key_version`; `server.notifications.email.smtp.password`; `server.cache.password`; `server.database.password` and `server.database.token`; `server.database.url` and `server.cache.url` (each only while the URL carries a credential); `server.pages.contact.captcha_secret_key`; `server.ssl.letsencrypt.dns_credentials`; `data.cve.api_key`; `server.backup.encryption_password`; `server.metrics.auth.tokens.*`; every webhook URL and its `_secret` under `server.contact.{role}.webhooks`; `server.auth.ldap.providers[].bind_password`; `server.auth.oidc.providers[].client_secret` (each written as an entry that holds the provider's `name` and the secret field; "Drop-in Config Directory" → Merge joins it to the provider by `name`). `server.tokens.*` is token policy, not a secret. Every other key stays in its area file |
 | **Generated** | When one of these keys is empty or missing at start, the server generates it BEFORE it serves anything, writes it to `secrets.yml` (atomic, `0600`) and records `config.secret_generated` (the key name only) in `audit.log`: `server.token`; `server.security.encryption_key` (with `encryption_key_version: 1`); `server.metrics.auth.tokens.prometheus`, `.grafana` and `.loki`; and a `webhooks.<name>_secret` whenever its webhook URL is set. `server.token` is an `adm_` token and each metrics token an `mtr_` token, each plus 32 random base62 characters ("Token Catalogue") and the encryption key is 32 random bytes. Only `server.token` is printed, once, at first creation; every other value is read from `secrets.yml` |
 | **Never generated** | Credentials that someone else issues stay empty until the operator sets them: `server.notifications.email.smtp.password`, `server.cache.password`, `server.database.password` and `server.database.token`, `server.database.url` and `server.cache.url` with a credential in them, `server.pages.contact.captcha_secret_key`, `server.ssl.letsencrypt.dns_credentials`, `data.cve.api_key`, `server.backup.encryption_password`, the LDAP bind password, the OIDC client secret and the webhook URLs |
 | **Rotation** | Blank a generated key in `secrets.yml` and restart: a new value is generated. `--maintenance secret rotate {name}` rotates the encryption key and the HMAC secrets with their grace periods (PART 11) |
@@ -35042,6 +35042,8 @@ server:
 | `shutdown` | Application stopped | ✗ |
 | `update_available` | New eligible release detected (`update_check` task) | ✗ |
 | `update_installed` | Self-update completed (`auto_install: true`) | ✗ |
+| `update_failed` | A staged update could not be installed (bad checksum or replace failure) | ✗ |
+| `update_staged` | An update is staged and a restart is needed to apply it | ✗ |
 | `breach_notification` | Data breach notification to affected users | ✓ |
 | `breach_admin_alert` | Breach detected alert to Server Admins | ✗ |
 | `test` | Test email | ✗ |
@@ -35076,6 +35078,8 @@ server:
 | `shutdown` | `{app_name} Stopped - {app_name}` | Includes reason, uptime |
 | `update_available` | `Update Available - {app_name}` | Includes current version, new version, and channel |
 | `update_installed` | `Update Installed - {app_name}` | Includes previous version and new version |
+| `update_failed` | `Update Failed - {app_name}` | Includes the version and the failure reason; the old binary keeps running |
+| `update_staged` | `Update Staged - {app_name}` | Includes the staged version and says a restart applies it |
 | `breach_notification` | `Important Security Notice - {app_name}` | Compliance-aware, includes breach details, recommended actions |
 | `breach_admin_alert` | `[{severity}] Security Breach Detected - {app_name}` | Immediate alert, includes detection details, action required |
 | `test` | `Test Email - {app_name}` | Simple test message |
@@ -36040,6 +36044,8 @@ Do not reply to this email.
 | Tor address regenerated | ✓ | ✗ | User initiated |
 | Update available | ✓ | Optional | Informational |
 | Update installed | ✓ | ✓ | Important change record |
+| Update failed | ✓ | ✓ | Critical - the old binary keeps running (`update_failed`) |
+| Update staged | ✓ | ✓ | A restart is needed to apply it (`update_staged`) |
 | Welcome (new user) | ✓ | ✓ | Onboarding |
 | Email verification | ✗ | ✓ | Requires email link |
 | Password reset | ✗ | ✓ | Requires email link |
@@ -36261,6 +36267,8 @@ server:
         token_regenerated: true
         update_available: false
         update_installed: true
+        update_failed: true
+        update_staged: true
 ```
 
 ---
@@ -36682,7 +36690,7 @@ Execute task
 │  Next Run:    2025-01-16 02:00:00                                          │
 │  Run Count:   342 successful, 2 failed                                     │
 │                                                                             │
-│  Retention:   Keep 2 (yesterday's full + daily incremental)                │
+│  Retention:   Keep 2 (today's full + daily incremental)                │
 │  Encryption:  ✓ Enabled (compliance mode)                                  │
 │                                                                             │
 │  ─────────────────────────────────────────────────────────────────────────  │
@@ -36732,7 +36740,7 @@ Execute task
 | Verify | Yes | All checks must pass |
 
 **What backup_daily creates (default: 2 files):**
-- `{project_name}_backup_YYYY-MM-DD.tar.gz[.enc]` - Full backup (yesterday's)
+- `{project_name}_backup_YYYY-MM-DD.tar.gz[.enc]` - Full backup (the state at the run's `T0`, named with its date)
 - `{project_name}-daily.tar.gz[.enc]` - Daily incremental
 
 **What backup_hourly creates (if enabled: +1 file):**
@@ -38716,7 +38724,7 @@ server:
 
 **Default: 3 files total** (new full + the previous full that today's incremental is based on + today's incremental). File counts in the examples below leave out that one extra base full - see "Incremental Backup Contract".
 
-**With hourly enabled: 3 files total** (+ hourly incremental from `backup_hourly` task)
+**With hourly enabled: 4 files total** (+ hourly incremental from `backup_hourly` task)
 
 **With retention options:** `max_backups + keep_weekly + keep_monthly + keep_yearly + incrementals`
 
@@ -38780,7 +38788,7 @@ Every backup is verified **immediately after creation** - backups must be 100% w
 │                                                                      │
 │  [✓] Auto-delete old backups after successful backup                │
 │                                                                      │
-│  Current storage: 23 megabytes (2 files: yesterday + daily incr.)   │
+│  Current storage: 23 megabytes (2 files: full + daily incr.)   │
 │                                                                      │
 │  Hourly incremental:                                                 │
 │  [ ] Enable backup_hourly task (creates 3rd file)                   │
@@ -38807,7 +38815,7 @@ Every backup is verified **immediately after creation** - backups must be 100% w
 
 | File | Description | Retention |
 |------|-------------|-----------|
-| `{project_name}_backup_YYYY-MM-DD.tar.gz[.enc]` | Full backup (yesterday's data) | Controlled by `max_backups` |
+| `{project_name}_backup_YYYY-MM-DD.tar.gz[.enc]` | Full backup (the state at the run's `T0`) | Controlled by `max_backups` |
 | `{project_name}-daily.tar.gz[.enc]` | Daily incremental (cumulative changes since the previous full - see Incremental Backup Contract) | Always 1 (replaced each run) |
 | `{project_name}-hourly.tar.gz[.enc]` | Hourly incremental (if enabled) | Always 1 (replaced each run) |
 
@@ -38864,7 +38872,7 @@ WARN: keep_monthly: 24 exceeds recommended 12 (2 years of monthly backups)
 **Example: Default settings (max=1, weekly=0, monthly=0, yearly=0)**
 ```
 Backups on disk:
-  myapp_backup_2025-01-15.tar.gz.enc    ← Yesterday (full)
+  myapp_backup_2025-01-15.tar.gz.enc    ← Today's run (full at T0)
   myapp-daily.tar.gz.enc                 ← Today (incremental)
 
 Total: 2 files
@@ -38880,7 +38888,7 @@ retention:
 ```
 ```
 Backups on disk (January 15, 2025):
-  myapp_backup_2025-01-15.tar.gz.enc    ← Yesterday (daily)
+  myapp_backup_2025-01-15.tar.gz.enc    ← Today's run (daily full at T0)
   myapp_backup_2025-01-12.tar.gz.enc    ← Last Sunday (weekly)
   myapp_backup_2025-01-01.tar.gz.enc    ← 1st of Jan 2025 (monthly + yearly)
   myapp-daily.tar.gz.enc                 ← Incremental
@@ -38898,7 +38906,7 @@ retention:
 ```
 ```
 Backups on disk (January 15, 2026):
-  myapp_backup_2026-01-15.tar.gz.enc    ← Yesterday (daily)
+  myapp_backup_2026-01-15.tar.gz.enc    ← Today's run (daily full at T0)
   myapp_backup_2026-01-12.tar.gz.enc    ← Last Sunday (weekly)
   myapp_backup_2026-01-01.tar.gz.enc    ← 1st of Jan 2026 (monthly + yearly)
   myapp_backup_2025-12-01.tar.gz.enc    ← 1st of Dec 2025 (monthly, kept until Feb)
@@ -38986,7 +38994,7 @@ on a Sunday counts as daily + weekly + monthly + yearly — uses highest priorit
 
 | Item | Rule |
 |------|------|
-| **Snapshot instant** | The backup task takes ONE instant `T0` at the start of the run. Every archive made in that run reflects the state at `T0` (SQLite via online backup API / `VACUUM INTO`, files copied after the DB snapshot) |
+| **Snapshot instant** | The backup task takes ONE instant `T0` at the start of the run. Every archive made in that run reflects the state at `T0` (SQLite via online backup API / `VACUUM INTO`, files copied after the DB snapshot). The new full is named with the date of `T0`, so a full dated today holds today's 02:00 state, never yesterday's |
 | **Order in the 02:00 run** | Daily incremental FIRST (previous full -> `T0`), then the new full at `T0`. An incremental taken after the new full would cover an empty interval, which is the bug this order prevents |
 | **Base** | The most recent full on disk before this run. Hourly incremental: the newest full (including today's) |
 | **Cumulative** | An incremental holds EVERY change since its base's `snapshot_at`, not since the previous incremental; each new run replaces the old one |
@@ -39412,9 +39420,9 @@ server:
 1. The `update_check` task, running as the service user, performs steps 1 to 3 of the Update Flow into `{data_dir}/update/` (`{project_name}.new` and its SHA256) and records `update.staged` (version only).
 2. The server shuts down gracefully (PART 8 → shutdown) and exits with code `75` (`EX_TEMPFAIL`), a failure exit, so the supervisor restarts it.
 3. The restart runs as root. Startup step 7b verifies the SHA256 again, checks that the staged version is newer than the running one, runs `replaceBinary()` (step 4), deletes `{data_dir}/update/` and re-executes the new binary (step 5), which continues at step 6 as the new version.
-4. Any failure (bad checksum, rename error): the staged files are deleted, the old binary keeps running, `update.failed` is recorded and the Server Admins get the "Update failed" notification. The same version is not staged again until the next release.
+4. Any failure (bad checksum, rename error): the staged files are deleted, the old binary keeps running, `update.failed` is recorded and the Server Admins get the `update_failed` notification. The same version is not staged again until the next release.
 
-**Restart support:** systemd (`Restart=on-failure`), launchd (`KeepAlive`), runit and s6 restart the service after exit `75`. OpenRC, SysV and rc.d do not supervise it: the staged update waits for the next start (boot or `--service restart`) and the Server Admins get "Update staged: restart to apply". In a cluster the rollout stays node-by-node.
+**Restart support:** systemd (`Restart=on-failure`), launchd (`KeepAlive`), runit and s6 restart the service after exit `75`. OpenRC, SysV and rc.d do not supervise it: the staged update waits for the next start (boot or `--service restart`) and the Server Admins get the `update_staged` notification (restart to apply). In a cluster the rollout stays node-by-node.
 
 ### Platform-Specific Binary Replacement
 
