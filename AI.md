@@ -17100,7 +17100,7 @@ web:
 
 ### MCP Endpoint (Model Context Protocol)
 
-**Every project exposes an MCP endpoint so AI clients (Claude, IDE agents, other MCP clients) can use the API as tools. It is a second front door onto the existing API — it adds no new authentication, no new token type, and no new permissions.**
+**Every project exposes an MCP endpoint so AI clients (Claude, IDE agents, other MCP clients) can use the API as tools. It is a second front door onto the existing API — it reuses the API's Bearer authentication (a valid token is required on every MCP request) and adds no new authentication method, no new token type, and no new permissions.**
 
 | Aspect | Rule |
 |--------|------|
@@ -33673,7 +33673,7 @@ Admin Panel Header:
 | `notifications.ssl_expiring_days` | Number | `14` | No | Days before expiry |
 | `notifications.ssl_renewal_failure` | Toggle | On | No | Notify on SSL renewal failure |
 | `notifications.security_alerts` | Toggle | On | No | Security event alerts |
-| `notifications.update_available` | Toggle | On | No | New version available |
+| `notifications.update_available` | Toggle | Off | No | New version available |
 
 #### Scheduler Section (`/server/{admin_path}/scheduler`)
 
@@ -34993,6 +34993,8 @@ server:
 | `ssl_renewed` | Certificate renewed successfully | ✗ |
 | `ssl_renewal_failed` | Certificate renewal failure | ✗ |
 | `scheduler_error` | Scheduled task failed | ✗ |
+| `disk_low` | Disk space low (PART 17 → "Disk Space Low") | ✗ |
+| `database_error` | Database connection problem | ✗ |
 | `startup` | Application started | ✗ |
 | `shutdown` | Application stopped | ✗ |
 | `update_available` | New eligible release detected (`update_check` task) | ✗ |
@@ -35025,6 +35027,8 @@ server:
 | `ssl_renewed` | `SSL Certificate Renewed - {app_name}` | Confirmation of renewal |
 | `ssl_renewal_failed` | `SSL Renewal Failed - {app_name}` | Includes domain, error, days until expiry, next retry |
 | `scheduler_error` | `Scheduled Task Failed - {app_name}` | Includes task name and error |
+| `disk_low` | `Disk Space Low - {app_name}` | Includes path, used percentage, free space and threshold |
+| `database_error` | `Database Connection Problem - {app_name}` | Includes the error message, never credentials |
 | `startup` | `{app_name} Started - {app_name}` | Includes version, mode |
 | `shutdown` | `{app_name} Stopped - {app_name}` | Includes reason, uptime |
 | `update_available` | `Update Available - {app_name}` | Includes current version, new version, and channel |
@@ -35702,6 +35706,29 @@ Do not reply to this email.
 | `{next_retry}` | When renewal will be retried automatically |
 
 **Suppression:** When `ssl_renewal_failed` fires from a scheduled run, it suppresses the `scheduler_error` notification for the same execution. One notification, not two.
+
+### startup / shutdown
+| Variable | Description |
+|----------|-------------|
+| `{hostname}` | Host name |
+| `{version}` | Running version |
+| `{mode}` | Application mode |
+| `{timestamp}` | When the event happened |
+| `{reason}` | Why the server stopped: `signal`, `service stop` or `update restart` (shutdown only) |
+
+### disk_low
+| Variable | Description |
+|----------|-------------|
+| `{path}` | First of the data, log and backup directories on the volume |
+| `{used_percent}` | Used percentage of the volume |
+| `{free}` | Free space, human readable |
+| `{threshold_percent}` | Configured `threshold_percent` |
+
+### database_error
+| Variable | Description |
+|----------|-------------|
+| `{error}` | Error message (never contains credentials) |
+| `{since}` | When the connection problem began |
 
 ### scheduler_error
 | Variable | Description |
@@ -55025,7 +55052,7 @@ Tor Hidden Service: Connected
 3. **Neither available → log a warning and skip** (mirrors Tor's "binary not found → disabled, not an error").
 
 **Key Architecture Points:**
-- **Opt-in, default off** — no eepsite, no port, no `i2pd.conf`, no SAM session unless enabled.
+- **Opt-in outside containers, on by default in a container** — when disabled there is no eepsite, no port, no `i2pd.conf` and no SAM session.
 - **Server binary owns the provider** — Model A: full i2pd process lifecycle; Model B: the SAM session lifecycle.
 - **Dedicated backend port** — the eepsite maps `.b32.i2p:{virtual_port}` → `127.0.0.1:{i2p_backend_port}`, a random-unused loopback port. **Unlike Tor, there is no PROXY-protocol header** (SAM/i2pd do not prepend one), so the backend is a **plain loopback listener**, separate from the clearnet port.
 - **Destination identity persists** — the key lives under `{data_dir}/i2p/site/` (one SAM `PRIV` line, written by the app for both models); the `.b32.i2p` address survives restarts. `i2pd.conf` is derived state, regenerated each run.
