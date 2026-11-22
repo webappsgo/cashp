@@ -15316,7 +15316,7 @@ if err != nil && !isColumnExistsError(err) {
 | Term | What it is | Where it runs | Auth |
 |------|-----------|----------------|------|
 | **Cluster node** | Another instance of THIS server binary, sharing the same DB and cache, behind the same admin namespace | Anywhere reachable from the primary node | Internal — joins via the cluster join token; subsequent traffic uses the shared DB |
-| **Agent** (PART 33) | A separate, purpose-built `{project_name}-agent` binary on a remote machine reporting INTO the server | Customer / operator machines (web hosts, build runners, monitored machines) | Bearer token (`adm_agt_` / `usr_agt_` / `org_agt_`) — see PART 34 → Token Types |
+| **Agent** (PART 33) | A separate, purpose-built `{project_name}-agent` binary on a remote machine reporting INTO the server | Customer / operator machines (web hosts, build runners, monitored machines) | Bearer token (an `adm_`, `usr_` or `org_` token with scope `agent`) — see "Token Catalogue" |
 
 Agents are NEVER cluster nodes; they don't share the DB; they don't get `app_secrets` distributed to them. Cluster nodes are NEVER agents; they don't register via `/agents/register`.
 
