@@ -17116,7 +17116,8 @@ web:
 | Responses | A single `application/json` object per request; an SSE stream only when a tool needs to stream progress. Server-initiated requests are never sent |
 | Sessions | None. An `Mcp-Session-Id` header, if sent by an older client, is ignored — never minted, never echoed |
 | `Origin` | If an `Origin` header is present it MUST be the request's own origin, a configured public origin (PART 8 → "Resolution Order"), or an explicit entry of the resolved CORS allow-list (PART 16 → "CORS Allow-list Resolution Order"); the `*` default of that list does NOT authorize MCP origins; anything else → `403` (DNS-rebinding protection required by the spec). Requests without an `Origin` header (non-browser clients) are unaffected |
-| Header checks | `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` MUST match the JSON-RPC body; mismatch → `400` with the spec's `HeaderMismatch` error |
+| Header checks | Every `POST` carries `MCP-Protocol-Version` (equal to `_meta` `io.modelcontextprotocol/protocolVersion` in the body) and `Mcp-Method` (equal to the body `method`); `tools/call`, `resources/read` and `prompts/get` also carry `Mcp-Name` (equal to `params.name` or `params.uri`; a value that is not plain ASCII arrives as `=?base64?…?=` and is decoded before it is compared). A missing, malformed or mismatched header → `400` with JSON-RPC error code `-32020` (`HeaderMismatch`) |
+| Unknown method | A method the server does not implement → `404` with JSON-RPC error code `-32601` (`Method not found`) |
 
 #### Authentication — reuse, never new
 
@@ -17129,7 +17130,7 @@ web:
 | Authorization | Per tool call, with the caller's token, by the same checks as the matching API endpoint. A token that cannot call an endpoint over REST cannot call its tool |
 | Rate limiting, audit | The same limiters and audit events as the API; the audit `source` is `mcp` so MCP traffic is distinguishable |
 | Operator-only endpoints | Exposed as tools only to a caller whose token is already operator/admin-scoped; for any other caller they are absent from `tools/list` AND rejected on `tools/call` |
-| Token types and scope | `adm_`, `usr_`, `org_` tokens (and agent variants) work as Bearer with exactly the access they have over REST. The token's `scope` is enforced per tool in `tools/list` AND `tools/call`: `read` → read tools only; `read-write` → no delete or admin tools; `global` → everything the token's owner can do |
+| Token types and scope | `adm_`, `usr_`, `org_` tokens (and agent variants) work as Bearer with exactly the access they have over REST. A token with scope `agent` is rejected on the MCP endpoint, as on every route outside the `agents/*` routes (see "Token Properties"). The token's `scope` is enforced per tool in `tools/list` AND `tools/call`: `read` → read tools only; `read-write` → no delete or admin tools; `global` → everything the token's owner can do |
 | MCP clients | Create one dedicated named token per client (name, scope `read` or `read-write`, expiry) in the user's or org's token settings so it can be revoked alone. Use `adm_` only for a server-admin tool, never for a general MCP client |
 
 #### Tools
