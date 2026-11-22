@@ -5717,7 +5717,7 @@ curl -L https://api.example.com/server/healthz
 | **No AI/ML** | Smart logic only, no machine learning |
 | **Concise Responses** | Short, descriptive, and helpful |
 | **Everything Configurable** | ALL settings MUST be configurable via admin WebUI |
-| **Live Reload** | Configuration changes apply immediately without restart |
+| **Live Reload** | Configuration changes apply without restart (file-watch hot-reload), except the restart-required settings of "Smart Config Reload" (listen port and address, `ssl.*`, `database.*`, `server.daemonize`, `tor.*`), which the admin panel reports and which apply at the next start |
 | **Built-in Scheduler** | NEVER use cron, Task Scheduler, or external schedulers (PART 19) |
 
 ### Admin WebUI Configuration
@@ -5755,7 +5755,7 @@ Not every project needs admin UI extensions - it depends on the project's nature
 
 ### Live Reload
 
-**Configuration changes MUST apply immediately without server restart.**
+**Configuration changes apply without a server restart, except the restart-required settings ("Smart Config Reload").**
 
 | Rule | Description |
 |------|-------------|
@@ -5763,7 +5763,7 @@ Not every project needs admin UI extensions - it depends on the project's nature
 | **Hot reload** | Application watches for config changes and reloads |
 | **Graceful** | In-flight requests complete before new config applies |
 | **Feedback** | User sees confirmation that changes are active |
-| **Exceptions** | Only port/address changes require restart (with clear warning) |
+| **Exceptions** | The restart-required settings of "Smart Config Reload" (`server.port`, `server.address`, `ssl.*`, `server.daemonize`, `database.*`, `tor.*`) apply at the next start, with a clear warning; the graceful-reload settings apply without downtime |
 
 **What MUST live reload:**
 - Branding (title, tagline, description)
@@ -5773,13 +5773,15 @@ Not every project needs admin UI extensions - it depends on the project's nature
 - Rate limiting rules
 - robots.txt / security.txt
 - Scheduler settings
-- SSL settings (except port)
+- SSL certificate renewal (the `ssl.*` settings themselves need a restart)
 - All feature toggles
 
-**What MAY require restart (with warning):**
-- Listen address
-- Port number
-- Database driver change
+**What requires restart (with warning), exactly the "Requires Restart" list of "Smart Config Reload":**
+- Listen address and port number
+- `ssl.*` (the TLS listener)
+- `server.daemonize`
+- `database.*` (connection pool and driver)
+- `tor.*`
 
 ### Sensitive Information Handling
 
@@ -8792,13 +8794,13 @@ Service start (automatic after install):
 ENTRYPOINT [ "tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh" ]
 
 # ALSO CORRECT when the project never needs privileged startup:
-# USER {project_name}
+# USER {internal_name}
 
 # WRONG: Hardcode permanent root when the project could run unprivileged
 # and has no documented IDEA.md exception
 #
 # WRONG in projects that need privileged startup: prevents privileged port binding
-# USER {project_name}
+# USER {internal_name}
 ```
 
 #### Windows
@@ -9113,7 +9115,7 @@ Binary checks:
 │   └─ YES → Allow restore (nothing to protect)
 ├─ Is user root?
 │   └─ YES → Allow restore (with confirmation prompt)
-├─ Is user the service user ({project_name})?
+├─ Is user the service user ({internal_name})?
 │   └─ YES → Require admin credentials:
 │            "This will OVERWRITE all data. Enter admin credentials to confirm."
 │            └─ Valid credentials → Allow restore
@@ -9131,7 +9133,7 @@ User runs: {project_name} --maintenance mode development
 Binary checks:
 ├─ Is user root?
 │   └─ YES → Allow (with warning about security implications)
-├─ Is user the service user ({project_name})?
+├─ Is user the service user ({internal_name})?
 │   └─ YES → Require admin credentials
 └─ Random user → Reject
 ```
@@ -11612,6 +11614,7 @@ PHASE 5: Server startup (actual server start)
       ├─ User {project_name} exists → use it
       └─ User missing → create {internal_name}:{internal_name} (see PART 24)
       The service identity is fixed to `{internal_name}:{internal_name}`: no config key selects another user or group, so the early peek never reads one.
+      The account's home directory is `{data_dir}`, and the account is created WITHOUT creating that directory (`useradd --no-create-home`, `pw useradd` without `-m`): step 8b creates every directory and step 8c chowns it, so the order account, directories, ownership never depends on a home directory that exists already.
    b. Create ALL directories (while still root):
       ├─ {config_dir}/ and subdirs (ssl/, tor/)
       ├─ {data_dir}/ and subdirs (db/, security/, tor/, tor/site/)
@@ -11640,7 +11643,7 @@ PHASE 5: Server startup (actual server start)
       ├─ If ANY privileged port fails: exit with error
       └─ Unprivileged ports (>= 1024) bound later in step 18
    g. (reserved) No child process is started while root. Tor and I2P start in step 17 as the service user, after the drop; their directories were created and chowned in steps 8b-8c
-   h. DROP PRIVILEGES to {project_name} user
+   h. DROP PRIVILEGES to the {internal_name} user
    i. Verify privilege drop succeeded (getuid() != 0)
 
 9. IF RUNNING AS USER (non-root) - setup user directories:
@@ -12487,6 +12490,7 @@ The app automatically watches config files and hot-reloads what it can. Settings
 | Setting | Why |
 |---------|-----|
 | `server.admin_path` | Routes must be re-registered |
+| `server.limits.read_timeout`, `server.limits.write_timeout`, `server.limits.idle_timeout` | http.Server is swapped behind the existing listener |
 
 **Requires Restart (admin UI shows notification):**
 
@@ -16354,7 +16358,7 @@ report-uri /api/{api_version}/server/reports/csp
 | Directive | Default | Reason |
 |-----------|---------|--------|
 | `default-src` | `'self'` | Strict baseline; all unset directives fall back here. |
-| `script-src` | `'self'` | All JS lives in `static/js/app.js` — no inline scripts, no inline handlers — so `'self'` costs nothing and blocks every injected `<script>`, inline or cross-origin. |
+| `script-src` | `'self'` | All JS lives in `static/js/app.js` — no inline scripts (the `application/ld+json` block is data that is never executed) and no inline handlers — so `'self'` costs nothing and blocks every injected `<script>`, inline or cross-origin. |
 | `style-src` | `'self' 'unsafe-inline'` | Application code NEVER emits inline `style=""` attributes or `<style>` blocks (all CSS lives in static files, PART 16). `'unsafe-inline'` stays in `style-src` only as a tolerance for styles injected by third parties (browser extensions, embedded widgets); it is not permission for application code, and the frontend tests assert that rendered pages contain no inline styles. |
 | `img-src` | `'self' data: blob: https:` | `data:` for inline icons/SVG, `blob:` for client-side generated previews, `https:` so user avatars / CDN images / OG embeds work without per-host config. (HTTP images explicitly excluded — TLS only.) |
 | `font-src` | `'self' https:` | Web fonts (Google Fonts, FontAwesome CDN, custom CDNs) work without per-host config. HTTPS only. |
@@ -19142,6 +19146,8 @@ server:
 | `read_timeout` | Read timeout | 30s |
 | `write_timeout` | Write timeout | 30s |
 | `idle_timeout` | Idle connection timeout | 120s |
+
+The keys live in `yaml.d/security.yml` (`server.limits`, "Area Files and Automatic Migration"). Each timeout is a Go-style duration (`30s`, `2m`) greater than zero and `max_body_size` is a size with a unit; a missing, malformed or non-positive value is invalid and the default applies (invalid-to-default, with one warning). The three timeouts apply by a graceful reload of the HTTP server (no restart, no downtime).
 
 ## Response Compression
 
@@ -27095,7 +27101,7 @@ self.addEventListener('notificationclick', event => {
 
 ### Background Sync
 
-**OPTIONAL: implemented only when IDEA.md defines a feature that must work offline.** IDEA.md names each action that may be queued. Only idempotent actions (a replay is safe) are queued; a queued request never contains a credential (the replay goes through an open page that attaches the token), so the generic `/api/data` below is an illustration, never a real route; a queued request is discarded after success, after any `4xx` response, or after 24 hours; and the UI shows how many changes are waiting, with a control to discard them. A project without such a feature ships no Background Sync code.
+**OPTIONAL: implemented only when IDEA.md defines a feature that must work offline.** IDEA.md names each action that may be queued. Only idempotent actions (a replay is safe) are queued; a queued request never contains a credential (the replay goes through an open page that attaches the token), so the generic `/api/data` below is an illustration, never a real route; a queued request is discarded after success, after any `4xx` response, or after 24 hours; and the UI shows how many changes are waiting, with a control to discard them. A project without such a feature ships no Background Sync code. The queue is written by page code (IndexedDB, as in the example) and the worker only replays it in its `sync` event, so it is not request interception and does not contradict the same-origin GET pass-through. A visitor-submitted form (the contact form, security and abuse reports) is never queued or persisted offline: it carries a CSRF token and an antispam answer, it is not idempotent and it can hold personal data. Offline, the form shows its error and the visitor sends it again when the connection is back.
 
 **Queue actions when offline, automatically sync when back online:**
 
@@ -27458,7 +27464,7 @@ Sync page (`/server/preferences/sync`), one form, one Import button:
 |---------------|----------------|------------------|
 | **Static assets** (CSS, JS, images) | Cache-first | Served from cache |
 | **HTML pages** | Network-first, cache fallback | Show cached version if offline |
-| **API calls** | Network-only + queue | Show offline indicator, queue for retry |
+| **API calls** | Network-only (the service worker never intercepts them) | Show the offline indicator; nothing is queued unless IDEA.md names the action ("Background Sync"), and that queue belongs to page code, not to the fetch handler |
 | **Fonts** | Cache-first | Served from cache |
 | **User data** | IndexedDB | Full offline access |
 
@@ -28645,7 +28651,7 @@ document.querySelectorAll('.theme-toggle-form').forEach((form) => {
 
 | Partial | Public | Admin | Purpose |
 |---------|:------:|:-----:|---------|
-| `partial/public/header.tmpl` | ✓ | | Logo + top nav + login/user menu, then `branding.content.header` ("Page Content") |
+| `partial/public/header.tmpl` | ✓ | | Brand, top nav and `.header-actions` (login/user menu and theme toggle), then `branding.content.header` ("Page Content") |
 | `partial/public/nav.tmpl` | ✓ | | Horizontal navigation links |
 | `partial/public/footer.tmpl` | ✓ | | About, Privacy links (never the report form) |
 | `partial/admin/header.tmpl` | | ✓ | Logo + search + bell + admin menu |
@@ -28894,7 +28900,7 @@ partial/
 - Language selector (language is detected automatically and changed in Preferences, see "Language Selection")
 - Preferences link (lives next to the theme toggle in the header, not in nav — it's UI state, not app content; also always present in the footer for discoverability)
 
-**Header Layout — single row, 4 zones, in this exact order:**
+**Header Layout — single row, three top-level zones in this exact order (brand, nav links, `.header-actions`):**
 
 ```
 {logo/text}          {links}          {profile/preferences}  {theme_toggle}
@@ -28903,12 +28909,12 @@ partial/
 Brand sits left, nav links are horizontally centered (not pushed right against
 the actions), and the actions cluster (profile/preferences, then theme toggle)
 sits right. Do NOT split header/nav into two separate rows on desktop — that
-pushes links flush right against the header edge with no centering.
+pushes links flush right against the header edge with no centering. The two items on the right (profile/preferences, then theme toggle) are not zones of their own: both sit inside the one `.header-actions` element, in that order, so the DOM has exactly three top-level header zones.
 
 **Default Navigation (nav.tmpl):**
 
 ```
-Desktop (single row, 4 zones):
+Desktop (single row, 3 zones; the actions zone holds two items):
 ┌─────────────────────────────────────────────────────────────────┐
 │ {project_name}   Home | Section 1 | Section 2   [User Icon][Thm] │  ← Header
 └─────────────────────────────────────────────────────────────────┘
@@ -29695,7 +29701,7 @@ web:
 
 | Entry | Mode | Effect |
 |-------|------|--------|
-| `header` | **Extends** | Inserted inside `<header>` of every public page, after the built-in logo and navigation. It replaces nothing |
+| `header` | **Extends** | Inserted as the last child of `<header>` of every public page, after `.header-actions` (the built-in brand, navigation and actions). It replaces nothing, and it is the one operator-supplied exception to the "Header and Navigation Conformance" allowlist |
 | `about` | **Extends** | Appended after the built-in About content |
 | `privacy` | **Extends** | Appended after the built-in privacy sections (after "Your Rights" and the consent controls) and before the Contact section. The built-in sections are never replaced, because they must stay in step with `server.privacy.*` |
 | `footer` | **Overrides** | Replaces the custom branding block above the Application Footer ("Footer Customization"). No entry: the built-in branding. An entry whose body is empty or whitespace-only: no branding. The Default Application Footer is always shown |
@@ -31214,7 +31220,7 @@ func trackingScript(r *http.Request) template.HTML {
 | **Back link** | Every sub-page has the `.breadcrumb` with one link to its hub (`← Preferences`, `← Help`), above the `<h1>`; the text is one translation key. Hubs have none |
 | **Cards** | Content lives in `.section-card`, one concern per card, each labelled by its `<h2>` (`aria-labelledby`). No bare `<h2>` sections on the page background, no card inside a card, no card without a heading |
 | **Classes** | Only the shared theme classes (see "Shared Theme Classes"). A page never borrows a wrapper class from another page type (a help page is not a `search-section`, a preferences page is not a `paste-view`) and never invents a page-specific wrapper |
-| **Frontend rules** | The "HTML5 & CSS Over JavaScript", "CSS Rules", "JavaScript Rules", "Template Rules" and "CSRF" sections apply unchanged: semantic HTML5 first, no inline `style`, `<script>` body or `on*` handler, every state-changing form is a `POST` with the CSRF token, and the page is fully usable without JavaScript |
+| **Frontend rules** | The "HTML5 & CSS Over JavaScript", "CSS Rules", "JavaScript Rules", "Template Rules" and "CSRF" sections apply unchanged: semantic HTML5 first, no inline `style`, executable `<script>` body (the `application/ld+json` data block is the one exception) or `on*` handler, every state-changing form is a `POST` with the CSRF token, and the page is fully usable without JavaScript |
 | **Same chrome everywhere** | The same header, footer, consent banner and skip links on every page, error pages included. A page never adds, removes or reorders header or footer elements |
 
 **Shared shell CSS (in `components.css`, tokens only, no pixel literals except the width caps):**
@@ -31305,7 +31311,7 @@ These rules tighten "Header Layout" above. A header that breaks one of them is a
 
 | No. | Rule |
 |-----|------|
-| 1 | **Allowed elements, in this order, and nothing else:** the brand link, `<nav class="nav-links">`, the hamburger label (below the desktop breakpoint), then `.header-actions` containing exactly the preferences link (or the owner dropdown) and the theme-toggle form. No language selector, no search box (a project's search lives in `<main>`), no install button, no sign-in or sign-up buttons, no sponsor or social icons, no second preferences link for mobile. This list is the content of `<header>`: the `nav-toggle` checkbox, the drawer panel and the scrim are not header elements but siblings of `<header>` in `<body>` (as in the example), and the `~` selectors need only those three to share that parent |
+| 1 | **Allowed elements, in this order, and nothing else:** the brand link, `<nav class="nav-links">`, the hamburger label (below the desktop breakpoint), then `.header-actions` containing exactly the preferences link (or the owner dropdown) and the theme-toggle form. No language selector, no search box (a project's search lives in `<main>`), no install button, no sign-in or sign-up buttons, no sponsor or social icons, no second preferences link for mobile. The one addition is the operator's `branding.content.header` fragment ("Page Content"): when the operator sets it, it is rendered as the last child of `<header>`, after `.header-actions`; with the entry unset nothing is rendered. The conformance test renders every page with it unset, and one more render with it set asserts the fragment is the last child and that nothing else in the header changed. This list is the content of `<header>`: the `nav-toggle` checkbox, the drawer panel and the scrim are not header elements but siblings of `<header>` in `<body>` (as in the example), and the `~` selectors need only those three to share that parent |
 | 2 | **Nav is application sections only:** Home plus the project's own sections, labels of one or two words, plain `<a>` elements, no dropdowns. About, Help, Privacy, Terms, Preferences and API or documentation links belong to the footer; the Contact form is linked nowhere (see "/server/contact" → "Who can reach the form"). The current page carries `aria-current="page"` and `.active`. A project with many sections groups them behind a landing page instead of growing the bar |
 | 3 | **Mobile:** one hamburger (checkbox plus label, no JavaScript) opens the drawer; the preferences link and the theme toggle stay in the bar and never move into the drawer; the drawer holds exactly the nav links |
 | 4 | **No JavaScript required:** the theme toggle is a form `POST` whose target is the server-computed next mode; no `<noscript>` copy of a control; option and button labels come from the value enum (`dark`, `light`, `auto` → their translated names), never by position |
@@ -40569,7 +40575,7 @@ groupadd --system --gid {id} {internal_name}
 
 # Create user with matching UID, same primary group
 useradd --system --uid {id} --gid {id} \
-  --home-dir /etc/{internal_org}/{internal_name} \
+  --home-dir /var/lib/{internal_org}/{internal_name} --no-create-home \
   --shell /sbin/nologin \
   --comment "{internal_name} service account" \
   {internal_name}
@@ -68748,7 +68754,7 @@ After each significant change:
 **If project has existing database:**
 
 1. **NEVER break existing data**
-2. All schema changes are idempotent and applied on startup using `CREATE TABLE IF NOT EXISTS` + `ALTER TABLE IF NOT EXISTS ADD COLUMN IF NOT EXISTS`
+2. All schema changes are idempotent and applied on startup using `CREATE TABLE IF NOT EXISTS` + a plain `ALTER TABLE ... ADD COLUMN` whose `duplicate column name` error is treated as success (PostgreSQL uses `ADD COLUMN IF NOT EXISTS`)
 3. No `migration/` directory, no migration tool, no SQL migration files, no version tracking — the schema bootstrap runs every startup and is a no-op when already current
 4. Test schema bootstrap on backup data first
 5. Forward-only — schema changes must remain backward-compatible with the previous binary release (additive columns, never destructive)
