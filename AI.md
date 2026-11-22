@@ -1324,7 +1324,7 @@ Claude Code creates `.claude/rules/` on first session (see PART 0: Session Initi
 | `testing-rules.md` | 29, 30, 31 | Testing & Development, ReadTheDocs Documentation, I18N & A11Y |
 | `optional-rules.md` | 34-36 | Multi-User, Organizations, Custom Domains (all OPTIONAL) |
 
-**Note:** PART 37 (IDEA.md Reference) and FINAL (Compliance Checklist) are reference-only, not rule files. Only PARTs 34-36 are truly optional (marked "OPTIONAL - NON-NEGOTIABLE WHEN IMPLEMENTED" in spec). PART 32.1 (Tor Hidden Service) is REQUIRED - auto-enabled when Tor binary is found. PART 32.2 (I2P Eepsite) is OPTIONAL and opt-in - disabled by default, enabled only via `server.i2p.enabled`.
+**Note:** PART 37 (IDEA.md Reference) and FINAL (Compliance Checklist) are reference-only, not rule files. Only PARTs 34-36 are truly optional (marked "OPTIONAL - NON-NEGOTIABLE WHEN IMPLEMENTED" in spec). PART 32.1 (Tor Hidden Service) is REQUIRED - auto-enabled when Tor binary is found. PART 32.2 (I2P Eepsite) is OPTIONAL and opt-in - off by default on bare metal and in a VM, ON by default in a container (computed from container detection); set explicitly with `--i2p`, `I2P_ENABLED` or `server.i2p.enabled`.
 
 **Rules File Features:**
 - All `.md` files in `rules/` are automatically discovered recursively
@@ -10412,6 +10412,8 @@ server:
 | `enabled` | Default `true` |
 | Line format | One entry per line. Blank lines and lines starting with `#` or `;` are ignored; anything after the first whitespace or `;` on a line is ignored. A line that does not parse as the source's `type` is skipped and counted; a file with no valid entry is rejected |
 | Built-in | The source `firehol_level1` (type `ip`) is a constant: it is always active, is never written to `server.yml`, and `extra_sources` cannot remove or disable it. URL: `https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset`. Format: a plain-text `.netset` file: lines starting with `#` are comments, every other line is one IPv4 address or CIDR and nothing else (the list has no IPv6 entries). It is a firewall list for internet-facing hosts and also contains bogon ranges (`0.0.0.0/8`, `10.0.0.0/8`, `100.64.0.0/10`, `127.0.0.0/8`, `169.254.0.0/16`, `172.16.0.0/12`, `192.168.0.0/16`): for every downloaded IP source the loader drops each entry that overlaps loopback, private, link-local, CGNAT or the always-trusted set (PART 12 → "Trusted Proxies") and counts it as skipped, so a blocklist can never lock out localhost or the LAN. The first-run download and every daily update follow "Atomic update": the previous file stays in use when a download fails or validates empty. There is no built-in domain source |
+| Domain match targets | A `domain` source is matched against exactly these values, never the request `Host` (that is this server's own name) and never a reverse DNS lookup of the client: (1) the host of the `Origin` header, else of the `Referer` header; (2) the domain of an email address the request submits (the contact and security forms); (3) the host of every URL the request asks the server to fetch or store (webhook targets, link destinations, any `url` field). A match on any target rejects the request with `403 FORBIDDEN` before the handler runs and counts against `blocklist_{id}` |
+| Domain normalization | Before matching and when loading: trim, lowercase, convert to ASCII (IDNA A-labels), drop a trailing dot, a port and userinfo, and ignore a request value that is an IP literal (the IP lists cover those). An entry `example.com` matches that name only; `*.example.com` matches every subdomain at a label boundary but not `example.com` itself, so list both to cover both. A wildcard over a public suffix (`*.com`, `*.co.uk`) is skipped and counted at load |
 
 **NVD (`cve_update`):** the API is paged. Request `resultsPerPage=2000` and advance `startIndex` until `totalResults` is reached. The first run downloads everything; later runs ask only for changes (`lastModStartDate` and `lastModEndDate`, a window of at most 120 days; a longer gap is walked in 120-day windows). Stay at or below 5 requests per 30 seconds without a key and 50 with `data.cve.api_key` set. Records are stored as the API's `cve` objects in `nvd.json` (a JSON array); an incremental update replaces records with the same CVE `id`. A `403` or `429` backs off and retries on the next run and never fails startup.
 
@@ -11709,18 +11711,21 @@ PHASE 5: Server startup (actual server start)
     │   ├─ Generate and write {config_dir}/tor/torrc
     │   ├─ Start dedicated tor process (TorrcFile + DataDir)
     │   ├─ Control: localhost TCP via 127.0.0.1:auto
-    │   ├─ Wait for bootstrap (up to 3 min)
-    │   ├─ Create hidden service, log .onion address
+    │   ├─ Return at once: bootstrap runs in the background and never delays step 18
+    │   │   (health reports `starting` until bootstrap completes or the timeout elapses)
+    │   ├─ The hidden service is created when bootstrap completes; the .onion address is read
+    │   │   from the HiddenServiceDir hostname file as soon as tor writes it, and logged once
     │   └─ Error → log WARN, continue without Tor (non-fatal)
 
-    17b. Start I2P (OPT-IN; only if server.i2p.enabled) - see PART 32.2:
-    ├─ server.i2p.enabled false (default) → skip entirely (no port, no config)
+    17b. Start I2P (default ON in a container, opt-in elsewhere; only if the resolved server.i2p.enabled is true) - see PART 32.2:
+    ├─ resolved enabled false (explicit, or the default outside a container) → skip entirely (no port, no config)
     ├─ enabled, resolve provider:
     │   ├─ i2pd binary found → Model A: create {config_dir}/i2p/, {data_dir}/i2p/site/;
     │   │   allocate backend port; regenerate {config_dir}/i2p/i2pd.conf; start i2pd; SAM session + forward
     │   ├─ else SAM (127.0.0.1:7656) reachable → Model B: SAM SESSION CREATE + STREAM FORWARD
     │   └─ neither → log WARN "no I2P provider", continue without I2P (non-fatal)
-    └─ Wait for destination, log .b32.i2p address
+    └─ Destination creation runs in the background and never delays step 18 (health reports
+       `starting`); the .b32.i2p address is logged once when it exists
 
 18. Start HTTP server:
     ├─ For each configured port:
@@ -11763,12 +11768,14 @@ PHASE 5: Server startup (actual server start)
     │  — only logs may show {address}; the banner, API, and frontend must
     │  always show the resolved {fqdn} from step 20)
     ├─ Log "Mode: {production|development|debug}"
-    ├─ Log "Tor: {.onion address}" (if enabled)
-    ├─ Log "I2P: {.b32.i2p address}" (if enabled and provider available)
+    ├─ Log "Tor: {.onion address}" (if enabled and already known; otherwise the Tor manager logs it once when it appears)
+    ├─ Log "I2P: {.b32.i2p address}" (if enabled and already known; otherwise the I2P manager logs it once when it appears)
     └─ If first_run: display setup token in console
 
 22. Enter main loop (block until shutdown signal received)
 ```
+
+**Overlay networks start asynchronously.** Steps 17a and 17b only start the Tor and I2P managers and return at once: no overlay bootstrap, hidden-service creation or destination creation ever delays step 18, so the HTTP listener is up while an overlay is still coming up (Tor bootstrap can take minutes). Health reports the overlay as `starting` until it is `healthy`, or `unavailable` once `server.tor.bootstrap_timeout` (I2P: its own timeout) elapses without success, exactly as "Overlay Network Health" defines; a stalled or failed overlay is a single WARN and never blocks, restarts or fails the server. The `.onion` and `.b32.i2p` addresses are read from the hostname and destination files the managers write shortly after they start (before bootstrap completes): the startup banner shows an address only when it is already known at step 20 (waiting at most 5 seconds for the file, never for bootstrap), and an address that is not known yet is omitted from the banner and logged once, as a single INFO line, when it appears.
 
 | Step | Runs As | Why |
 |------|---------|-----|
@@ -12596,13 +12603,35 @@ func (m *ConfigManager) syncToDatabase(cfg *Config) {
     }
 }
 
-// syncToFile writes database config to file
-func (m *ConfigManager) syncToFile(cfg *Config) {
-    data, _ := yaml.Marshal(cfg)
-    os.WriteFile(m.configPath, data, 0644)
-    // Update lastFileModTime to prevent re-reading our own write
-    info, _ := os.Stat(m.configPath)
-    m.lastFileModTime = info.ModTime()
+// syncToFile writes the shared settings to the area files in yaml.d/ (last synced copy).
+// It never touches server.yml (node-local) or secrets.yml, and each file is replaced atomically.
+// Version polling of srv_config_meta runs every 5 seconds; this drift sync runs every 5 minutes.
+func (m *ConfigManager) syncToFile(cfg *Config) error {
+    for name, area := range cfg.SharedAreas() {
+        data, err := yaml.Marshal(area)
+        if err != nil {
+            return err
+        }
+        target := filepath.Join(filepath.Dir(m.configPath), "yaml.d", name+".yml")
+        tmp, err := os.CreateTemp(filepath.Dir(target), "."+name+"-*.tmp")
+        if err != nil {
+            return err
+        }
+        if err := tmp.Chmod(0600); err == nil {
+            _, err = tmp.Write(data)
+        }
+        if cerr := tmp.Close(); err == nil {
+            err = cerr
+        }
+        if err == nil {
+            err = os.Rename(tmp.Name(), target)
+        }
+        if err != nil {
+            os.Remove(tmp.Name())
+            return err
+        }
+    }
+    return nil
 }
 ```
 
@@ -17252,7 +17281,7 @@ CREATE TABLE IF NOT EXISTS security_thanks (
 | `credit_pref`, `credit_name` | Set at submission from "Credit preference". `credit_pref` is `name` ("Yes (real name)": `credit_name` is the Name field), `handle` ("Yes (handle)": `credit_name` is the Credit handle), `anon` ("Anonymous") or `no` ("No"); `credit_name` is NULL for `anon` and `no` |
 | Hall of fame (`security_thanks`) | When an operator sets the status to `disclosed` and `credit_pref` is not `no`, one `security_thanks` row is written in the same transaction (idempotent on `tracking_id`): `credit` is `credit_name`, or `Anonymous Researcher #n` for `anon` (n is the number of existing `anon` rows plus one, fixed once written), `severity` is the report's severity at that moment, `disclosed_on` is today (UTC). The row holds no contact data and is NOT removed by report retention, so the hall of fame outlives the report |
 | `token_hash`, `token_last_used` | SHA-256 of the one-shot status token, compared in constant time; `token_last_used` enforces single use per day |
-| Retention | The daily cleanup task deletes a report row, including `body_enc` and `contact_enc`, `server.security.reports.retention_days` (default `365`) after `closed_at`. Open reports are never purged. Key rotation re-encrypts retained bodies (GPG Keypair Management → Rotate), so the retention period never outlives the ability to read them. The status link stops working 30 days after `closed_at` |
+| Retention | The daily `security_cleanup` task (scheduler, Built-in Tasks) deletes a report row, including `body_enc` and `contact_enc`, `server.security.reports.retention_days` (default `365`) after `closed_at`. Open reports are never purged. Key rotation re-encrypts retained bodies (GPG Keypair Management → Rotate), so the retention period never outlives the ability to read them. The status link stops working 30 days after `closed_at` |
 | Backup | The table lives in the database, so every backup and restore includes it |
 
 **Operator workflow.** Maintainers manage reports in the admin panel at `/server/{admin_path}/security/reports`: a list filtered by status, a detail view with the metadata, the researcher comment, the disclosure date and the decrypted report body (decrypted on the server for the authenticated admin session, never written to a log; every view writes a `security.report_viewed` audit entry with `tracking_id` and the admin username, no content), and an update form for `status`, `severity`, `researcher_comment` and `disclosure_date`. An update bumps `updated_at`, logs `security.report_updated` (`tracking_id`, old and new status, no content) to `security.log`, and, when SMTP works and `contact_enc` exists, emails the researcher a status-change notice that carries no report content. The page requires an authenticated admin session; there is no API mirror.
@@ -17295,7 +17324,7 @@ All three coexist under the admin tree. The admin-panel UI groups them under a s
 | Action | Behavior |
 |--------|----------|
 | **Generate** | Generates an Ed25519 (signing) + Curve25519 (encryption) keypair. Identity is `{app_name} Security <{security_contact}>`. Expires 2 years from generation. Private key is encrypted with a key derived from `installation_secret` and stored in `{config_dir}/security/pgp.priv.asc.enc`. Public key stored at `{config_dir}/security/pgp.pub.asc` (also served at `/.well-known/pgp-key.asc`). |
-| **Rotate** | Generates a new keypair, signs the new pubkey with the old key, publishes the rotation to configured keyservers. In ONE database transaction, taken under the same lock the submission step uses, it re-encrypts every stored `body_enc` whose `body_alg` is `pgp` to the new key (decrypt with the old private key, encrypt to the new public key). If any row fails, the transaction rolls back and the old key stays active, so no retained report is ever left readable only by a discarded key. After a successful rotation every stored body is readable with the current key for its whole retention period. The old private key is kept encrypted at `{config_dir}/security/pgp.priv.old.asc.enc` for 30 days, only for items already in transit (notifications sent to the old key, researchers who fetched the old public key); the daily cleanup then deletes it. |
+| **Rotate** | Generates a new keypair, signs the new pubkey with the old key, publishes the rotation to configured keyservers. In ONE database transaction, taken under the same lock the submission step uses, it re-encrypts every stored `body_enc` whose `body_alg` is `pgp` to the new key (decrypt with the old private key, encrypt to the new public key). If any row fails, the transaction rolls back and the old key stays active, so no retained report is ever left readable only by a discarded key. After a successful rotation every stored body is readable with the current key for its whole retention period. The old private key is kept encrypted at `{config_dir}/security/pgp.priv.old.asc.enc` for 30 days, only for items already in transit (notifications sent to the old key, researchers who fetched the old public key); the daily `security_cleanup` task then deletes it. |
 | **Publish to keyservers** | POST the public key to each entry in `web.security.keyservers`. Uses the keyserver's HTTP submission endpoint (`https://keys.openpgp.org/vks/v1/upload` for keys.openpgp.org, similar for ubuntu). Triggered automatically on generate/rotate; manually via "Republish" button. Failures are logged + retried with exponential backoff. |
 | **Export public key** | Download `pgp.pub.asc` directly from the admin panel. Or use the public URL `/.well-known/pgp-key.asc`. |
 | **Export private key** | **Full export, ASCII-armored, decrypted with the operator's confirmation password.** Triggers a sensitive-operation flow (PART 5 → "Sensitive Operations"): re-prompt admin password, log to `audit.log` as `security.private_key_exported`, return the file as a single download. **The download is rate-limited to 1 per hour per admin and the audit entry includes admin username, IP, and reason text the admin must type.** |
@@ -34208,6 +34237,11 @@ The admin panel MUST include a scheduler section with:
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/password` | POST | Change admin password |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/token` | GET | Get current API token (masked) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/token` | POST | Regenerate API token |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security` | GET | Get admin MFA status (TOTP enabled, passkey list, recovery keys remaining) |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/totp/setup` | POST | Start TOTP setup (requires current password; returns secret and QR payload) |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/totp/enable` | POST | Verify the 6-digit code and enable TOTP (returns recovery keys ONCE) |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/passkey/setup` | POST | Start passkey registration (requires current password; returns WebAuthn options) |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/passkey/register` | POST | Complete passkey registration with the attestation response |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/preferences` | GET | Get admin preferences (theme, notifications) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/preferences` | PATCH | Update admin preferences |
 
@@ -36217,6 +36251,7 @@ Every project MUST include these scheduled tasks:
 | `ssl_renewal` | Daily at 03:00 | Renew `{config_dir}/ssl/letsencrypt/{fqdn}/` certs 7 days before expiry | No |
 | `geoip_update` | Weekly (Sunday 03:00) | Download/update ip-location-db GeoIP databases | Yes |
 | `blocklist_update` | Daily at 04:00 | Download/update IP/domain blocklists | Yes |
+| `security_cleanup` | Daily at 03:30 | Delete closed security reports `server.security.reports.retention_days` (default `365`) after `closed_at`, and delete the retired PGP private key (`pgp.priv.old.asc.enc`) 30 days after a rotation | No |
 | `cve_update` | Daily at 05:00 | Download/update CVE (NVD) and Trivy vulnerability databases — trivy has no separate scheduled task despite its own directory/config; this task owns it too | Yes |
 | `update_check` | Daily at 06:00 | Check release channel for a newer version — notify-only unless `update.auto_install: true` (default false); honors `update.defer_days` | Yes |
 | `session_cleanup` | Every 15 minutes | Remove expired sessions | No |
@@ -44446,6 +44481,12 @@ jobs:
           # ghcr.io requires a lowercase image path
           echo "IMAGE_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
           echo "COMMIT_ID=$(git rev-parse --short=7 HEAD)" >> $GITHUB_ENV
+          # OFFICIAL_SITE (optional): site.txt wins; otherwise use repository secrets or leave empty
+          if [ -f site.txt ]; then
+            echo "OFFICIAL_SITE=$(cat site.txt)" >> $GITHUB_ENV
+          else
+            echo "OFFICIAL_SITE=${{ secrets.OFFICIAL_SITE }}" >> $GITHUB_ENV
+          fi
           echo "YYMM=$(date +"%y%m")" >> $GITHUB_ENV
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             VERSION="${GITHUB_REF#refs/tags/}"
@@ -44490,6 +44531,7 @@ jobs:
             BUILD_DATE=${{ env.BUILD_DATE }}
             BUILD_EPOCH=${{ env.BUILD_EPOCH }}
             COMMIT_ID=${{ env.COMMIT_ID }}
+            OFFICIAL_SITE=${{ env.OFFICIAL_SITE }}
           labels: |
             org.opencontainers.image.vendor={project_org}
             org.opencontainers.image.authors={project_org}
@@ -44545,6 +44587,12 @@ jobs:
           # ghcr.io requires a lowercase image path
           echo "IMAGE_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
           echo "COMMIT_ID=$(git rev-parse --short=7 HEAD)" >> $GITHUB_ENV
+          # OFFICIAL_SITE (optional): site.txt wins; otherwise use repository secrets or leave empty
+          if [ -f site.txt ]; then
+            echo "OFFICIAL_SITE=$(cat site.txt)" >> $GITHUB_ENV
+          else
+            echo "OFFICIAL_SITE=${{ secrets.OFFICIAL_SITE }}" >> $GITHUB_ENV
+          fi
           BUILD_EPOCH=$(date -u +%s)
           echo "BUILD_EPOCH=$BUILD_EPOCH" >> $GITHUB_ENV
           echo "BUILD_DATE=$(date -u -d @$BUILD_EPOCH +"%Y-%m-%dT%H:%M:%SZ")" >> $GITHUB_ENV
@@ -44563,6 +44611,7 @@ jobs:
             BUILD_DATE=${{ env.BUILD_DATE }}
             BUILD_EPOCH=${{ env.BUILD_EPOCH }}
             COMMIT_ID=${{ env.COMMIT_ID }}
+            OFFICIAL_SITE=${{ env.OFFICIAL_SITE }}
           labels: |
             org.opencontainers.image.vendor={project_org}
             org.opencontainers.image.authors={project_org}
@@ -44655,6 +44704,12 @@ jobs:
           # ghcr.io requires a lowercase image path
           echo "IMAGE_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
           echo "COMMIT_ID=$(git rev-parse --short=7 HEAD)" >> $GITHUB_ENV
+          # OFFICIAL_SITE (optional): site.txt wins; otherwise use repository secrets or leave empty
+          if [ -f site.txt ]; then
+            echo "OFFICIAL_SITE=$(cat site.txt)" >> $GITHUB_ENV
+          else
+            echo "OFFICIAL_SITE=${{ secrets.OFFICIAL_SITE }}" >> $GITHUB_ENV
+          fi
           echo "YYMM=$(date +"%y%m")" >> $GITHUB_ENV
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             VERSION="${GITHUB_REF#refs/tags/}"
@@ -44701,6 +44756,7 @@ jobs:
             BUILD_DATE=${{ env.BUILD_DATE }}
             BUILD_EPOCH=${{ env.BUILD_EPOCH }}
             COMMIT_ID=${{ env.COMMIT_ID }}
+            OFFICIAL_SITE=${{ env.OFFICIAL_SITE }}
           labels: |
             org.opencontainers.image.vendor={project_org}
             org.opencontainers.image.authors={project_org}
@@ -45570,6 +45626,12 @@ jobs:
       - name: Set build info
         run: |
           echo "COMMIT_ID=$(git rev-parse --short=7 HEAD)" >> $GITEA_ENV
+          # OFFICIAL_SITE (optional): site.txt wins; otherwise use repository secrets or leave empty
+          if [ -f site.txt ]; then
+            echo "OFFICIAL_SITE=$(cat site.txt)" >> $GITEA_ENV
+          else
+            echo "OFFICIAL_SITE=${{ secrets.OFFICIAL_SITE }}" >> $GITEA_ENV
+          fi
           echo "YYMM=$(date +"%y%m")" >> $GITEA_ENV
           if [[ "${{ gitea.ref }}" == refs/tags/* ]]; then
             VERSION="${GITEA_REF_NAME}"
@@ -45618,6 +45680,7 @@ jobs:
             BUILD_DATE=${{ env.BUILD_DATE }}
             BUILD_EPOCH=${{ env.BUILD_EPOCH }}
             COMMIT_ID=${{ env.COMMIT_ID }}
+            OFFICIAL_SITE=${{ env.OFFICIAL_SITE }}
           labels: |
             org.opencontainers.image.vendor={project_org}
             org.opencontainers.image.authors={project_org}
@@ -45680,6 +45743,12 @@ jobs:
       - name: Set build info
         run: |
           echo "COMMIT_ID=$(git rev-parse --short=7 HEAD)" >> $GITEA_ENV
+          # OFFICIAL_SITE (optional): site.txt wins; otherwise use repository secrets or leave empty
+          if [ -f site.txt ]; then
+            echo "OFFICIAL_SITE=$(cat site.txt)" >> $GITEA_ENV
+          else
+            echo "OFFICIAL_SITE=${{ secrets.OFFICIAL_SITE }}" >> $GITEA_ENV
+          fi
           BUILD_EPOCH=$(date -u +%s)
           echo "BUILD_EPOCH=$BUILD_EPOCH" >> $GITEA_ENV
           echo "BUILD_DATE=$(date -u -d @$BUILD_EPOCH +"%Y-%m-%dT%H:%M:%SZ")" >> $GITEA_ENV
@@ -45698,6 +45767,7 @@ jobs:
             BUILD_DATE=${{ env.BUILD_DATE }}
             BUILD_EPOCH=${{ env.BUILD_EPOCH }}
             COMMIT_ID=${{ env.COMMIT_ID }}
+            OFFICIAL_SITE=${{ env.OFFICIAL_SITE }}
           labels: |
             org.opencontainers.image.vendor={project_org}
             org.opencontainers.image.authors={project_org}
@@ -45796,6 +45866,12 @@ jobs:
       - name: Set build info
         run: |
           echo "COMMIT_ID=$(git rev-parse --short=7 HEAD)" >> $GITEA_ENV
+          # OFFICIAL_SITE (optional): site.txt wins; otherwise use repository secrets or leave empty
+          if [ -f site.txt ]; then
+            echo "OFFICIAL_SITE=$(cat site.txt)" >> $GITEA_ENV
+          else
+            echo "OFFICIAL_SITE=${{ secrets.OFFICIAL_SITE }}" >> $GITEA_ENV
+          fi
           echo "YYMM=$(date +"%y%m")" >> $GITEA_ENV
           if [[ "${{ gitea.ref }}" == refs/tags/* ]]; then
             VERSION="${GITEA_REF_NAME}"
@@ -45842,6 +45918,7 @@ jobs:
             BUILD_DATE=${{ env.BUILD_DATE }}
             BUILD_EPOCH=${{ env.BUILD_EPOCH }}
             COMMIT_ID=${{ env.COMMIT_ID }}
+            OFFICIAL_SITE=${{ env.OFFICIAL_SITE }}
           labels: |
             org.opencontainers.image.vendor={project_org}
             org.opencontainers.image.authors={project_org}
@@ -46539,6 +46616,7 @@ docker:build:
         TAGS="-t $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:7}"
       fi
       BUILD_EPOCH="$(date -u +%s)"
+      if [ -f site.txt ]; then OFFICIAL_SITE="$(cat site.txt)"; else OFFICIAL_SITE="${OFFICIAL_SITE:-}"; fi
       BUILD_DATE="$(date -u -d @$BUILD_EPOCH +"%Y-%m-%dT%H:%M:%SZ")"
     - |
       # Build multi-arch with OCI labels and manifest annotations
@@ -46611,6 +46689,7 @@ docker:build-aio:
         TAGS="-t ${IMAGE}:${CI_COMMIT_SHA:0:7}-aio"
       fi
       BUILD_EPOCH="$(date -u +%s)"
+      if [ -f site.txt ]; then OFFICIAL_SITE="$(cat site.txt)"; else OFFICIAL_SITE="${OFFICIAL_SITE:-}"; fi
       BUILD_DATE="$(date -u -d @$BUILD_EPOCH +"%Y-%m-%dT%H:%M:%SZ")"
     - |
       # Build multi-arch all-in-one with OCI labels and manifest annotations
@@ -46672,6 +46751,7 @@ docker:build-devel:
   script:
     - |
       BUILD_EPOCH="$(date -u +%s)"
+      if [ -f site.txt ]; then OFFICIAL_SITE="$(cat site.txt)"; else OFFICIAL_SITE="${OFFICIAL_SITE:-}"; fi
       BUILD_DATE="$(date -u -d @$BUILD_EPOCH +"%Y-%m-%dT%H:%M:%SZ")"
     - |
       # Build multi-arch devel image with OCI labels and manifest annotations
@@ -49177,21 +49257,10 @@ mv "${TOR_BIN}.hidden" "$TOR_BIN"
 ${PROJECT_NAME} --service restart
 wait_for 60 healthz_up
 
-echo "=== [$INIT_MODE] I2P (opt-in, i2pd is installed in this container) ==="
+echo "=== [$INIT_MODE] I2P (default ON in a container, i2pd is installed) ==="
 check "i2pd binary is installed" command -v i2pd
-check "i2p is disabled by default" test "$(overlay i2p status)" = "disabled"
-check "features.i2p.enabled is false by default" test "$(overlay i2p enabled)" = "false"
-check "checks.i2p is omitted by default" test "$(healthz | jq '(.checks | has("i2p"))')" = "false"
-# Opt in through a yaml.d drop-in (this also exercises the drop-in directory)
-mkdir -p "${CONF_ROOT}/yaml.d"
-printf 'server:\n  i2p:\n    enabled: true\n' > "${CONF_ROOT}/yaml.d/50-i2p.yml"
-chown "${INTERNAL_NAME}:${INTERNAL_NAME}" "${CONF_ROOT}/yaml.d" "${CONF_ROOT}/yaml.d/50-i2p.yml"
-chmod 0700 "${CONF_ROOT}/yaml.d"
-chmod 0600 "${CONF_ROOT}/yaml.d/50-i2p.yml"
-${PROJECT_NAME} --service restart
-wait_for 60 healthz_up
 check "server.yml is 0600 after start" test "$(stat -c %a "${CONF_ROOT}/server.yml")" = "600"
-check "features.i2p.enabled is true after opt-in" test "$(overlay i2p enabled)" = "true"
+check "features.i2p.enabled is true by default in a container" test "$(overlay i2p enabled)" = "true"
 check "features.i2p.provider is i2pd" test "$(overlay i2p provider)" = "i2pd"
 case "$(overlay i2p status)" in
     starting|healthy|unavailable) pass "features.i2p.status is a contract word for an enabled network" ;;
@@ -49210,7 +49279,22 @@ else
 fi
 if healthz | grep -Eq '/(etc|var|home|config|data)/'; then fail "health response leaks a filesystem path"; else pass "health response carries no filesystem path"; fi
 
-echo "=== [$INIT_MODE] I2P missing provider (opted in, no i2pd: disabled, never an error) ==="
+echo "=== [$INIT_MODE] I2P opt-out (an explicit config value beats the container default) ==="
+mkdir -p "${CONF_ROOT}/yaml.d"
+printf 'server:\n  i2p:\n    enabled: false\n' > "${CONF_ROOT}/yaml.d/50-i2p.yml"
+chown "${INTERNAL_NAME}:${INTERNAL_NAME}" "${CONF_ROOT}/yaml.d" "${CONF_ROOT}/yaml.d/50-i2p.yml"
+chmod 0700 "${CONF_ROOT}/yaml.d"
+chmod 0600 "${CONF_ROOT}/yaml.d/50-i2p.yml"
+${PROJECT_NAME} --service restart
+wait_for 60 healthz_up
+check "features.i2p.enabled is false after opt-out" test "$(overlay i2p enabled)" = "false"
+check "status is disabled after opt-out" test "$(overlay i2p status)" = "disabled"
+check "checks.i2p is omitted after opt-out" test "$(healthz | jq '(.checks | has("i2p"))')" = "false"
+rm -f "${CONF_ROOT}/yaml.d/50-i2p.yml"
+${PROJECT_NAME} --service restart
+wait_for 60 healthz_up
+
+echo "=== [$INIT_MODE] I2P missing provider (default on, no i2pd: disabled, never an error) ==="
 I2PD_BIN=$(command -v i2pd)
 mv "$I2PD_BIN" "${I2PD_BIN}.hidden"
 ${PROJECT_NAME} --service restart
@@ -49348,9 +49432,10 @@ echo "Incus tests completed successfully ($MODES)"
 |------|----------|
 | Tor with the binary present | `features.tor.enabled: true`; `status` is one of the four contract words; within `TOR_WAIT` seconds (default 300) it becomes `healthy` with a v3 `.onion` hostname, `checks.tor: ok`, a persisted `hostname` file, and mode `0700` on the config, data and `site` directories |
 | Tor with the binary removed | `enabled: false`, `status: disabled`, empty hostname, NO `checks.tor` key (never `error`, never `unavailable`) |
-| I2P before opt-in | `enabled: false`, `status: disabled`, no `checks.i2p` key |
-| I2P opted in through a `yaml.d/50-i2p.yml` drop-in | `enabled: true`, `provider: i2pd`; within `I2P_WAIT` seconds (default 600) it becomes `healthy` with a `.b32.i2p` hostname, `checks.i2p: ok` and a persisted destination key |
-| I2P opted in, `i2pd` removed | `enabled: false`, `status: disabled`, `provider: none`, no `checks.i2p` key |
+| I2P in a container with no explicit setting | `enabled: true`, `provider: i2pd`, `status` is one of the contract words |
+| I2P default ON, once bootstrapped | `enabled: true`, `provider: i2pd`; within `I2P_WAIT` seconds (default 600) it becomes `healthy` with a `.b32.i2p` hostname, `checks.i2p: ok` and a persisted destination key |
+| I2P opted out through a `yaml.d/50-i2p.yml` drop-in (`enabled: false`) | `enabled: false`, `status: disabled`, no `checks.i2p` key |
+| I2P default ON, `i2pd` removed | `enabled: false`, `status: disabled`, `provider: none`, no `checks.i2p` key |
 | Any state | the health response never contains a filesystem path |
 
 Bootstrapping Tor and I2P needs outbound network access from the container. When the network is missing, the `healthy` checks print `SKIP` and the contract checks still run; `REQUIRE_OVERLAY=1` turns a missing bootstrap into a failure (use it for the release run). The script exits non-zero when any check failed; a failure is never printed and then ignored.
@@ -53953,7 +54038,7 @@ Because the PROXY header is sent on every connection, the `HiddenServicePort` ta
 
 | Event | Action | Notes |
 |-------|--------|-------|
-| **App Start** | Find Tor binary → Start dedicated Tor process → Wait for bootstrap → Create hidden service | All platforms |
+| **App Start** | Find Tor binary → Start dedicated Tor process → Bootstrap in the background → Create hidden service | All platforms |
 | **App Running** | Monitor Tor process, restart if crashed | All platforms |
 | **App Shutdown** | Terminate Tor process gracefully | Unix: SIGTERM; Windows: TerminateProcess |
 | **App Crash** | Tor process should terminate (child process dies with parent) | All platforms |
@@ -54883,7 +54968,7 @@ Tor Hidden Service: Connected
 
 ### Overview
 
-**I2P support is OPTIONAL. On bare metal and in a VM it is opt-in and off by default; in a container it is ON by default.** A container image is isolated and always ships `i2pd` (the image contract), so there is nothing to protect by asking; a host may already run its own router or SAM bridge, so the operator opts in there. This is the difference from Tor (PART 32.1), which is auto-enabled whenever the `tor` binary is found. The eepsite is created **only** when I2P is enabled (`server.i2p.enabled: true` / `I2P_ENABLED=true` / `--i2p`, which the container image sets by default) **and** a provider is available.
+**I2P support is OPTIONAL. On bare metal and in a VM it is opt-in and off by default; in a container it is ON by default.** A container image is isolated and always ships `i2pd` (the image contract), so there is nothing to protect by asking; a host may already run its own router or SAM bridge, so the operator opts in there. This is the difference from Tor (PART 32.1), which is auto-enabled whenever the `tor` binary is found. The eepsite is created **only** when I2P is enabled (`server.i2p.enabled: true` / `I2P_ENABLED=true` / `--i2p`, or the computed default of `true` inside a container) **and** a provider is available.
 
 **I2P provides one capability here:**
 1. **Eepsite** — server-side `.b32.i2p` hosting over the I2P network.
@@ -55177,10 +55262,11 @@ type I2PConfig struct {
     BootstrapTimeout int `yaml:"bootstrap_timeout" json:"bootstrap_timeout"`
 }
 
-// DefaultI2PConfig returns the default (disabled) I2P configuration.
+// DefaultI2PConfig returns the base I2P configuration. Enabled is false here; the loader replaces it with the
+// computed default (true inside a container, false elsewhere) unless the flag, the environment or the config sets it.
 func DefaultI2PConfig() I2PConfig {
     return I2PConfig{
-        // OPT-IN: default off
+        // Base value only; see the computed default above
         Enabled:          false,
         Binary:           "",
         SAMAddress:       "127.0.0.1:7656",
@@ -61557,7 +61643,7 @@ User receives: "Password reset requested by administrator.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Admin Panel MFA Setup (`/server/{admin_path}/{admin_username}/security`):**
+**Admin Panel MFA Setup (`/server/{admin_path}/{admin_username}/profile/security`):**
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -61582,7 +61668,7 @@ User receives: "Password reset requested by administrator.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**TOTP Setup Flow (`/server/{admin_path}/{admin_username}/security/totp/setup`):**
+**TOTP Setup Flow (`/server/{admin_path}/{admin_username}/profile/security/totp/setup`):**
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -61608,7 +61694,7 @@ User receives: "Password reset requested by administrator.
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Passkey Setup Flow (`/server/{admin_path}/{admin_username}/security/passkey/setup`):**
+**Passkey Setup Flow (`/server/{admin_path}/{admin_username}/profile/security/passkey/setup`):**
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -63709,6 +63795,11 @@ Moderation only - Server Admin does not manage org members/roles.
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/password` | POST | Change admin password |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/token` | GET | Get current API token (masked) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/token` | POST | Regenerate API token (returns new token ONCE) |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security` | GET | Get admin MFA status (TOTP enabled, passkey list, recovery keys remaining) |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/totp/setup` | POST | Start TOTP setup (requires current password; returns secret and QR payload) |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/totp/enable` | POST | Verify the 6-digit code and enable TOTP (returns recovery keys ONCE) |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/passkey/setup` | POST | Start passkey registration (requires current password; returns WebAuthn options) |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/passkey/register` | POST | Complete passkey registration with the attestation response |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/preferences` | GET | Get admin preferences (theme, notifications) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/preferences` | PATCH | Update admin preferences |
 
