@@ -7807,7 +7807,7 @@ All nodes see changes immediately
 ```
 
 - Database is source of truth
-- `server.yml` is node-local; the area files in `yaml.d/` are the synced copy AND the backup ("Config Sync (SERVER and HYBRID)")
+- `server.yml` is node-local; the area files in `yaml.d/` are the synced copy AND the backup ("Config Sync")
 - Admin panel writes to database
 - Changes automatically synced to the local area files
 - If database unavailable → read-only mode using the last synced area files
@@ -8142,7 +8142,7 @@ server:
       on_exit: true
 ```
 
-### Config Sync (SERVER and HYBRID)
+### Config Sync
 
 **Shared settings live in the database, and every node keeps its area files in step with it. `server.yml` and `secrets.yml` are node-local and are never synced.** This applies in Cluster Mode, when a remote database is configured. A single instance has no sync: the admin panel, the CLI and the setup flow write the owning area file directly, and the file watcher applies a hand edit. API projects have no sync.
 
@@ -8565,7 +8565,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | `yaml.d/app.yml` | Every other section, which is project-defined (the product's own settings) |
 | `secrets.yml` | Credentials only ("Secrets File") |
 
-Only the sections a project has apply. Each key has exactly one home, and the area files are the shared settings: they are synced through the database in SERVER and HYBRID ("Config Sync"), while `server.yml` is never synced.
+Only the sections a project has apply. Each key has exactly one home, and the area files are the shared settings: they are synced through the database in Cluster Mode ("Config Sync"), while `server.yml` is never synced.
 
 Wherever this specification says a setting is set "in `server.yml`", it means that dotted path in the merged configuration, in whichever file the table assigns it to.
 
@@ -12685,7 +12685,7 @@ CREATE TABLE IF NOT EXISTS app_secrets (
 - `users.db` can be backed up/restored independently
 - User data is more sensitive, may have different retention policies
 - Easier to migrate users between instances
-- `server.db` can be recreated from config file if needed
+- A missing `server.db` is recreated empty at startup (schema, defaults and newly generated secrets only); the state in it (audit, security and resource state, generated secrets) comes back only by restoring a backup, because configuration never lives in the database in single-instance mode
 
 **Database Modes:**
 
@@ -19147,7 +19147,7 @@ server:
 | `write_timeout` | Write timeout | 30s |
 | `idle_timeout` | Idle connection timeout | 120s |
 
-The keys live in `yaml.d/security.yml` (`server.limits`, "Area Files and Automatic Migration"). Each timeout is a Go-style duration (`30s`, `2m`) greater than zero and `max_body_size` is a size with a unit; a missing, malformed or non-positive value is invalid and the default applies (invalid-to-default, with one warning). The three timeouts apply by a graceful reload of the HTTP server (no restart, no downtime).
+The keys live in `yaml.d/security.yml` (`server.limits`, "Area Files and Automatic Migration"). Each timeout is a duration with a unit (`30s`, `2m`) greater than zero and `max_body_size` is a size with a unit; a missing, malformed or non-positive value is invalid and the default applies (invalid-to-default, with one warning). The three timeouts apply by a graceful reload of the HTTP server (no restart, no downtime).
 
 ## Response Compression
 
@@ -28651,7 +28651,7 @@ document.querySelectorAll('.theme-toggle-form').forEach((form) => {
 
 | Partial | Public | Admin | Purpose |
 |---------|:------:|:-----:|---------|
-| `partial/public/header.tmpl` | ✓ | | Brand, top nav and `.header-actions` (login/user menu and theme toggle), then `branding.content.header` ("Page Content") |
+| `partial/public/header.tmpl` | ✓ | | Brand, top nav and `.header-actions` (the Guest Header, or the notification bell and profile menu), then `branding.content.header` ("Page Content") |
 | `partial/public/nav.tmpl` | ✓ | | Horizontal navigation links |
 | `partial/public/footer.tmpl` | ✓ | | About, Privacy links (never the report form) |
 | `partial/admin/header.tmpl` | | ✓ | Logo + search + bell + admin menu |
@@ -28909,12 +28909,12 @@ partial/
 Brand sits left, nav links are horizontally centered (not pushed right against
 the actions), and the actions cluster (profile/preferences, then theme toggle)
 sits right. Do NOT split header/nav into two separate rows on desktop — that
-pushes links flush right against the header edge with no centering. The two items on the right (profile/preferences, then theme toggle) are not zones of their own: both sit inside the one `.header-actions` element, in that order, so the DOM has exactly three top-level header zones.
+pushes links flush right against the header edge with no centering. The items on the right (profile/preferences and theme toggle) are not zones of their own: they all sit inside the one `.header-actions` element (with a session the theme toggle is inside the profile menu), so the DOM has exactly three top-level header zones.
 
 **Default Navigation (nav.tmpl):**
 
 ```
-Desktop (single row, 3 zones; the actions zone holds two items):
+Desktop (single row, 3 zones; the actions zone is one element):
 ┌─────────────────────────────────────────────────────────────────┐
 │ {project_name}   Home | Section 1 | Section 2   [User Icon][Thm] │  ← Header
 └─────────────────────────────────────────────────────────────────┘
@@ -29693,7 +29693,7 @@ web:
 | **Images** | `logo`, `favicon` and `seo.og_image` take an `https://` URL, a `data:` URI or a file name in `{config_dir}/assets/` ("Image Files"); empty means the embedded default |
 | **SEO tags** | `{canonical_url}` is `seo.canonical` (when set) plus the request path, otherwise the request origin plus the path; sitemap, feeds and `robots.txt` always use `BuildURL(r, path)`. `seo.noindex: true` forces `{robots}` to `noindex,nofollow` on every route and adds `X-Robots-Tag: noindex, nofollow`. `opengraph.enabled: false` or `twitter.enabled: false` omits that whole tag group. `meta_tags` names are limited to `[a-z0-9:_.-]`, contents are HTML-escaped, and a name this specification already generates (`description`, `keywords`, `author`, `robots`, `viewport`) is ignored. `title_separator` is at most 8 characters. An invalid value is replaced by its default (PART 5 → "Invalid → default") |
 | **Accent** | `web.ui.accent` is a 6-digit hex color (`#RRGGBB`), the base of `--color-primary` (links, buttons, focus ring) and of its `--color-primary-bg` tint. No single color reaches 4.5:1 against both a dark and a light background, so the server derives one color per theme: the base itself when it already reaches 4.5:1 against that theme's `--color-bg` (`#282a36` dark, `#ffffff` light), otherwise the same hue and saturation with the lightness moved (up on dark, down on light) in 1% steps until it does. `--color-primary-bg` is that color at 15% alpha (dark) or 12% (light). A value that is not valid hex is ignored, the built-in color is used, and one warning names the key. The server emits the result in `/static/css/accent.css`, linked after the app stylesheet (never an inline style, CSP), setting the variables for the dark default (`:root`), for `html.theme-light` and, inside `@media (prefers-color-scheme: light)`, for `html.theme-auto`; no valid key, no file |
-| **Sync** | In Cluster Mode, SERVER and HYBRID sync `branding.yml` like every other area file ("Config Sync"), so all nodes show the same branding, theme, page content and images (`assets/` is mirrored too, "Image Files"). A branding key found in `server.yml` is still honored (it merges below `branding.yml`) and is moved by the automatic migration |
+| **Sync** | In Cluster Mode, SERVER syncs `branding.yml` like every other area file ("Config Sync"), so all nodes show the same branding, theme, page content and images (`assets/` is mirrored too, "Image Files"). A branding key found in `server.yml` is still honored (it merges below `branding.yml`) and is moved by the automatic migration |
 
 ### Page Content (`server.branding.content`)
 
@@ -29748,7 +29748,7 @@ server:
 | `data:` URI | At most 256 KiB, type `image/png`, `image/jpeg`, `image/webp`, `image/x-icon` or `image/svg+xml` |
 | File name | A file in `{config_dir}/assets/` (`.svg`, `.png`, `.ico`, `.webp`, `.jpg`, at most 2 MiB each). A name with a path, or a file that is missing, is ignored and the embedded default is used |
 
-SVG is rendered only through `<img>`, never inline. `assets/` is optional, `0700` with `0600` files (PART 8 → "Directory Validation Rules": private paths), watched like `yaml.d/`, and included in backups whenever it exists (PART 22 → "Backup Contents"). In Cluster Mode (SERVER and HYBRID), `assets/` is mirrored through the database like `branding.yml` itself (ConfigManager writes an added, changed or removed file to the `srv_config` table as `assets.{name}`, a removal is a tombstone row, and every other node writes the content to its own `assets/` atomically); the newest `updated_at` wins.
+SVG is rendered only through `<img>`, never inline. `assets/` is optional, `0700` with `0600` files (PART 8 → "Directory Validation Rules": private paths), watched like `yaml.d/`, and included in backups whenever it exists (PART 22 → "Backup Contents"). In Cluster Mode, `assets/` is mirrored through the database like `branding.yml` itself (ConfigManager writes an added, changed or removed file to the `srv_config` table as `assets.{name}`, a removal is a tombstone row, and every other node writes the content to its own `assets/` atomically); the newest `updated_at` wins.
 
 ### Where Branding Is Used
 
@@ -31311,7 +31311,7 @@ These rules tighten "Header Layout" above. A header that breaks one of them is a
 
 | No. | Rule |
 |-----|------|
-| 1 | **Allowed elements, in this order, and nothing else:** the brand link, `<nav class="nav-links">`, the hamburger label (below the desktop breakpoint), then `.header-actions` containing exactly the preferences link (or the owner dropdown) and the theme-toggle form. No language selector, no search box (a project's search lives in `<main>`), no install button, no sign-in or sign-up buttons, no sponsor or social icons, no second preferences link for mobile. The one addition is the operator's `branding.content.header` fragment ("Page Content"): when the operator sets it, it is rendered as the last child of `<header>`, after `.header-actions`; with the entry unset nothing is rendered. The conformance test renders every page with it unset, and one more render with it set asserts the fragment is the last child and that nothing else in the header changed. This list is the content of `<header>`: the `nav-toggle` checkbox, the drawer panel and the scrim are not header elements but siblings of `<header>` in `<body>` (as in the example), and the `~` selectors need only those three to share that parent |
+| 1 | **Allowed elements, in this order, and nothing else:** the brand link, `<nav class="nav-links">`, the hamburger label (below the desktop breakpoint), then `.header-actions` containing exactly: the Guest Header (the preferences link, then the theme-toggle form) when nobody is signed in or Multi-User is off; otherwise the notification bell and the profile menu, whose dropdown holds the theme toggle ("Notification Bell", "Profile Icon"). No language selector, no search box (a project's search lives in `<main>`), no install button, no sign-in or sign-up buttons, no sponsor or social icons, no second preferences link for mobile. The one addition is the operator's `branding.content.header` fragment ("Page Content"): when the operator sets it, it is rendered as the last child of `<header>`, after `.header-actions`; with the entry unset nothing is rendered. The conformance test renders every page with it unset, and one more render with it set asserts the fragment is the last child and that nothing else in the header changed. This list is the content of `<header>`: the `nav-toggle` checkbox, the drawer panel and the scrim are not header elements but siblings of `<header>` in `<body>` (as in the example), and the `~` selectors need only those three to share that parent |
 | 2 | **Nav is application sections only:** Home plus the project's own sections, labels of one or two words, plain `<a>` elements, no dropdowns. About, Help, Privacy, Terms, Preferences and API or documentation links belong to the footer; the Contact form is linked nowhere (see "/server/contact" → "Who can reach the form"). The current page carries `aria-current="page"` and `.active`. A project with many sections groups them behind a landing page instead of growing the bar |
 | 3 | **Mobile:** one hamburger (checkbox plus label, no JavaScript) opens the drawer; the preferences link and the theme toggle stay in the bar and never move into the drawer; the drawer holds exactly the nav links |
 | 4 | **No JavaScript required:** the theme toggle is a form `POST` whose target is the server-computed next mode; no `<noscript>` copy of a control; option and button labels come from the value enum (`dark`, `light`, `auto` → their translated names), never by position |
@@ -68754,7 +68754,7 @@ After each significant change:
 **If project has existing database:**
 
 1. **NEVER break existing data**
-2. All schema changes are idempotent and applied on startup using `CREATE TABLE IF NOT EXISTS` + a plain `ALTER TABLE ... ADD COLUMN` whose `duplicate column name` error is treated as success (PostgreSQL uses `ADD COLUMN IF NOT EXISTS`)
+2. All schema changes are idempotent and applied on startup using `CREATE TABLE IF NOT EXISTS` for new tables, plus a guarded `ALTER TABLE ADD COLUMN` for new columns — the guard catches and ignores the "duplicate column" error on re-run (PostgreSQL 9.6+ can use `ADD COLUMN IF NOT EXISTS` directly; see PART 10 § Schema Updates)
 3. No `migration/` directory, no migration tool, no SQL migration files, no version tracking — the schema bootstrap runs every startup and is a no-op when already current
 4. Test schema bootstrap on backup data first
 5. Forward-only — schema changes must remain backward-compatible with the previous binary release (additive columns, never destructive)
