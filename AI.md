@@ -23267,12 +23267,13 @@ Need additional compatible endpoints?"
 | `/api/{api_version}/server/graphql` | POST | None | GraphQL queries (versioned; schema may differ across versions) |
 | `/api/{api_version}/server/mcp` | POST | Bearer (optional) | MCP endpoint (versioned; Streamable HTTP, same tokens as the API) |
 | `/api/{api_version}/server/healthz` | GET | None | Health check (JSON default; text via API rules) |
-| `/server/preferences` | GET, POST | None (POST: CSRF) | Guest preferences page / save form; `POST` sets cookies, `303` (see "Cross-device preference sync") |
-| `/server/preferences/export` | GET | None | Export block: full URL + short code (content-negotiated) |
-| `/server/preferences/import` | GET | None | Import via `code` or direct params; sets cookies, `303` |
+| `/server/preferences` | GET, POST | None (POST: CSRF) | Guest preferences hub and save form; links every registered preferences page; `POST` sets cookies, `303` |
+| `/server/preferences/sync` | GET, POST | None (POST: CSRF) | Sync page: export block (full URL + short code, content-negotiated) and the import form; `POST` applies `code`, `303` (see "Cross-device preference sync") |
+| `/server/preferences/sync/import` | GET | None | Import via `code` or direct params; sets cookies, `303` |
+| `/server/preferences/export`, `/server/preferences/import` | GET | None | Legacy paths: `308` to `/server/preferences/sync` and `/server/preferences/sync/import` with the query kept, so links shared before the move keep working. Not registered, not linked |
 | `/api/{api_version}/server/preferences` | GET, POST | None | Current preferences / partial update (JSON) |
-| `/api/{api_version}/server/preferences/export` | GET | None | Preferences plus `url` and `code` (JSON) |
-| `/api/{api_version}/server/preferences/import` | GET | None | Import; JSON with `applied` and `ignored` |
+| `/api/{api_version}/server/preferences/sync` | GET | None | Preferences plus `url` and `code` (JSON) |
+| `/api/{api_version}/server/preferences/sync/import` | GET | None | Import; JSON with `applied` and `ignored` |
 | `/api/{api_version}/server/metrics[/{service}]` | GET | Bearer token (per-service) | Metrics (versioned; same handlers) |
 | `/api/{api_version}/server/{admin_path}/*` | ALL | Bearer | Admin API |
 
@@ -27245,7 +27246,7 @@ async function clearClientData() {
 | Cookie | Values | Default |
 |--------|--------|---------|
 | `theme` | `dark` \| `light` \| `auto` | `dark` |
-| `lang` | BCP 47 tag: `en`, `es`, `fr`, … | `Accept-Language` header |
+| `lang` | BCP 47 tag: `en`, `es`, `fr`, … — written only when the visitor picks a language or applies a sync import | automatic: best `Accept-Language` match, else `en` (see "Language Selection") |
 | `cookie_consent` | JSON: granular categories + timestamp | unset (banner shown) |
 | `ccpa_opt_out` | `true` | unset |
 | `{project_name}_build` | running build stamp `{project_version}-{short_commit}` | set on first HTML response — drives the PART 9 version-change purge |
@@ -27273,8 +27274,8 @@ document.cookie = "lang=fr; path=/; max-age=31536000; SameSite=Lax";
 Preferences aren't tied to identity — any two guests who set the same `theme`/`lang` produce the same code/URL, because the code/URL *is* the preference values, not a lookup key. This lets a preference be carried to a new browser/device without an account and without the server ever storing anything.
 
 - `theme`, `lang`, and every app-specific `{project_name}_pref_*` cookie are exportable — export/import round-trips the full guest preference set, not just theme/lang. `cookie_consent` and `ccpa_opt_out` are NEVER included — consent is a per-browser legal acknowledgment that must be re-affirmed on each device, not a portable preference. `{project_name}_build` is NEVER included — it is a device-local cache-purge stamp. Credential cookies (session, CSRF, and any owner/linked token cookie) are NEVER exportable — tokens are credentials, not preferences.
-- Guest preferences live at `/server/preferences` (distinct from the authenticated `/server/{admin_path}/{admin_username}/preferences` and PART-34 `/users/settings/preferences` routes), API-mirrored at `/api/{api_version}/server/preferences` — the export/import actions are sub-routes of it, never the standalone `/prefs/*` path, nor bare `/preferences` without the `/server` prefix. `preferences` MUST be added to the `{admin_path}` reserved-word list (see "Route Conflict Detection") so an operator can never set `admin_path=preferences` and collide with it. If an old/non-canonical route (e.g. a bare `/preferences` or `/prefs/*`) exists in already-written code, delete it outright and update all callers to `/server/preferences` — never keep it as a redirect or alias "for backward compatibility" (see "Canonical Terms Only").
-- **Export** (`GET /server/preferences/export`, API-mirrored at `GET /api/{api_version}/server/preferences/export`, rendered inline on the page per rule 13), **Import** (`GET /server/preferences/import`, API-mirrored at `GET /api/{api_version}/server/preferences/import`, via the inline `code` field per rule 14), and **Save** (`POST /server/preferences`, API-mirrored at `POST /api/{api_version}/server/preferences`) follow the exact contract below. Every value, name, status and field in it is fixed — implement it as written; never invent alternative parameter names, JSON fields, routes (`/server/preferences/save`, `/prefs/*`) or formats.
+- Guest preferences live at `/server/preferences` (distinct from the authenticated `/server/{admin_path}/{admin_username}/preferences` and PART-34 `/users/settings/preferences` routes), API-mirrored at `/api/{api_version}/server/preferences` — the sync page and its import action live under `/server/preferences/sync`, never the standalone `/prefs/*` path, nor bare `/preferences` without the `/server` prefix. `preferences` MUST be added to the `{admin_path}` reserved-word list (see "Route Conflict Detection") so an operator can never set `admin_path=preferences` and collide with it. If an old/non-canonical route (e.g. a bare `/preferences` or `/prefs/*`) exists in already-written code, delete it outright and update all callers to `/server/preferences` — never keep it as a redirect or alias "for backward compatibility" (see "Canonical Terms Only").
+- **Export** (`GET /server/preferences/sync`, API-mirrored at `GET /api/{api_version}/server/preferences/sync`, rendered inline on the sync page per rule 13), **Import** (`GET /server/preferences/sync/import`, API-mirrored at `GET /api/{api_version}/server/preferences/sync/import`, via the sync page's `code` field per rule 14), **Save** (`POST /server/preferences`, API-mirrored at `POST /api/{api_version}/server/preferences`) and the sync form (`POST /server/preferences/sync`) follow the exact contract below. Every value, name, status and field in it is fixed — implement it as written; never invent alternative parameter names, JSON fields, routes (`/server/preferences/save`, `/prefs/*`) or formats.
 - No account, no DB row, no user-preferences table is needed for this flow — decode → validate → set cookie → respond happens in the one request; nothing is written or looked up server-side.
 
 **Sync contract (single source of truth — the web routes and the API mirrors share one implementation):**
@@ -27283,23 +27284,23 @@ Preferences aren't tied to identity — any two guests who set the same `theme`/
 |-----|------|----------------|
 | 1 | **Exportable set** | `theme`, `lang`, and every `{project_name}_pref_{key}` cookie. Nothing else, ever: not `cookie_consent`, `ccpa_opt_out`, `{project_name}_build`, session/CSRF cookies, or any credential cookie. A request parameter outside the set is **ignored** (reported in `ignored`), never applied. Control fields (the CSRF token, `code`, `redirect`, `action`, `consent_form`, `consent_preferences`, `consent_analytics`, `ccpa_opt_out`) are not preferences and never appear in `ignored`; the consent and CCPA fields are writable only through rule 17 and are never exported or imported |
 | 2 | **Canonical query** | `theme` and `lang` always present (effective value: the cookie, else the default), then each app preference only when its cookie is set and valid. Keys sorted ascending (bytewise); encoded as `application/x-www-form-urlencoded`. Example: `lang=fr&{project_name}_pref_sort=name&theme=dark`. The same preferences always produce the same string |
-| 3 | **Full URL** | `{origin}/server/preferences/import?{canonical query}`; `{origin}` is resolved per request by the URL-resolution rules (PART 8 → "Resolution Order"), never a cached value |
+| 3 | **Full URL** | `{origin}/server/preferences/sync/import?{canonical query}`; `{origin}` is resolved per request by the URL-resolution rules (PART 8 → "Resolution Order"), never a cached value |
 | 4 | **Short code** | `base64url` (RFC 4648 §5 URL-safe alphabet) of the UTF-8 canonical query, **no padding**. Decoders MUST accept padded and unpadded input |
 | 5 | **Import input** | The request's own query parameters AND an optional `code` parameter. Resolve `code` as: trim whitespace → if it contains `?`, discard everything up to and including the FIRST `?` (a pasted full URL) → if the rest contains `=`, it is a plain query string → otherwise base64url-decode it → parse as a query string. Any decode/parse failure yields an empty set, never an error. **Direct request parameters win over `code` values, key by key** |
 | 6 | **Limits** | `code` longer than 2048 characters is discarded whole before decoding, exactly like a decode failure (rule 5: empty set, no error, `303`/`200` as usual); because `code` is a control field (rule 1) it is NEVER reported in `ignored`, and the visitor's other submitted values still apply. At most 32 parameters are considered (extras dropped); each value at most 64 characters |
 | 7 | **Validation** | `theme`: exactly `dark`, `light` or `auto`. `lang`: case-insensitive match against the supported tags, canonicalized to the supported tag; an unsupported regional tag falls back to its base language (`fr-CA` → `fr`) if that is supported, otherwise dropped. `{project_name}_pref_{key}`: `{key}` matches `^[a-z][a-z0-9_]{0,63}$` and the value is in that key's documented enum; a key without an enum accepts `^[A-Za-z0-9_.\-]{1,64}$`. Anything invalid is dropped (reported in `ignored`) — an imported value is still untrusted input |
 | 8 | **Apply** | Each valid value sets its cookie with `Path=/`, `Max-Age=31536000`, `SameSite=Lax`, not HttpOnly (JS reads them), no `Domain`, and `Secure` whenever the resolved request scheme is `https` (resolved behind reverse proxies exactly as in rule 3, not from the raw socket). Import is **additive**: preferences absent from the input keep their current cookie — import never resets or deletes anything |
 | 9 | **Web response** | `303 See Other` with `Cache-Control: no-store`, no body, for import AND save — including when nothing validated (an untrusted link is never grounds for a `4xx` error page) |
-| 10 | **Redirect target** | First match wins: (a) a `redirect` parameter that is a relative path (starts with a single `/`, not `//` or `/\`, no scheme or host, no CR/LF); (b) the path + query of a same-origin `Referer` under the same rule; (c) `/`. A target under `/server/preferences/import`, `/server/preferences/export` or the save route falls through to the next option. Never an external URL |
+| 10 | **Redirect target** | First match wins: (a) a `redirect` parameter that is a relative path (starts with a single `/`, not `//` or `/\`, no scheme or host, no CR/LF); (b) the path + query of a same-origin `Referer` under the same rule; (c) `/` — for `POST /server/preferences/sync` the default is `/server/preferences/sync` itself. A target under `/server/preferences/sync/import` or the save routes (`/server/preferences`, `/server/preferences/sync`) falls through to the next option. Never an external URL |
 | 11 | **API import / save** | No redirect: `200` with the JSON below. Save (`POST`) accepts `application/json` or form fields (`theme`, `lang`, `{project_name}_pref_{key}`; the web-only control fields of rules 14, 15 and 17 are not accepted by the API mirror), applies a partial update, and returns `400 VALIDATION_FAILED` only when NO supplied value was valid. Import never returns `4xx` for invalid values (same as rule 9) |
 | 12 | **Auth and CSRF** | None required — guest cookies. `POST` forms carry the normal CSRF token; the API mirror needs none (no ambient authority: it accepts and sets only these UI cookies). Import is a `GET` on purpose so a shared link works; it can set only the exportable set (rule 1), so it can never change credentials or consent. Standard rate limits apply |
-| 13 | **Export response** | The export block (full URL and short code as read-only selectable text, each with one Copy control) is rendered inline on `/server/preferences` on every load — never behind a button, toggle, accordion or separate step. Web `GET /server/preferences/export` is content-negotiated like every page: HTML → the same preferences page; `text/plain` → the lines `URL: ...` and `Code: ...`; JSON → the API body below. Copy is a client-side action (clipboard) and never submits the form; the export link and code use CSS `user-select: all` so one click selects the whole value for a manual copy, and the Copy control is an optional JS enhancement over that baseline — the page is fully usable without JS |
-| 14 | **Import field** | An always-visible field named `code` (textarea or text input, accepts a pasted full URL, query string or short code) inside the single preferences form (rule 15) — no separate Import form or button. On save, a non-empty `code` is resolved per rule 5 and its valid values override the form's submitted values key by key (the visitor pasted it on purpose); an empty `code` is ignored. `GET /server/preferences/import` stays for shared links and API parity (rule 5 unchanged). JS may enhance (clipboard paste) but never changes the request |
-| 15 | **Page layout and buttons** | `/server/preferences` is ONE `<form method="POST" action="/server/preferences">` carrying the CSRF token and every section: appearance (`theme`), language (`lang`), cookie-consent and CCPA controls, every `{project_name}_pref_{key}` control, and a Data Management section (export block, rule 13; import field, rule 14) — all sections always visible, none collapsed or revealed by a button. The form has exactly three action buttons (the header theme toggle is a separate mini-form on other pages and is not part of this page's form): **Save** (submit; applies every changed field plus `code`, then `303` per rules 9–10), **Cancel** (a link to the rule 10 redirect target; discards unsaved edits, sends no write) and **Reset** (a `type="button"` with `popovertarget` that opens a native HTML `popover` — no JS; the popover holds the warning, an **Erase everything** submit with `action=reset`, and a dismiss control using `popovertargetaction="hide"`; those two belong to Reset, not to the page's button set; forgets the visitor completely: every noncredential cookie this app set — `theme`, `lang`, `{project_name}_pref_*`, `cookie_consent`, `ccpa_opt_out`, `{project_name}_build`, plus any other noncredential cookie the project defines (announcement dismissals, flash messages, age-verification or content-acknowledgment cookies, forwarding preferences) — is deleted (`Max-Age=0`, same `Path`/attributes as rule 8), and the `303` carries `Clear-Site-Data: "storage"` to wipe localStorage/sessionStorage/IndexedDB without JS. Defaults apply and the consent banner returns on the next page. Never deletes session, CSRF or other credential cookies — signing out is a separate action. The popover warning states exactly what is erased. Only Reset confirms — Save and Cancel never ask for confirmation. The popover is styled with CSS, and a direct `POST action=reset` behaves identically on the server). No per-section save buttons, no "Sync", "Export", "Import" or "Show" buttons; Copy controls (rule 13) are the only other controls. Owner-token management (PART 12) is NOT part of this form: it lives on its own page, `GET /server/preferences/tokens`, reached from a plain link on this page (rendered only when the project defines owner tokens), and that page's per-action mini-forms are exempt from this button limit. Reset never deletes credential cookies: session, CSRF and, when the project defines owner tokens, the owner-token cookie |
-| 16 | **Web save never `400`** | `400 VALIDATION_FAILED` (rule 11) is API-only. A web `POST /server/preferences` always answers `303` (rule 9) — including empty submits, unchecked checkboxes (absent fields), invalid values (dropped) and a bad `code`. The only `4xx` is a missing/invalid CSRF token (`403`), so the page form MUST always render the token and post only to the canonical route, never to the `/api/{api_version}/…` mirror |
+| 13 | **Export response** | The export block (full URL and short code as read-only selectable text, each with one Copy control) is rendered inline on `/server/preferences/sync` on every load — never behind a button, toggle, accordion or separate step. Web `GET /server/preferences/sync` is content-negotiated like every page: HTML → the sync page; `text/plain` → the lines `URL: ...` and `Code: ...`; JSON → the API body below. Copy is a client-side action (clipboard) and never submits a form; the export link and code use CSS `user-select: all` so one click selects the whole value for a manual copy, and the Copy control is an optional JS enhancement over that baseline — the page is fully usable without JS |
+| 14 | **Import field** | An always-visible field named `code` (textarea or text input, accepts a pasted full URL, query string or short code) in the sync page's own form, `<form method="POST" action="/server/preferences/sync">`, whose only submit button is **Import**. A non-empty `code` is resolved per rule 5 and applied per rule 8, then `303` per rules 9–10; an empty `code` is a no-op. `GET /server/preferences/sync/import` stays for shared links and API parity (rule 5 unchanged). JS may enhance (clipboard paste) but never changes the request |
+| 15 | **Page layout and buttons** | `/server/preferences` is ONE `<form method="POST" action="/server/preferences">` carrying the CSRF token and every section: appearance (`theme`), language (`lang`), cookie-consent and CCPA controls, every `{project_name}_pref_{key}` control — all sections always visible, none collapsed or revealed by a button. A **More preferences** card, outside the form, links every registered preferences page (see "Preferences and Help Hubs"). The form has exactly three action buttons (the header theme toggle is a separate mini-form on other pages and is not part of this page's form): **Save** (submit; applies every changed field, then `303` per rules 9–10), **Cancel** (a link to the rule 10 redirect target; discards unsaved edits, sends no write) and **Reset** (a `type="button"` with `popovertarget` that opens a native HTML `popover` — no JS; the popover holds the warning, an **Erase everything** submit with `action=reset`, and a dismiss control using `popovertargetaction="hide"`; those two belong to Reset, not to the page's button set; forgets the visitor completely: every noncredential cookie this app set — `theme`, `lang`, `{project_name}_pref_*`, `cookie_consent`, `ccpa_opt_out`, `{project_name}_build`, plus any other noncredential cookie the project defines (announcement dismissals, flash messages, age-verification or content-acknowledgment cookies, forwarding preferences) — is deleted (`Max-Age=0`, same `Path`/attributes as rule 8), and the `303` carries `Clear-Site-Data: "storage"` to wipe localStorage/sessionStorage/IndexedDB without JS. Defaults apply and the consent banner returns on the next page. Never deletes session, CSRF or other credential cookies — signing out is a separate action. The popover warning states exactly what is erased. Only Reset confirms — Save and Cancel never ask for confirmation. The popover is styled with CSS, and a direct `POST action=reset` behaves identically on the server). No per-section save buttons and no "Sync", "Export", "Import" or "Show" buttons: sync has its own page. Every other preferences page (`/server/preferences/sync`, `/server/preferences/tokens` where the project has owner tokens, and project pages) is NOT part of this form: each lives on its own page, reached from the More preferences card, and those pages' own forms are exempt from this button limit. Reset never deletes credential cookies: session, CSRF and, when the project defines owner tokens, the owner-token cookie |
+| 16 | **Web save never `400`** | `400 VALIDATION_FAILED` (rule 11) is API-only. A web `POST /server/preferences` or `POST /server/preferences/sync` always answers `303` (rule 9) — including empty submits, unchecked checkboxes (absent fields), invalid values (dropped) and a bad `code`. The only `4xx` is a missing/invalid CSRF token (`403`), so every preferences form MUST always render the token and post only to the canonical route, never to the `/api/{api_version}/…` mirror |
 | 17 | **Consent and CCPA controls** | The page form's cookie-consent toggles (`consent_preferences`, `consent_analytics`; `essential` is always on and not a field) and the CCPA opt-out toggle (`ccpa_opt_out`, rendered only when `server.privacy.data.sold` is `true`; otherwise absent and never written) are web-form-only controls handled by `POST /server/preferences`, with a hidden `consent_form=1` marker rendered inside the form. They are applied only when `consent_form=1` is present — an unchecked checkbox then means off, while a POST without the marker (the header theme toggle) never touches consent or CCPA. Applying writes `cookie_consent` (JSON per PART 16 consent state, with a fresh timestamp in Unix seconds) and `ccpa_opt_out` with the rule 8 attributes. Import and the API mirror never write them, Reset deletes them (rule 15), and they are never exported (rule 1) |
 
-**Page layout (`/server/preferences`) — one form, one Save, always visible:**
+**Page layout (`/server/preferences`) — one form, one Save, always visible, then the More preferences card:**
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Preferences                                                │
@@ -27307,7 +27308,7 @@ Preferences aren't tied to identity — any two guests who set the same `theme`/
 │  Appearance                                                 │
 │    Theme      ( ) Dark  ( ) Light  ( ) Auto                 │
 │  Language                                                   │
-│    Language   [ English ▼ ]                                 │
+│    Language   [ Automatic (English) ▼ ]                     │
 │  Privacy                                                    │
 │    [✓] Essential cookies (always on)                        │
 │    [✓] Preference cookies                                   │
@@ -27315,13 +27316,14 @@ Preferences aren't tied to identity — any two guests who set the same `theme`/
 │    [ ] Do not sell or share my information (CCPA)          │
 │  Application                                                │
 │    {app-specific {project_name}_pref_* controls}            │
-│  Data Management                                            │
-│    Export link  https://host/server/preferences/import?... │
-│                                                  [Copy]     │
-│    Export code  bGFuZz1lbiZ0aGVtZT1kYXJr             [Copy] │
-│    Import       [ paste a link, query or code          ]    │
 ├─────────────────────────────────────────────────────────────┤
 │                      [Cancel]  [Reset]  [Save]              │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│  More preferences                                           │
+│    API tokens   Create, reveal, rotate and revoke tokens  › │
+│    Sync         Move your preferences to another device   › │
 └─────────────────────────────────────────────────────────────┘
 
 Reset opens a native popover (no JS):
@@ -27331,6 +27333,18 @@ Reset opens a native popover (no JS):
 │  for this site. It cannot be undone.      │
 │              [Keep]  [Erase everything]   │
 └───────────────────────────────────────────┘
+
+Sync page (`/server/preferences/sync`), one form, one Import button:
+┌─────────────────────────────────────────────────────────────┐
+│  ← Preferences                                              │
+│  Sync preferences                                           │
+├─────────────────────────────────────────────────────────────┤
+│  Export link  https://host/server/preferences/sync/import?… │
+│                                                  [Copy]     │
+│  Export code  bGFuZz1lbiZ0aGVtZT1kYXJr             [Copy]   │
+│  Import       [ paste a link, query or code          ]      │
+│                                              [Import]       │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 **JSON bodies (envelope `{ "ok": true, "data": ... }`; field names are fixed):**
@@ -27338,8 +27352,8 @@ Reset opens a native popover (no JS):
 | Endpoint | `data` |
 |----------|--------|
 | `GET /api/{api_version}/server/preferences` | `{ "theme": "dark", "lang": "en", "prefs": { "sort": "name" } }` |
-| `GET /api/{api_version}/server/preferences/export` | the object above plus `"url": "https://host/server/preferences/import?..."` and `"code": "..."` |
-| `GET /api/{api_version}/server/preferences/import` and `POST /api/{api_version}/server/preferences` | `{ "theme": "dark", "lang": "fr", "prefs": {}, "applied": ["lang"], "ignored": ["cookie_consent"] }` |
+| `GET /api/{api_version}/server/preferences/sync` | the object above plus `"url": "https://host/server/preferences/sync/import?..."` and `"code": "..."` |
+| `GET /api/{api_version}/server/preferences/sync/import` and `POST /api/{api_version}/server/preferences` | `{ "theme": "dark", "lang": "fr", "prefs": {}, "applied": ["lang"], "ignored": ["cookie_consent"] }` |
 
 `prefs` is keyed by the bare `{key}` (without the `{project_name}_pref_` prefix) and is `{}` when none are set. `theme`, `lang` and `prefs` are the resulting effective state. `applied` and `ignored` list request parameter names (`theme`, `lang`, `{project_name}_pref_{key}`, or the unrecognized name) and are always arrays. The names `url` and `code` are fixed — never `full_url`, `short_code`, `export_url` or `export_code`.
 
@@ -28785,7 +28799,8 @@ partial/
 **Nav does NOT contain:**
 - API link (users access via `/server/docs/swagger` if needed)
 - Admin link (don't advertise - admins know where it is)
-- Help link (belongs in footer)
+- Help, About, Privacy, Terms and Contact links (they belong in the footer)
+- Language selector (language is detected automatically and changed in Preferences, see "Language Selection")
 - Preferences link (lives next to the theme toggle in the header, not in nav — it's UI state, not app content; also always present in the footer for discoverability)
 
 **Header Layout — single row, 4 zones, in this exact order:**
@@ -30588,6 +30603,8 @@ When an admin edits `branding.content.footer` (or any other page content), show:
     <a href="/server/help">Help</a>
     <span>•</span>
     <a href="/server/preferences">Preferences</a>
+    <span>•</span>
+    <a href="/server/preferences#language" lang="{{ .Lang }}">{{ .LangName }}</a>
   </p>
 
   <!-- Application branding -->
@@ -31070,6 +31087,150 @@ func trackingScript(r *http.Request) template.HTML {
   <!-- Actual embed -->
 {{ end }}
 ```
+
+## Page Shell, Hubs and Uniformity
+
+**Every page under `/server/*` — and every sub-page of `/server/preferences/` and `/server/help/` — belongs to one family: the same chrome, the same page shell, the same components. A page that looks or behaves differently from its siblings is a defect, not a design choice.**
+
+### Page Shell (one markup for every `/server/*` page)
+
+```html
+<main id="main-content">
+  <div class="container container-md">
+    <header class="page-header">
+      <!-- Sub-pages only: ONE link to the parent hub. Hubs have no breadcrumb. -->
+      <nav class="breadcrumb" aria-label="Breadcrumb"><a href="/server/preferences">← Preferences</a></nav>
+      <h1 class="page-title">API tokens</h1>
+      <p class="page-lead">One sentence that says what this page is for.</p>
+    </header>
+
+    <section class="section-card" aria-labelledby="primary-token">
+      <h2 id="primary-token">Primary token</h2>
+      <!-- one concern per card -->
+    </section>
+  </div>
+</main>
+```
+
+| Rule | Detail |
+|------|--------|
+| **Container** | `.container` plus ONE width modifier: `container-sm` (forms, 40rem), `container-md` (default, 56rem) or `container-lg` (data tables, 72rem). A page never sets its own width |
+| **Headings** | Exactly one `<h1 class="page-title">`; one `<h2>` per card; `<h3>` inside a card; levels are never skipped; the page title is never repeated in a card |
+| **Back link** | Every sub-page has the `.breadcrumb` with one link to its hub (`← Preferences`, `← Help`), above the `<h1>`; the text is one translation key. Hubs have none |
+| **Cards** | Content lives in `.section-card`, one concern per card, each labelled by its `<h2>` (`aria-labelledby`). No bare `<h2>` sections on the page background, no card inside a card, no card without a heading |
+| **Classes** | Only the shared theme classes (see "Shared Theme Classes"). A page never borrows a wrapper class from another page type (a help page is not a `search-section`, a preferences page is not a `paste-view`) and never invents a page-specific wrapper |
+| **Frontend rules** | The "HTML5 & CSS Over JavaScript", "CSS Rules", "JavaScript Rules", "Template Rules" and "CSRF" sections apply unchanged: semantic HTML5 first, no inline `style`, `<script>` body or `on*` handler, every state-changing form is a `POST` with the CSRF token, and the page is fully usable without JavaScript |
+| **Same chrome everywhere** | The same header, footer, consent banner and skip links on every page, error pages included. A page never adds, removes or reorders header or footer elements |
+
+**Shared shell CSS (in `components.css`, tokens only, no pixel literals except the width caps):**
+
+```css
+.container-sm { max-width: 40rem; }
+.container-md { max-width: 56rem; }
+.container-lg { max-width: 72rem; }
+.page-header { display: grid; gap: var(--space-2); margin-block: var(--space-6) var(--space-4); }
+.page-title { margin: 0; }
+.page-lead { margin: 0; max-width: 70ch; color: var(--color-muted); }
+.hub-list { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.hub-link { display: grid; gap: var(--space-1); padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text); text-decoration: none; }
+.hub-link:hover { border-color: var(--color-border-hover); }
+.hub-title { font-weight: 600; }
+.hub-desc { color: var(--color-muted); }
+```
+
+### Component Standard (use these, never page-specific lookalikes)
+
+| Need | Component |
+|------|-----------|
+| Actions | `.btn` with one of `.btn-primary`, `.btn-secondary`, `.btn-danger`, `.btn-ghost`; at most ONE `.btn-primary` per card; the same action has the same label and translation key on every page (Save, Cancel, Copy, Reveal, Rotate, Revoke) |
+| Form fields | `.form-group` wrapping a visible `<label>`, the control (`.form-input`) and optional help text; a placeholder is never the label; one column on phones |
+| Copyable value | `.copy-value` or `.code-block` showing the value (CSS `user-select: all`) with ONE `.copy-btn[data-copy]`; the Copy feedback text is announced through `aria-live="polite"`; never a control that submits a form |
+| Commands and config | `.code-block` with a `<pre><code>` body and a Copy control; the real, resolved URL and project name, never a generic placeholder |
+| Tables | `.table-wrapper` containing `table.data-table` with a `<thead>`, `<th scope="col">` headers and a caption or heading; horizontal scroll happens inside the wrapper only; never a table for layout |
+| Status | `.badge` (Active, Expired, Revoked, Enabled …), colored from the status tokens and also carrying text, never color alone |
+| Messages | `.alert` variants (`success`, `info`, `warning`, `danger`) rendered after the post-redirect-get `303`; an `.empty-state` with a message and one next action when a list is empty |
+| Markdown text | Any text that comes from configuration, the registry or an OpenAPI description (tool descriptions, branding content, help content) is rendered from Markdown to sanitized HTML; literal backticks or Markdown markers never reach the page |
+| Icons | Header icons are inline SVG using `currentColor`, with the accessible name on the control (`aria-label`); the hamburger is the `☰` glyph or an SVG; an emoji is never a header control |
+
+**Polish standard (what "uniform and professional" means, all measurable):** spacing only from the `--space-*` tokens and corners from `--radius`; one type scale; prose lines at most `70ch`; the same card padding, border and radius everywhere; destructive actions visually separate from safe ones and always behind a confirmation popover; sentence-case labels without trailing punctuation; the same word for the same thing on every page ("token", "revoke", "sync"); no layout shift on load; visible focus rings; contrast from the token pairs only; phone, tablet and desktop layouts defined per page type (one column on phones, content never wider than its container modifier).
+
+**Page conformance test (required, runs in CI).** For every registered page (see below) and every error page the test renders the HTML and asserts: exactly one `<main>` and one `<h1>`; the skip links come first; no inline `style` attribute, `<style>` or `<script>` body, and no `on*` attribute; every `<img>` has `alt`; every form control has a label; every `POST` form carries `csrf_token`; every `<table>` has a `<thead>` and sits in `.table-wrapper`; every internal link resolves; the header contains only the elements allowed by "Header and Navigation Conformance"; a sub-page has exactly one breadcrumb link to its hub and a hub has none.
+
+### Preferences and Help Hubs (page registry)
+
+`/server/preferences` and `/server/help` are hubs. Each hub lists every page that exists below it, and a page exists below a hub only when it is registered. The two lists are rendered from a registry, never typed by hand, so adding a page is one registry entry.
+
+| Registry field | Meaning |
+|----------------|---------|
+| `path` | The page route, a direct child of its hub (`/server/preferences/sync`, `/server/help/mcp`) |
+| `title_key`, `desc_key` | Translation keys for the link title and a one-line description |
+| `order` | Sort position inside the hub; base pages first, project pages after them |
+| `enabled` | A predicate over the running configuration (a page for a disabled feature is not registered, not linked and answers `404`) |
+
+**Hub markup.** Each hub ends with a card (`More preferences` on `/server/preferences`, `More help` on `/server/help`) holding one list entry per registered page, outside any form:
+
+```html
+<section class="section-card" aria-labelledby="more-preferences">
+  <h2 id="more-preferences">More preferences</h2>
+  <ul class="hub-list">
+    <li class="hub-item">
+      <a class="hub-link" href="/server/preferences/tokens">
+        <span class="hub-title">API tokens</span>
+        <span class="hub-desc">Create, reveal, rotate and revoke the tokens that let tools act for you.</span>
+      </a>
+    </li>
+  </ul>
+</section>
+```
+
+| Rule | Detail |
+|------|--------|
+| **Complete** | The hub links every registered page of its tree, exactly once, in `order`. `/server/help` links `/server/help/mcp` and every other registered help page; `/server/preferences` links `/server/preferences/tokens`, `/server/preferences/sync` and every project page |
+| **Registry is the source** | The same registry drives the hub, the sitemap exclusions, the footer links (Help, Preferences point at the hubs) and the `pages` list in the help JSON. Nothing else lists these pages |
+| **Action routes are not pages** | Routes that only change state (`POST /server/preferences/token/reveal`, `GET /server/preferences/sync/import`, the legacy redirects) are not registered and never linked |
+| **Project pages** | A project adds pages as further direct children (`/server/preferences/engines`, `/server/preferences/bangs`, `/server/help/engines`, `/server/help/bangs`), declared in IDEA.md `## Business logic` → `### Product scope & non-goals` with path, title, one-line description and the data the page edits or explains. They follow the page shell, the component standard and the conformance test; they never appear as new rows in this specification |
+| **Depth** | One level below the hub; no page has children of its own. A page that needs sections uses cards and anchors |
+| **Test** | The conformance test enumerates the registry: every entry answers `200` as HTML, appears once on its hub, and, for help pages, in the help JSON; every `/server/preferences/*` and `/server/help/*` route is either registered or an action route |
+
+**Base pages by template:**
+
+| Page | API | SERVER | HYBRID | Notes |
+|------|-----|--------|--------|-------|
+| `/server/preferences/tokens` | yes | when the project defines owner tokens | when the project defines owner tokens | Registered only where owner and linked tokens exist (always in API projects) |
+| `/server/preferences/sync` | yes | yes | yes | Cross-device preference sync (see "Client-Side Preferences (cookies)") |
+| `/server/help/mcp` | yes | yes | yes | Registered while the MCP endpoint is enabled |
+
+Project pages (engines, bangs, tools, saved items …) are registered by the project in the same way in every template. The API-specific examples above apply to SERVER and HYBRID unchanged.
+
+**Conformance of existing pages.** `/server/preferences/tokens` already follows the page shell and is the model for the others. `/server/help/mcp` follows the shell exactly: `<h1 class="page-title">`, one `.section-card` per section (`#overview`, `#endpoint`, `#authentication`, `#connect`, `#tools`, `#limits`, `#troubleshooting`, then `#project`), every command and URL in a `.code-block` with a Copy control, the tool list as a `.table-wrapper` table with a `<thead>` (Tool, Description) whose descriptions are rendered Markdown, and the status table in the same table component. `/server/help` follows the shell, keeps its sections as cards and ends with the `More help` card.
+
+### Header and Navigation Conformance
+
+These rules tighten "Header Layout" above. A header that breaks one of them is a defect.
+
+| No. | Rule |
+|-----|------|
+| 1 | **Allowed elements, in this order, and nothing else:** the brand link, `<nav class="nav-links">`, the hamburger label (below the desktop breakpoint), then `.header-actions` containing exactly the preferences link (or the owner dropdown) and the theme-toggle form. No language selector, no search box (a project's search lives in `<main>`), no install button, no sign-in or sign-up buttons, no sponsor or social icons, no second preferences link for mobile |
+| 2 | **Nav is application sections only:** Home plus the project's own sections, labels of one or two words, plain `<a>` elements, no dropdowns. About, Help, Privacy, Terms, Contact, Preferences and API or documentation links belong to the footer. The current page carries `aria-current="page"` and `.active`. A project with many sections groups them behind a landing page instead of growing the bar |
+| 3 | **Mobile:** one hamburger (checkbox plus label, no JavaScript) opens the drawer; the preferences link and the theme toggle stay in the bar and never move into the drawer; the drawer holds exactly the nav links |
+| 4 | **No JavaScript required:** the theme toggle is a form `POST` whose target is the server-computed next mode; no `<noscript>` copy of a control; option and button labels come from the value enum (`dark`, `light`, `auto` → their translated names), never by position |
+| 5 | **Brand:** the branding logo (with `alt` equal to the application name) or the application name as text, linking to `/`; one brand element |
+| 6 | **Skip links:** "Skip to main content" and "Skip to navigation" are the first focusable elements of every page |
+| 7 | **One header:** the same markup on every page, error pages included; only `aria-current` and the theme icon state differ |
+| 8 | **The PWA install prompt** is not a header control: it appears in the install section of the page body or footer, as the PWA section defines |
+
+### Language Selection
+
+Language is detected automatically and changed in Preferences. It is never a header control.
+
+| Rule | Detail |
+|------|--------|
+| **Detection** | `?lang=` (a one-shot link that also pins the choice) → the `lang` cookie → the best match of `Accept-Language` against the supported set (quality values honored, a regional tag falls back to its base language, `fr-CA` → `fr`) → `en`. Detection never shows a banner, prompt or redirect |
+| **Change** | Only on `/server/preferences`, Language section: ONE `<select name="lang">` listing the supported languages by native name (each `<option lang="…">`), whose first option is **Automatic** and shows what detection picked (`Automatic (Français)`). Choosing Automatic deletes the cookie so detection applies again; choosing a language sets the cookie |
+| **Cookie** | `lang` is written only when the visitor picks a language or applies a sync import. An autodetected language never writes a cookie |
+| **Discoverability** | The footer shows the active language name as a plain link to `/server/preferences#language`. There is no language selector in the header or on any other page, and no flags |
+| **Document** | `<html lang="…" dir="…">` always reflects the resolved language; right-to-left languages set `dir="rtl"` |
+| **Why this UX** | Automatic detection is right for almost every visitor and needs no interaction. The explicit override covers the wrong guess (a shared computer, a multilingual visitor) and the footer link keeps it one click away without crowding the header |
 
 ## Standard Pages
 
@@ -31656,7 +31817,7 @@ CREATE INDEX IF NOT EXISTS idx_captcha_challenges_expires ON captcha_challenges(
 |---------|-------------|
 | Getting started | Quick start guide |
 | Features | How to use key features |
-| MCP | Link to `/server/help/mcp` |
+| More help | The `More help` card links every registered help page (`/server/help/mcp` and the project's own pages), see "Preferences and Help Hubs" |
 | API Documentation | Links to Swagger (`/server/docs/swagger`) and GraphQL (`/server/docs/graphql`) — UIs fetch from the versioned `/api/{api_version}/server/swagger` and `/api/{api_version}/server/graphql` routes |
 | Tor Access | How to access via Tor (only shown if Tor enabled) |
 | I2P Access | How to access via I2P (only shown if I2P enabled and running) |
@@ -31957,7 +32118,7 @@ server:
 | `/api/{api_version}/server/contact` | GET | Contact form description (JSON, no auth): `fields` (list of `{name, type, required, max_length, required_when, max_length_when}`, see "Length limits"), `captcha` (`{provider: "simple", captcha_id, question}` for `simple`; `{provider, site_key, fallback}` for `recaptcha` and `hcaptcha`, where `fallback` is the same `{provider: "simple", captcha_id, question}` object; a new challenge on every call), `security_url`, `abuse_email`. Nothing else about recipients |
 | `/api/{api_version}/server/contact` | POST | Submit the report form in two calls (the first returns the `review` and a `review_token` and delivers nothing; the second repeats every field with `review_token` and `confirmed: true` and delivers): the fields above (including `type` and the fields that type requires), the `form_token` from the `GET`, no `website`, plus ONE captcha proof (`captcha_response`, or `captcha_id` + `captcha_answer`; see "No-JavaScript fallback and the simple challenge") |
 | `/api/{api_version}/server/auth/check` | GET | Token check (machine-only, no page; `Authorization: Bearer` required): `200` with `{kind}` when the token is valid (`kind` is `operator`, `owner` or, where the project has accounts, `user`), `401` otherwise. Side-effect free, rate-limited like other auth endpoints, never echoes the token |
-| `/api/{api_version}/server/help` | GET | Help page (JSON, no auth): `title`, `content` (Markdown source of `server.pages.help.content`) and `format` (always `markdown`) |
+| `/api/{api_version}/server/help` | GET | Help page (JSON, no auth): `title`, `content` (Markdown source of `server.pages.help.content`), `format` (always `markdown`) and `pages` (the registered help pages, each `{title, path}`, in hub order) |
 | `/api/{api_version}/server/help/mcp` | GET | MCP help (JSON, no auth; the same content as the help page): `enabled`, `url`, `aliases`, `auth`, `tools` and `project` — field names are fixed, see "/server/help/mcp" |
 | `/api/{api_version}/server/terms` | GET | Terms of service (JSON, no auth): `title`, `content` (the source of `server.branding.content.terms` for the request's language, or the built-in terms in Markdown when there is no entry) and `format` (`markdown`, `html` or `text`) |
 | `/api/{api_version}/server/dpo` | GET | DPO contact (JSON): `name`, `email`, `privacy_url` |
