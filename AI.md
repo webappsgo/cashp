@@ -8697,7 +8697,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 
 ## Port Rules
 
-**Default port is a random unused port in the 64000-64999 range, except in an application container (Docker, Podman, Kubernetes), where the default is `80` (PART 26 → "Container Port Behavior"); the random 64xxx port there is only the host-side mapping.**
+**Default port is a random unused port in the 64000-64999 range, except in an application container (Docker, Podman, Kubernetes), where the default is `80` ("Container Port Behavior"); the random 64xxx port there is only the host-side mapping.**
 
 ### Port Selection Logic
 
@@ -11880,7 +11880,7 @@ PHASE 5: Server startup (actual server start)
 | cgroup | `/proc/1/cgroup` contains `docker`, `kubepods`, `lxc` |
 | Self wrapper | Parent process is `{project_name}` (entrypoint wrapper) |
 
-**System containers (Incus/LXC/LXD/systemd-nspawn):** these run a full init, so the table above does not make them "container" for service-manager purposes. When systemd launched the process (`INVOCATION_ID` set) the service manager is `systemd`; when OpenRC launched it (`RC_SVCNAME` set, or PPID 1 with `/run/openrc` present) the service manager is `openrc`. In both cases service install/start/stop/status work normally. "container" applies to application containers (Docker, Podman, Kubernetes) and to Incus/LXC containers whose init is neither systemd nor OpenRC. The systemd and OpenRC checks run before generic container detection.
+**System containers (Incus/LXC/LXD/systemd-nspawn):** these run a full init, so the table above does not make them "container" for service-manager purposes. When systemd launched the process (`INVOCATION_ID` set) the service manager is `systemd`; when OpenRC launched it (`RC_SVCNAME` set, or PPID 1 with `/run/openrc` present) the service manager is `openrc`. In both cases service install/start/stop/status work normally. "container" applies to application containers (Docker, Podman, Kubernetes) and to Incus/LXC containers whose init is neither systemd nor OpenRC. The systemd and OpenRC checks run before generic container detection. The same order decides every default that depends on being in a container (the listen port `80` and `server.i2p.enabled`): the systemd and OpenRC checks run first, so an Incus/LXC system container run by systemd or OpenRC is a host for them, and only then is `isContainer()` consulted.
 
 **Manual Start Priority Order:**
 1. `--daemon` CLI flag (highest)
@@ -14066,7 +14066,7 @@ Raw machine values belong to JSON/API responses, Prometheus metrics, and logs on
 | Rule | Detail |
 |------|--------|
 | **Shared helpers** | One implementation: `format.Duration()` / `format.Size()` / `format.Count()` in the shared/common formatting package — never per-page ad-hoc formatting |
-| **i18n** | Unit names go through translation keys (plural messages `plurals.duration.seconds`, `.minutes`, `.hours` and `.days`, each holding the language's own CLDR categories, PART 30 → "Pluralization"; never flat `_one`/`_other` keys) — never hardcoded English unit strings |
+| **i18n** | Unit names go through translation keys (plural messages `plurals.duration.seconds`, `.minutes`, `.hours` and `.days`, each holding the language's own CLDR categories, PART 31 → "Plural Rules"; never flat `_one`/`_other` keys) — never hardcoded English unit strings |
 | **Raw value preserved** | HTML MAY carry the machine value in a `title=`/`data-` attribute for tooltips; the visible text is always the human form |
 | **Machine surfaces unchanged** | JSON API fields, Prometheus metrics, and log files keep raw base units (seconds, bytes) — formatting is a presentation concern only |
 
@@ -18234,7 +18234,7 @@ When GDPR/CCPA (right to erasure) conflicts with HIPAA/SOC2 (retention requireme
 | `data.sold` | CCPA Behavior |
 |-------------|---------------|
 | `false` (default) | Display notice: "We do not sell your personal information" - no opt-out needed |
-| `true` | Display "Do Not Sell My Personal Information" opt-out toggle on `/server/privacy#ccpa-opt-out` (its form posts to `POST /server/ccpa`) and on `/server/preferences` (PART 15, rule 17); both write the same `ccpa_opt_out` cookie |
+| `true` | Display "Do Not Sell My Personal Information" opt-out toggle on `/server/privacy#ccpa-opt-out` (its form posts to `POST /server/ccpa`) and on `/server/preferences` (PART 16, rule 17); both write the same `ccpa_opt_out` cookie |
 
 #### ISO27001 (iso27001: true)
 
@@ -49588,7 +49588,7 @@ run_mode() {
     echo "=== [$init] Installing test tools, tor and i2pd ==="
     if [ "$init" = "systemd" ]; then
         incus exec "$container" -- bash -c 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl jq file tor i2pd' >/dev/null
-        # The distro tor/i2pd services are NOT what is tested: the server runs its own dedicated, isolated instances (PART 31)
+        # The distro tor/i2pd services are NOT what is tested: the server runs its own dedicated, isolated instances (PART 32)
         incus exec "$container" -- systemctl disable --now tor.service tor@default.service i2pd.service 2>/dev/null || true
     else
         incus exec "$container" -- sh -c 'apk add --no-cache bash curl jq file tor i2pd tzdata ca-certificates' >/dev/null
@@ -49633,7 +49633,7 @@ echo "Incus tests completed successfully ($MODES)"
 
 **Every mode runs the same steps, in this order:** init identity (PID 1, and no foreign init) → `--service --install` (file exists, enabled, active, health answers) → `--service restart` (new PID) → `--service stop` (stopped, port closed) → `--service start` → API, project-specific, rename and client tests → Tor tests → I2P tests → `incus restart` of the container (service still enabled and back by itself, health answers) → `--service --disable` (not enabled, not active, file kept) → `--service --install` again → `--service --uninstall` (file removed, not enabled, not active, data removed).
 
-**Tor and I2P are tested with both installed, and both end up enabled in every test.** `tests/docker.sh` runs the image as shipped (an application container), so I2P is on by default there: `features.i2p.enabled` is `true`, and within `I2P_WAIT` seconds `features.i2p.status` is `healthy` with a `.b32.i2p` hostname and `checks.i2p` is `ok`. An Incus container is a system container that runs its own init, so it counts as a host (PART 23 → "Init system detection") and I2P is opt-in there: `tests/incus.sh` checks the default (off) first and then enables it through a drop-in. The script installs `tor` and `i2pd` in the container (`apt-get install tor i2pd` on Debian, `apk add tor i2pd` on Alpine) and disables the distro's own `tor` and `i2pd` services, because the server runs its own dedicated, isolated instances (PART 31):
+**Tor and I2P are tested with both installed, and both end up enabled in every test.** `tests/docker.sh` runs the image as shipped (an application container), so I2P is on by default there: `features.i2p.enabled` is `true`, and within `I2P_WAIT` seconds `features.i2p.status` is `healthy` with a `.b32.i2p` hostname and `checks.i2p` is `ok`. An Incus container is a system container that runs its own init, so it counts as a host ("Container Detection", System containers: a system container run by systemd or OpenRC is a host) and I2P is opt-in there: `tests/incus.sh` checks the default (off) first and then enables it through a drop-in. The script installs `tor` and `i2pd` in the container (`apt-get install tor i2pd` on Debian, `apk add tor i2pd` on Alpine) and disables the distro's own `tor` and `i2pd` services, because the server runs its own dedicated, isolated instances (PART 32):
 
 | Test | Expected |
 |------|----------|
