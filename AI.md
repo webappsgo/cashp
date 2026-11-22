@@ -136,7 +136,7 @@ IDEA.md is the project PLAN. AI.md (this file) is the SOURCE OF TRUTH for the te
 | **IDEA.md** | PROJECT PLAN - must follow AI.md | Features change, project variables change |
 
 **Rule hierarchy:** SPEC.md > AI.md > global CLAUDE.md. If SPEC.md and AI.md conflict, SPEC.md wins — that is its purpose.
-**No SPEC.md (or an empty one):** AI.md alone is the authority — nothing overrides it. SPEC.md exists only to record a project rule that must differ from the template; it never edits AI.md, and it is never created just to log an AI.md defect.
+**No SPEC.md (or an empty one):** AI.md alone is the authority — nothing overrides it. SPEC.md exists only to record a project rule that must differ from the template; it never edits AI.md, and it is never created just to log an AI.md defect. A SPEC.md rule may override any template rule, mandatory ones included, but only a rule that the project plan or the user explicitly put there: an AI never creates or edits SPEC.md to work around a template rule.
 **Rule:** If AI.md and IDEA.md conflict, AI.md wins. Fix IDEA.md (procedure: PART 0 → "IDEA.md Alignment (WHAT vs HOW)").
 
 ## IDEA.md Is the WHAT, AI.md Is the HOW
@@ -8567,7 +8567,7 @@ Only the sections a project has apply. Each key has exactly one home, and the ar
 
 Wherever this specification says a setting is set "in `server.yml`", it means that dotted path in the merged configuration, in whichever file the table assigns it to.
 
-**Header comment.** Every `server.yml` the server writes starts with this fixed comment, which the writer emits itself because comments are not kept when a file is rewritten: `# Settings of this node only (listen, identity, database, cache, ssl). Everything else lives in yaml.d/: branding.yml, web.yml, pages.yml, contact.yml, privacy.yml, security.yml, logs.yml, metrics.yml, notifications.yml, tor.yml, i2p.yml, maintenance.yml, accounts.yml, app.yml. Credentials live in secrets.yml.`
+**Header comment.** Every `server.yml` the server writes starts with this fixed comment, which the writer emits itself because comments are not kept when a file is rewritten: `# This node only: listen, identity, database, cache, ssl. The rest is in yaml.d/ and credentials are in secrets.yml.`
 
 **Automatic migration (every start).** An operator may keep using one big `server.yml`; the binary splits it:
 
@@ -17118,6 +17118,7 @@ web:
 | `Origin` | If an `Origin` header is present it MUST be the request's own origin, a configured public origin (PART 8 → "Resolution Order"), or an explicit entry of the resolved CORS allow-list (PART 16 → "CORS Allow-list Resolution Order"); the `*` default of that list does NOT authorize MCP origins; anything else → `403` (DNS-rebinding protection required by the spec). Requests without an `Origin` header (non-browser clients) are unaffected |
 | Header checks | Every `POST` carries `MCP-Protocol-Version` (equal to `_meta` `io.modelcontextprotocol/protocolVersion` in the body) and `Mcp-Method` (equal to the body `method`); `tools/call`, `resources/read` and `prompts/get` also carry `Mcp-Name` (equal to `params.name` or `params.uri`; a value that is not plain ASCII arrives as `=?base64?…?=` and is decoded before it is compared). A missing, malformed or mismatched header → `400` with JSON-RPC error code `-32020` (`HeaderMismatch`) |
 | Unknown method | A method the server does not implement → `404` with JSON-RPC error code `-32601` (`Method not found`) |
+| Validation order | 1. `Origin` (`403`). 2. Bearer token (`401`). 3. Protocol version: an `initialize` request (the legacy handshake, which carries no `_meta` and none of the modern headers) or an `MCP-Protocol-Version` naming another revision → `400` with `UnsupportedProtocolVersionError` listing `2026-07-28`, and nothing further is checked. 4. Header presence and match (`400`, `-32020` `HeaderMismatch`). 5. Unknown method (`404`, `-32601`). A legacy request therefore always gets the version error, never `HeaderMismatch` |
 
 #### Authentication — reuse, never new
 
@@ -30055,7 +30056,9 @@ server:
 | OG Image | Original, 1200x630 (OpenGraph standard) |
 
 **Scaling Rules:**
-- Preserve aspect ratio
+- Preserve the aspect ratio for the logo widths and the `Original` variants (the width is fixed and the height follows)
+- Favicon sizes are square: the source is fitted inside the square on a transparent background, never stretched or cropped
+- The 1200x630 OG variant is exactly that size: the source is scaled to cover it and center-cropped (the one exception to preserving the ratio, because social platforms require it)
 - Generate multiple sizes on upload/fetch
 - Cache scaled versions locally
 - Re-fetch remote URLs periodically (configurable, default: daily)
@@ -31285,7 +31288,7 @@ Language is detected automatically and changed in Preferences. It is never a hea
 |------|--------|
 | **Detection** | `?lang=` (a one-shot link that also pins the choice) → the `lang` cookie → the best match of `Accept-Language` against the supported set (quality values honored, a regional tag falls back to its base language, `fr-CA` → `fr`) → `en`. Detection never shows a banner, prompt or redirect |
 | **Change** | Only on `/server/preferences`, Language section: ONE `<select name="lang">` listing the supported languages by native name (each `<option lang="…">`), whose first option is **Automatic** and shows what detection picked (`Automatic (Français)`). Choosing Automatic deletes the cookie so detection applies again; choosing a language sets the cookie |
-| **Cookie** | `lang` is written only when the visitor picks a language or applies a sync import. An autodetected language never writes a cookie |
+| **Cookie** | `lang` is written only when the visitor picks a language (the Preferences select or a `?lang=` link) or applies a sync import. An autodetected language never writes a cookie |
 | **Discoverability** | The footer shows the active language name as a plain link to `/server/preferences#language`. There is no language selector in the header or on any other page, and no flags |
 | **Document** | `<html lang="…" dir="…">` always reflects the resolved language; right-to-left languages set `dir="rtl"` |
 | **Why this UX** | Automatic detection is right for almost every visitor and needs no interaction. The explicit override covers the wrong guess (a shared computer, a multilingual visitor) and the footer link keeps it one click away without crowding the header |
@@ -31756,7 +31759,7 @@ Language is detected automatically and changed in Preferences. It is never a hea
 | **Reported URL** | `type="url"`, `maxlength` 2048, a help line "A page on this site, for example `https://{fqdn}/...`" and the `{fqdn}` of the request. Its host must match the link rule ("Who can reach the form") |
 | **Labels** | The label text is the Field column of the table above, translated (PART 30 → "I18N & A11Y"). No field is rendered twice and no label belongs to a field that is not on the page |
 | **Below the form** | Only the security pointer ("To report a security vulnerability, see `/server/security`"). There is no "Abuse Reports: use this contact form" section: the user is already on the form |
-| **Tests** | A golden-HTML test per type asserts the exact set of `name` attributes, that none of another type's fields appears, that every required field has `required`, and that the chooser renders no input |
+| **Tests** | A golden-HTML test per type asserts the exact set of `name` attributes, that none of another type's fields appears, that every required field has `required`, and that the chooser's own content (inside `<main>`) renders no input; the shared header's `nav-toggle` checkbox is not part of the chooser |
 
 **Routing by type:** `abuse` and `dmca` go to the `abuse` role (`server.contact.abuse.email`, then `general`, then `admin`; PART 12 → "Resolution Order Per Role"); `privacy` goes to `server.contact.dpo.email`, then `general`, then `admin`; `security` follows the security pipeline (PART 11 → "Submission Flow"). The Type, Reason, Reported URL and DMCA statements are part of the plain-text body.
 
@@ -31832,7 +31835,7 @@ CREATE INDEX IF NOT EXISTS idx_captcha_challenges_expires ON captcha_challenges(
 | # | Layer | Rule | On failure |
 |---|-------|------|------------|
 | 1 | Shape | Body at most 256 KiB (security mode alone allows about 40,000 characters, and the confirm step repeats every field), every required field present (an optional field, an unchecked checkbox or `step` may be absent: absent text counts as empty, an absent checkbox as false, an absent `step` as `submit`), no unknown fields, valid UTF-8, no control characters (CR, LF, NUL included) in `name`, `email` and `subject`, no bidirectional-override or zero-width characters in any field, and `email` is ONE address (no comma, semicolon or angle-bracket list). **Origin check** (HTML form posts only, not the JSON API): a present `Origin` (or, when it is absent, `Referer`) must be this site's own origin, a present `Sec-Fetch-Site` must be `same-origin`, and a post that carries none of the three is rejected, because a script that posts without a browser sends none of them | `VALIDATION_FAILED` (`400`) on the field; an origin failure returns the generic message "Please submit the form from this site" |
-| 2 | Honeypot | The hidden field `website` is rendered off-screen (absolute position far outside the viewport, not `display:none`), with `tabindex="-1"`, `autocomplete="off"`, `aria-hidden="true"` and a label "Leave this field empty". A person never fills it; many bots fill every field | SILENT DROP: the response is byte-for-byte the normal success response (same status, same page or JSON), nothing is delivered, the block is logged |
+| 2 | Honeypot | The hidden field `website` is rendered off-screen (absolute position far outside the viewport, not `display:none`), with `tabindex="-1"`, `autocomplete="off"`, `aria-hidden="true"` and a label "Leave this field empty". A person never fills it; many bots fill every field | SILENT DROP: nothing is ever delivered and the block is logged, and the visitor sees no difference from a genuine submission at either step: step 1 renders the normal review (the review token carries flag `d`), and step 2 returns the normal success response |
 | 3 | Fill time | `form_token` is `{issued_at}.{nonce}.{hex HMAC-SHA256}` over `contact-form\|{issued_at}\|{nonce}` (a random 128-bit nonce) keyed with `installation_secret`: issuing it writes nothing to the database, and it is issued on every render and every `GET`. A submission is accepted only when the token verifies, its age is between `min_fill_seconds` and `max_age_seconds`, and its nonce is unused. The first submission that presents a valid token records the nonce in a bounded in-memory set (50,000 entries, each dropped when its token expires), and every response to that submission carries a fresh token; a reused token is a replay. The set is per node and a restart clears it, so a replay can succeed at most once per node, which the rate limits bound. The token is not bound to an IP address (Tor and mobile clients change it) | Too fast, missing, invalid, expired or already used: `VALIDATION_FAILED` (`400`) on `form_token` with the message "Please wait a moment and submit again", and a fresh token in the response |
 | 4 | Captcha | The existing proof ("No-JavaScript fallback and the simple challenge") | `VALIDATION_FAILED` on `captcha` |
 | 5 | Rate limits | Accepted submissions are counted per client IP (`per_ip`), per sender email, lowercased (`per_email`) and in total (`global`) inside `window`. The counters live in memory and are not written to the database per request. These limits come in ADDITION to the general limits of PART 12. **Strikes:** a rejection by layer 2, 4, 6 or 7, an origin failure or a replayed token is a strike against the client IP; `strikes` strikes inside `window` ban that IP from the form for `ban_hours` (kept in memory, so a bot that keeps probing stops costing work, and a restart clears it) | `429` with `Retry-After` when a limit is exceeded or the IP is banned; nothing is delivered. A strike changes no response: the layer that rejected the request answers as its own row says |
@@ -31865,7 +31868,7 @@ CREATE INDEX IF NOT EXISTS idx_captcha_challenges_expires ON captcha_challenges(
 
 **Security mode** (`/server/contact?security_id=...`) uses layers 1 to 5 and the Delivery-safety rules. Layers 6 and 7 do NOT apply to it, because a vulnerability report legitimately holds links and may be sent twice. **Email count for the report form:** exactly ONE maintainer notification plus at most ONE researcher acknowledgment per accepted report; PART 11 → "Submission Flow" steps 4 and 5 take precedence over the contact form's one-email rule. The acknowledgment is the only automatic reply the server ever sends. It goes out only after layers 1 to 5 passed (so the captcha and the per-IP, per-email and global limits already applied), carries only the `tracking_id` and the status URL and never any submitted text, uses the server's sender in `From`, and is never retried or repeated; a skipped or failed acknowledgment is not an error for the submitter.
 
-**Tests:** one unit test per layer (a filled honeypot returns the success response and sends nothing; a token younger than `min_fill_seconds`, a forged token and an expired token are rejected; the sixth submission from one IP inside the window (default `per_ip: 5`) gets `429`; a CR/LF in the subject is rejected; a duplicate sends one email), an `abuse` message holding `<a href=...>` or `[url=...]` is rejected as `markup`, a link to another host is rejected and a link to `{fqdn}` is accepted for `abuse`, `dmca` and `privacy`, a `security` message with an external link is accepted, `abuse` and `dmca` without a Reported URL are rejected, a `dmca` without the good-faith, accuracy or signature field is rejected, a missing or unknown Type (`general`, `support`, `bug`) is rejected, the third strike bans the IP for `ban_hours` (`429`), a post with no `Origin`, `Referer` and `Sec-Fetch-Site` is rejected as `origin`, and so is a mismatched `Origin`, a reused `form_token` is rejected as `replay`, step 1 never delivers, `confirm` without the checkbox, with a token younger than `review_min_seconds`, or after any field changed since the review is rejected, an `abuse` URL that matches no route is rejected, a honeypot hit at step 1 renders the same review as a normal submission, and one test that an accepted submission sends exactly one email whose `From` is the configured sender.
+**Tests:** one unit test per layer (a filled honeypot gets the normal review at step 1 and the normal success response at step 2, and sends nothing; a token younger than `min_fill_seconds`, a forged token and an expired token are rejected; the sixth submission from one IP inside the window (default `per_ip: 5`) gets `429`; a CR/LF in the subject is rejected; a duplicate sends one email), an `abuse` message holding `<a href=...>` or `[url=...]` is rejected as `markup`, a link to another host is rejected and a link to `{fqdn}` is accepted for `abuse`, `dmca` and `privacy`, a `security` message with an external link is accepted, `abuse` and `dmca` without a Reported URL are rejected, a `dmca` without the good-faith, accuracy or signature field is rejected, a missing or unknown Type (`general`, `support`, `bug`) is rejected, the third strike bans the IP for `ban_hours` (`429`), a post with no `Origin`, `Referer` and `Sec-Fetch-Site` is rejected as `origin`, and so is a mismatched `Origin`, a reused `form_token` is rejected as `replay`, step 1 never delivers, `confirm` without the checkbox, with a token younger than `review_min_seconds`, or after any field changed since the review is rejected, an `abuse` URL that matches no route is rejected, a honeypot hit at step 1 renders the same review as a normal submission, and one test that an accepted submission sends exactly one email whose `From` is the configured sender.
 
 ### /server/help
 
@@ -41805,14 +41808,16 @@ make build
 | **Path pollution** | Binaries scattered across system |
 | **No cleanup** | Copies left behind, consuming space |
 
-### The Only Exceptions: CI/CD Release and `make release`
+### The Only Exceptions: CI/CD Release, `make release` and Disposable Test Containers
 
-The **only** times binaries are copied are the CI/CD release process and the `make release` target (manual local stable release), which stages stripped copies of `binaries/` into `releases/` before uploading. In CI/CD they are:
+The **only** times binaries are copied are the CI/CD release process, the `make release` target (manual local stable release), which stages stripped copies of `binaries/` into `releases/` before uploading, and disposable test containers (below). In CI/CD they are:
 1. Built fresh by CI/CD
 2. Stripped (debug symbols removed)
 3. Uploaded directly to release (GitHub Releases, registry, etc.)
 
 **This is handled by CI/CD, not manual commands.**
+
+**Disposable test containers (the third exception).** `tests/*.sh` may push the binary into a Docker or Incus test container, and may copy it under another name inside that container for the rename test (PART 28). That copy exists only inside the container, the file in `binaries/` is never modified, and the container is removed when the test ends. Copies on the host (`/tmp`, `/usr/local/bin`, `releases/` by hand) stay prohibited.
 
 ## Release Artifacts
 
@@ -43624,12 +43629,13 @@ networks:
 - Depend on local Docker containers for builds (GitHub/Gitea Actions use native Go)
 - Cross-cancel different release refs - only older runs for the exact same branch/tag ref may be auto-canceled
 
-| Git Provider | CI System | Config Location | Self-Hosted |
+| Provider | CI System | Config Location | Self-Hosted |
 |----------|-----------|-----------------|-------------|
 | GitHub | GitHub Actions | `.github/workflows/*.yml` | No (github.com only) |
 | Gitea | Gitea Actions | `.gitea/workflows/*.yml` | Yes |
 | Forgejo | Forgejo Actions | `.forgejo/workflows/*.yml` | Yes (self-hosted only) |
 | GitLab | GitLab CI | `.gitlab-ci.yml` | Yes |
+| Jenkins | Jenkins pipeline | `Jenkinsfile` | Yes (self-hosted only) |
 
 **Note:** Forgejo is a fork of Gitea - Forgejo Actions are compatible with Gitea Actions. Use `.forgejo/workflows/` for Forgejo or `.gitea/workflows/` (both work).
 
@@ -49220,7 +49226,7 @@ echo "=== Project-Specific Endpoint Tests ==="
 # Test ALL project-specific endpoints defined in IDEA.md
 
 echo "=== Open API Smoke Test ==="
-# No auth required: all endpoints are publicly accessible
+# No token needed for the public endpoints; MCP, metrics and token routes are checked separately (a missing token answers 401)
 if curl -q -LSsf http://localhost:$(port)/server/healthz | grep -q '"status"'; then pass "Health endpoint works"; else fail "Health endpoint"; fi
 
 echo "=== Binary Rename Tests ==="
@@ -52711,7 +52717,6 @@ func Pluralize(key string, count int, lang string) string {
 ```yaml
 server:
   i18n:
-    enabled: true
     default_language: en
     available_languages:
       - en
@@ -52720,11 +52725,9 @@ server:
       - de
       - it
       - ar
-    fallback_language: en
-    cookie_name: lang
-    # 1 year
-    cookie_max_age: 365d
 ```
+
+**Only these two keys exist** (the same block as PART 12). Everything else is fixed by this specification and is not configurable: internationalization is always on, the final fallback language is `en`, and the language cookie is named `lang` with a one-year Max-Age (PART 16 → "Language Selection").
 
 ---
 
@@ -52989,7 +52992,7 @@ func TestAccessibility(t *testing.T) {
 
 # PART 32: OVERLAY NETWORKS (TOR & I2P)
 
-> **This PART covers two overlay-network integrations:** **PART 32.1 (Tor Hidden Service)** — REQUIRED, auto-enabled when the `tor` binary is found, no toggle — and **PART 32.2 (I2P Eepsite)** — OPTIONAL, opt-in (default off). Both serve the app over an anonymity network at an `http://` address that is itself the cryptographic identity; neither ever uses HTTPS, HSTS, or an upgrade redirect (see PART 12 → overlay HTTP semantics). The dedicated backend port for each is allocated smartly — only after a provider is confirmed available, so "no provider → no port, no generated config."
+> **This PART covers two overlay-network integrations:** **PART 32.1 (Tor Hidden Service)** — REQUIRED, auto-enabled when the `tor` binary is found, no toggle — and **PART 32.2 (I2P Eepsite)** — OPTIONAL: off by default on bare metal and in a VM, on by default in a container. Both serve the app over an anonymity network at an `http://` address that is itself the cryptographic identity; neither ever uses HTTPS, HSTS, or an upgrade redirect (see PART 12 → overlay HTTP semantics). The dedicated backend port for each is allocated smartly — only after a provider is confirmed available, so "no provider → no port, no generated config."
 
 ## PART 32.1: Tor Hidden Service
 
