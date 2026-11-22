@@ -9633,6 +9633,8 @@ Before proceeding, confirm you understand:
 3. `--mode debug` / `MODE=debug` (debug mode defaults debug on)
 4. Default: `false`
 
+`server.debug.*` holds the debug settings (pprof, query logging, profiling rates), not the flag. The flag has no `server.yml` source by design: debug is an explicit opt-in per run, so a committed or copied config file can never turn it on.
+
 **`debug` mode:** `--mode debug` / `MODE=debug` selects debug mode — explicit opt-in only, NEVER implied or auto-enabled. It defaults the debug flag to on; an explicit `--debug` flag or `DEBUG` env var still wins — `MODE=debug DEBUG=false` runs debug mode with the `/debug/*` endpoints off.
 
 ## Six Operational States
