@@ -32084,7 +32084,7 @@ curl -H "Accept: application/xml" https://jokes.example.com/api/v1/joke</code></
 
 **Default template provided, customizable via admin panel.**
 
-**Built-in default terms text (used when `server.branding.content.terms` has no entry).** The default names no jurisdiction and no legal entity, because the template cannot know them; the operator adds both when customizing the terms:
+**Built-in default terms text (used when `server.branding.content.terms` has no entry).** The default is written for the United States (country `USA`) and names no legal entity, because the template cannot know it; the operator changes the jurisdiction and adds the entity when customizing the terms:
 
 | Section | Default content |
 |---------|-----------------|
@@ -32092,7 +32092,7 @@ curl -H "Accept: application/xml" https://jokes.example.com/api/v1/joke</code></
 | Acceptable use | No unlawful use, no abuse of other people, no attempt to bypass rate limits or access controls, and no testing beyond the security policy at `/server/security/policy` |
 | Liability | The service is provided as is, without warranty of any kind; to the extent the law allows, the operator is not liable for loss arising from its use |
 | Changes | The terms may change; the current text on this page applies from the moment it is published |
-| Governing law | The law of the place where the operator is established, unless the operator's own terms text names another |
+| Governing law | The laws of the United States and of the State in which the operator is established, without regard to conflict-of-law rules, unless the operator's own terms text names another |
 
 ### Configuration
 
