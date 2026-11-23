@@ -6049,7 +6049,7 @@ jobs:
         run: |
           # Verify no GPL/AGPL/LGPL licenses (go-licenses pre-installed in build image)
           if go-licenses csv ./... | grep -iE 'GPL|AGPL|LGPL'; then
-            echo "ERROR: Copyleft license detected!"
+            echo "ERROR: Copyleft license detected!" >&2
             exit 1
           fi
 
@@ -6071,15 +6071,15 @@ echo "Checking for incompatible licenses..."
 
 # Require go-licenses — it is pre-installed in casjaysdev/go:latest; never install inline.
 command -v go-licenses >/dev/null 2>&1 || {
-    echo "ERROR: go-licenses not found — run inside casjaysdev/go:latest"
-    exit 1
+    echo "ERROR: go-licenses not found — run inside casjaysdev/go:latest" >&2
+    exit 69
 }
 
 # Check for copyleft licenses
 echo "Scanning dependencies..."
 if go-licenses csv ./... | grep -iE 'GPL|AGPL|LGPL'; then
-    echo "ERROR: Copyleft license detected!"
-    echo "Remove the dependency or find an alternative."
+    echo "ERROR: Copyleft license detected!" >&2
+    echo "Remove the dependency or find an alternative." >&2
     exit 1
 fi
 
@@ -11085,6 +11085,54 @@ if name, ok := commandHelp(os.Args[1:], "shell", "service", "maintenance", "upda
 ```
 
 The client binary applies the same pre-scan to its own command flags (PART 32). Plain `--help` / `-h` with no command flag still prints the main help.
+
+## Output Streams & Exit Codes (ALL Binaries and Scripts)
+
+**Applies to the server binary, the CLI, the agent and every shell script in the repository (`tests/*.sh`, helper scripts, init scripts). One rule set, so a caller can always tell data from diagnostics and success from failure.**
+
+### Output Streams
+
+| Stream | Carries | Never carries |
+|--------|---------|---------------|
+| **stdout** | What the command was asked to produce: requested data, `--help`, `--version`, a healthy `--status`, `--shell completions`, config dumps, the path of an exported file, and the normal progress and success lines of a command that is working | Error messages, warnings, usage errors, diagnostics |
+| **stderr** | Every error message, every usage error, every warning, every `SKIP:` or "unsupported or unavailable" reason, a recovered panic, and any fatal startup failure | Requested data or machine-readable output |
+
+| Rule | Requirement |
+|------|-------------|
+| **Errors go to stderr** | `Error: ...`, `ERROR: ...`, `FAILED: ...`, `SKIP: ...` and `Warning: ...` are written to stderr, never stdout. A shell script writes them with `>&2` |
+| **Clean machine output** | With `--output json` (or any non-text format) stdout holds ONLY the document; errors stay on stderr, so `command \| jq` never reads a diagnostic |
+| **A non-zero exit has a reason** | Every non-zero exit is preceded by one line on stderr saying what failed (`Error: {what failed}` for the CLI, `{program}: {what failed}` for the server binary, `ERROR: {what failed}` for a script). User-facing binaries localize it (i18n); a script prints English |
+| **Help and usage** | `--help` and `--version` asked for explicitly: stdout, exit `0`. A usage error (bad flag, missing argument, unknown subcommand) prints the one-line problem and a usage hint to stderr and exits `2` |
+| **Color only on a terminal** | ANSI color and emoji are written to a stream only when that stream is a terminal and `NO_COLOR` is unset (see "NO_COLOR Support"); a pipe or a file always receives plain text |
+| **Logging is separate** | Log files, console log lines and their levels follow the logging PART; this section governs what a command prints as its own output. A fatal startup failure is printed to stderr before the process exits AND logged |
+| **`--status`** | Healthy: the result on stdout, exit `0`. Unhealthy: the reason on stderr, exit `1` |
+
+### Exit Codes
+
+One table for every binary and script of every project. Codes `65`-`78` are the BSD `sysexits.h` values (already used for `75`, `EX_TEMPFAIL`, by the staged update), so a supervisor, a CI step or a caller can branch on them.
+
+| Code | Name | Meaning | Examples |
+|------|------|---------|----------|
+| `0` | success | The command did what was asked, including `--help`, `--version`, "no update available", a healthy `--status`, and a graceful shutdown on `SIGTERM`, `SIGINT` or `SIGRTMIN+3` | |
+| `1` | general error | Any runtime failure not covered below: a failed check or test, an unhealthy `--status`, a recovered panic | |
+| `2` | usage | Bad flag, missing argument, unknown subcommand (the code Go's `flag`, Rust's `clap` and Python's `argparse` use on their own) | `--port abc`, unknown `--maintenance` verb |
+| `65` | `EX_DATAERR` | Input data is malformed or fails validation | invalid JSON or YAML import, `VALIDATION_FAILED` |
+| `66` | `EX_NOINPUT` | A requested input or resource does not exist or cannot be read | CLI `get` of a missing id, a missing input file |
+| `69` | `EX_UNAVAILABLE` | A service or capability the command needs is unavailable | server unreachable, a port that cannot be bound, a required tool or hypervisor that is missing |
+| `74` | `EX_IOERR` | I/O error on a file or device | disk full, unreadable database file |
+| `75` | `EX_TEMPFAIL` | Temporary failure; a retry or a restart will help | a staged update waiting for the privileged restart |
+| `77` | `EX_NOPERM` | Permission denied or authentication failed | not root for `--service --install`, an invalid token |
+| `78` | `EX_CONFIG` | Configuration is invalid or missing | a bad `server.yml`, a failing `--config-test` |
+
+| Rule | Requirement |
+|------|-------------|
+| **Most specific code** | A command returns the most specific code above; `1` is the fallback. `64` (`EX_USAGE`) is not used: `2` is the usage code |
+| **Reserved** | `126` (found but not executable), `127` (not found) and `128+n` (killed by signal `n`, for example `130` Ctrl+C and `143` SIGTERM) belong to the shell; a program never returns them on purpose |
+| **Container health** | `--status` returns only `0` or `1`: Docker's `HEALTHCHECK` defines exactly `0` healthy and `1` unhealthy, and reserves `2` |
+| **Documented** | `--help` lists every code above `2` that the command can return |
+| **Init scripts** | SysV and OpenRC init scripts follow the LSB action codes: `status` returns `0` running and `3` not running, and an unknown action prints the usage to stderr and returns `2` |
+| **Scripts** | `0` every check passed; `1` one or more checks failed (the script runs every check, then exits `1` and names the count: a failure is never only printed); `2` usage; `69` the script cannot run here (no Docker, Incus, hypervisor or `/dev/kvm`), with the reason on stderr |
+| **SKIP** | One check that cannot run in this environment (for example no outbound network) prints `SKIP: {reason}` on stderr and does not fail; the opt-in `REQUIRE_*=1` variable of that check turns the skip into a failure. A whole script that cannot run at all exits `69`, never `0` |
 
 ## NO_COLOR Support (ALL Binaries)
 
@@ -39321,6 +39369,7 @@ POST /api/{api_version}/server/{admin_path}/backup/restore
 |------|---------|
 | 0 | Successful update or no update available |
 | 1 | Error |
+| 75 | Update downloaded and staged; the privileged restart applies it (`EX_TEMPFAIL`, see the staged-update flow). Other codes follow "Output Streams & Exit Codes" |
 
 **HTTP 404 from GitHub API means no updates available (already current).**
 
@@ -41050,8 +41099,8 @@ case "$1" in
         fi
         ;;
     *)
-        echo "Usage: $0 {start|stop|restart|status}"
-        exit 1
+        echo "Usage: $0 {start|stop|restart|status}" >&2
+        exit 2
         ;;
 esac
 exit 0
@@ -48342,7 +48391,7 @@ rm -rf "${TMPDIR:-/tmp}/${PROJECT_ORG}/"
 | Rule | Description |
 |------|-------------|
 | **Named by convention** | `{project_name}-XXXXXXXX` (8 random characters), the same convention as Docker; an init-mode suffix (`-systemd`, `-openrc`) may follow. Fixed names such as `test-{project_name}` are never used: two runs would collide, and a user's own instance could be mistaken for a test's. A script records the name in a variable, and every `incus exec`, `incus file push`, `incus restart` and `incus delete` uses that exact name |
-| **Disposable** | The script that launches an instance deletes it: `trap cleanup EXIT INT TERM`, registered BEFORE `incus launch`, runs `incus delete --force {instance_name}`. A run that never stops or restarts its instance may add `--ephemeral` (the Incus counterpart of `--rm`); a run that restarts it (the boot-persistence test of `tests/incus.sh`) is not ephemeral and relies on the trap |
+| **Disposable** | The script that launches an instance deletes it: `trap cleanup EXIT INT TERM`, registered BEFORE `incus launch`, runs `incus delete --force {instance_name}`. A run that never stops its instance may add `--ephemeral` (the Incus counterpart of `--rm`): per the Incus documentation an ephemeral instance is deleted when it is stopped. A run that stops or restarts its instance (the reboot test of `tests/incus.sh`, the power cycle of `tests/virt.sh`) is NOT ephemeral, because the Incus documentation does not define the restart case; it relies on the trap |
 | **Resource caps** | Every launch sets `-c limits.cpu=` and `-c limits.memory=` (defaults `INCUS_CPUS=2` and `INCUS_MEM=4GiB`, overridable from the environment), the counterparts of `DOCKER_CPUS` and `DOCKER_MEM` |
 | **One at a time** | One instance per init system, one after the other, and one `tests/incus.sh` per repository at any moment; instances are never started in parallel |
 | **Shared images** | Test instances launch from the cached `images:` remote (`debian/trixie`, `alpine/{latest_stable}`). Images are shared by every project and expire on their own, so a script never runs `incus image delete`, never publishes a per-run image, and never keeps an instance only to hold a warm package cache |
@@ -48358,13 +48407,38 @@ rm -rf "${TMPDIR:-/tmp}/${PROJECT_ORG}/"
 |------|-------------|
 | **A VM is required for** | Behavior that depends on its own kernel or a real boot: kernel parameters, modules and non-namespaced sysctls, mounts, filesystems, LVM or LUKS, firewall behavior against a real kernel, bootloader and initramfs, a power-cycle reboot, and the "running in a VM" detection branch (for example, I2P is off by default in a VM and on in a container) |
 | **A container is enough for** | Service install, the init-system lifecycle, an ordinary reboot (`incus restart`) and networking inside the instance: all of `tests/incus.sh systemd` and `openrc` stay in containers |
-| **Same tool, same rules** | A VM is launched with `incus launch ... --vm` under the same naming (`{project_name}-XXXXXXXX`), `trap cleanup EXIT INT TERM`, resource caps and end-of-task check as an Incus container. Raw `qemu-system-*` or libvirt (`virsh`) is used only when Incus cannot express the need; it uses the same name prefix, and the trap removes it by exact name (`virsh destroy`, then `virsh undefine --remove-all-storage`) |
+| **Same tool, same rules** | A VM is launched with `incus launch ... --vm` under the same naming (`{project_name}-XXXXXXXX`), `trap cleanup EXIT INT TERM`, resource caps and end-of-task check as an Incus container. Other hypervisors (libvirt, VirtualBox) follow the same rules through the backends of "VM Hypervisors" |
 | **Caps** | `-c limits.cpu=`, `-c limits.memory=` and an explicit root disk `-d root,size=` (no larger than the test needs, for example `10GiB`) |
-| **Prerequisite** | `/dev/kvm` must exist and be usable. Without it a VM test prints `SKIP: no /dev/kvm` and the checks that need no VM still run; `REQUIRE_VM=1` turns the skip into a failure (the same pattern as `REQUIRE_OVERLAY=1`) |
+| **Prerequisite** | `/dev/kvm` must exist and be usable (Incus VMs need KVM). Without it `tests/virt.sh` does not skip: it exits `69` with the reason on stderr (see "VM Hypervisors") |
 | **Boot wait** | A VM boots more slowly than a container. Wait for the Incus agent (`incus exec {instance_name} -- true`) for up to `VM_BOOT_WAIT` seconds (default `180`) before the first command, then run the same init-ready check as for a container |
-| **Secure Boot** | Set `-c security.secureboot=false` only for an image whose bootloader is unsigned and fails to boot with Secure Boot on; never by default |
+| **Secure Boot** | `security.secureboot` is a VM-only key and defaults to `true`: UEFI Secure Boot is enforced with the default Microsoft keys, so an image whose bootloader is not signed with them fails to boot. Set `-c security.secureboot=false` only for such an image; a guest that is not UEFI-capable also needs `-c security.csm=true`. Never set either by default |
 | **One VM at a time, never kept** | At most one VM per repository at any moment, and none when a container will do; a VM is deleted by its trap and is never kept between runs |
 | **Where it lives** | `tests/virt.sh` (OPTIONAL, standalone, manual, see "tests/virt.sh"). `tests/incus.sh` is for Incus containers only and never launches `--vm` |
+
+### VM Hypervisors (`tests/virt.sh`)
+
+**`tests/virt.sh` runs on whichever hypervisor the host has: Incus (`--vm`), libvirt (QEMU/KVM) or VirtualBox. It never installs one and never assumes one; a host with none, or with one that cannot run VMs, gets an error and the reason, never a silent skip.**
+
+| Rule | Description |
+|------|-------------|
+| **Backends** | `incus` (`incus launch --vm`), `libvirt` (`virsh` and `virt-install` against `qemu:///system`), `virtualbox` (`VBoxManage`) |
+| **Selection** | `VIRT_BACKEND=auto` (the default) uses the first backend whose probe passes, in the order incus, libvirt, virtualbox. `VIRT_BACKEND=incus\|libvirt\|virtualbox` forces one and fails if its probe fails |
+| **Probes** | incus: `incus` is installed, `incus info` answers and `/dev/kvm` is writable. libvirt: `virsh` and `virt-install` are installed and `virsh -c qemu:///system uri` answers. virtualbox: `VBoxManage` is installed and, on Linux, `/dev/vboxdrv` exists (the `vboxdrv` module is loaded). Support depends on the host's hardware and software, so a failing probe returns ONE reason line |
+| **Nothing supported** | When no probe passes (or the forced one fails) the script prints `ERROR: no supported hypervisor on this host` and one `backend: reason` line per probe to stderr, and exits `69` (`EX_UNAVAILABLE`). It does not skip and does not exit `0`: a clean-OS test that did not run is not a pass |
+| **Same rules** | Every backend follows "Incus Discipline" in its own terms: VM names `{project_name}-XXXXXXXX-{init}`, `trap cleanup EXIT INT TERM` before the first create (removing by exact name), caps (`VIRT_CPUS=2`, `VIRT_MEM_MB=4096`, `VIRT_DISK_GB=10`), a ceiling on every wait and every hypervisor call (`VM_BOOT_WAIT`, default `180`; `VIRT_OP_TIMEOUT`, default `600`), one VM at a time, and an end-of-task check that lists nothing |
+| **Images** | Incus pulls `images:debian/trixie` and `images:alpine/{latest_stable}` itself. libvirt and VirtualBox have no image server: the caller points `VIRT_IMAGE_SYSTEMD` and `VIRT_IMAGE_OPENRC` at a cloud-init capable qcow2 (libvirt) or an OVA (VirtualBox). A missing or unreadable image exits `69` and names the variable |
+| **Guest access** | Incus uses its agent. libvirt and VirtualBox use SSH with a throwaway key pair generated under `{tempdir}/{project_org}/{internal_name}-XXXXXX/` and removed by the trap; the public key is injected through cloud-init, and host key checking is off because the VM is disposable |
+
+**Backend operations (the six functions every backend implements):**
+
+| Operation | incus | libvirt | virtualbox |
+|-----------|-------|---------|------------|
+| create | `incus launch IMAGE NAME --vm -c limits.cpu=N -c limits.memory=MiB -d root,size=GiB` | `virt-install --connect qemu:///system --name NAME --memory MiB --vcpus N --import --disk size=GiB,backing_store=IMAGE,format=qcow2 --os-variant generic --cloud-init clouduser-ssh-key=PUBKEY --noautoconsole` | `VBoxManage import IMAGE --vsys 0 --vmname NAME --cpus N --memory MiB`, then `VBoxManage modifyvm NAME --natpf1 "ssh,tcp,127.0.0.1,PORT,,22"` and `VBoxManage startvm NAME --type headless` |
+| wait | `incus exec NAME -- true` until it answers | `virsh domifaddr NAME --source lease` for the address, then `ssh ... true` | `ssh -p PORT ... true` |
+| exec | `incus exec NAME -- CMD` | `ssh -i KEY USER@ADDR CMD` | `ssh -i KEY -p PORT USER@127.0.0.1 CMD` |
+| push | `incus file push SRC NAME/DEST` | `scp -i KEY SRC USER@ADDR:DEST` | `scp -i KEY -P PORT SRC USER@127.0.0.1:DEST` |
+| power cycle | `incus stop --force NAME`, then `incus start NAME` | `virsh destroy NAME`, then `virsh start NAME` | `VBoxManage controlvm NAME poweroff`, then `VBoxManage startvm NAME --type headless` |
+| delete | `incus delete --force NAME` | `virsh destroy NAME` (ignore a stopped VM), then `virsh undefine NAME --remove-all-storage --nvram` | `VBoxManage controlvm NAME poweroff` (ignore a stopped VM), then `VBoxManage unregistervm NAME --delete` |
 
 ### Testing Strategy
 
@@ -48736,7 +48810,7 @@ test:
       run: |
         COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
         if [ "$(echo "$COVERAGE < 60" | bc -l)" -eq 1 ]; then
-          echo "ERROR: Coverage is $COVERAGE%, must be >= 60%"
+          echo "ERROR: Coverage is $COVERAGE%, must be >= 60%" >&2
           exit 1
         fi
         echo "Coverage: $COVERAGE% (>= 60% required)"
@@ -49054,6 +49128,9 @@ docker run --rm \
     # Install required tools for testing
     apk add --no-cache curl bash file jq tor i2pd tzdata ca-certificates >/dev/null
 
+    FAILURES=0
+    fail() { echo \"✗ FAILED: \$*\" >&2; FAILURES=\$((FAILURES + 1)); }
+
     chmod +x /app/${PROJECT_NAME}
     [ -f /app/${PROJECT_NAME}-cli ] && chmod +x /app/${PROJECT_NAME}-cli
     [ -f /app/${PROJECT_NAME}-agent ] && chmod +x /app/${PROJECT_NAME}-agent
@@ -49077,43 +49154,43 @@ docker run --rm \
 
     echo '=== API Endpoint Tests ==='
     # Test JSON response (default)
-    curl -q -LSsf http://localhost:64580/api/{api_version}/server/healthz || echo 'FAILED: /api/{api_version}/server/healthz'
+    curl -q -LSsf http://localhost:64580/api/{api_version}/server/healthz || fail '/api/{api_version}/server/healthz'
 
     # Test .txt extension (plain text)
-    curl -q -LSsf http://localhost:64580/api/{api_version}/server/healthz.txt || echo 'FAILED: /api/{api_version}/server/healthz.txt'
+    curl -q -LSsf http://localhost:64580/api/{api_version}/server/healthz.txt || fail '/api/{api_version}/server/healthz.txt'
 
     # Test Accept header: application/json
-    curl -q -LSsf -H 'Accept: application/json' http://localhost:64580/server/healthz || echo 'FAILED: Accept JSON'
+    curl -q -LSsf -H 'Accept: application/json' http://localhost:64580/server/healthz || fail 'Accept JSON'
 
     # Test Accept header: text/plain
-    curl -q -LSsf -H 'Accept: text/plain' http://localhost:64580/server/healthz || echo 'FAILED: Accept text/plain'
+    curl -q -LSsf -H 'Accept: text/plain' http://localhost:64580/server/healthz || fail 'Accept text/plain'
 
     echo '=== Project-Specific Endpoint Tests ==='
     # MUST test ALL endpoints from IDEA.md - both API and frontend
     # Test FULL CRUD if project has CRUD operations
     #
     # Example for jokes API (API routes with .txt extension):
-    #   curl -q -LSsf http://localhost:64580/api/{api_version}/jokes/random || echo 'FAILED: API JSON'
-    #   curl -q -LSsf http://localhost:64580/api/{api_version}/jokes/random.txt || echo 'FAILED: API .txt'
-    #   curl -q -LSsf -H 'Accept: text/plain' http://localhost:64580/api/{api_version}/jokes/random || echo 'FAILED: API Accept text'
+    #   curl -q -LSsf http://localhost:64580/api/{api_version}/jokes/random || fail 'API JSON'
+    #   curl -q -LSsf http://localhost:64580/api/{api_version}/jokes/random.txt || fail 'API .txt'
+    #   curl -q -LSsf -H 'Accept: text/plain' http://localhost:64580/api/{api_version}/jokes/random || fail 'API Accept text'
     #
     # Example for jokes frontend (smart detection, no .txt - test with text for simplicity):
     #   JOKE=\$(curl -q -LSsf http://localhost:64580/jokes/random)  # CLI auto-detects text
-    #   if echo "\$JOKE" | grep -q "Why"; then echo '✓ Frontend text works'; else echo 'FAILED: Frontend text'; fi
+    #   if echo "\$JOKE" | grep -q "Why"; then echo '✓ Frontend text works'; else fail 'Frontend text'; fi
     #   # Optional: verify HTML is served to browsers
-    #   curl -q -LSsfI -H 'Accept: text/html' http://localhost:64580/jokes/random | grep -q 'text/html' || echo 'FAILED: Frontend HTML'
+    #   curl -q -LSsfI -H 'Accept: text/html' http://localhost:64580/jokes/random | grep -q 'text/html' || fail 'Frontend HTML'
     #
     # Example for user CRUD (full test suite):
     #   # API - Current user
-    #   curl -q -LSsf http://localhost:64580/api/{api_version}/users || echo 'FAILED: GET current user API'
-    #   curl -q -LSsf -X PATCH -H 'Content-Type: application/json' -d '{\"email\":\"new@test.com\"}' http://localhost:64580/api/{api_version}/users || echo 'FAILED: UPDATE current user API'
+    #   curl -q -LSsf http://localhost:64580/api/{api_version}/users || fail 'GET current user API'
+    #   curl -q -LSsf -X PATCH -H 'Content-Type: application/json' -d '{\"email\":\"new@test.com\"}' http://localhost:64580/api/{api_version}/users || fail 'UPDATE current user API'
     #   # API - Public profile (by username)
-    #   curl -q -LSsf http://localhost:64580/api/{api_version}/users/testuser || echo 'FAILED: READ public profile API JSON'
-    #   curl -q -LSsf http://localhost:64580/api/{api_version}/users/testuser.txt || echo 'FAILED: READ public profile API .txt'
+    #   curl -q -LSsf http://localhost:64580/api/{api_version}/users/testuser || fail 'READ public profile API JSON'
+    #   curl -q -LSsf http://localhost:64580/api/{api_version}/users/testuser.txt || fail 'READ public profile API .txt'
     #   # API - Admin routes (by ID)
-    #   curl -q -LSsf http://localhost:64580/api/{api_version}/server/{admin_path}/users || echo 'FAILED: LIST users admin API'
-    #   curl -q -LSsf http://localhost:64580/api/{api_version}/server/{admin_path}/users/1 || echo 'FAILED: READ user admin API'
-    #   curl -q -LSsf -X DELETE http://localhost:64580/api/{api_version}/server/{admin_path}/users/1 || echo 'FAILED: DELETE user admin API'
+    #   curl -q -LSsf http://localhost:64580/api/{api_version}/server/{admin_path}/users || fail 'LIST users admin API'
+    #   curl -q -LSsf http://localhost:64580/api/{api_version}/server/{admin_path}/users/1 || fail 'READ user admin API'
+    #   curl -q -LSsf -X DELETE http://localhost:64580/api/{api_version}/server/{admin_path}/users/1 || fail 'DELETE user admin API'
     #   # Frontend (smart detection - test with text for simplicity)
     #   USERS=\$(curl -q -LSsf http://localhost:64580/users)  # CLI auto-detects text (current user)
     #   USER=\$(curl -q -LSsf http://localhost:64580/testuser)  # CLI auto-detects text (public profile)
@@ -49167,13 +49244,13 @@ docker run --rm \
     if /app/renamed-server --help 2>&1 | grep -q 'renamed-server'; then
         echo '✓ Server binary rename works (--help shows actual name)'
     else
-        echo '✗ FAILED: Server --help does not show renamed binary name'
+        fail 'Server --help does not show renamed binary name'
     fi
 
     echo '=== Client Tests (if exists) ==='
     if [ -f /app/${PROJECT_NAME}-cli ]; then
-        /app/${PROJECT_NAME}-cli --version || echo 'FAILED: CLI --version'
-        /app/${PROJECT_NAME}-cli --help || echo 'FAILED: CLI --help'
+        /app/${PROJECT_NAME}-cli --version || fail 'CLI --version'
+        /app/${PROJECT_NAME}-cli --help || fail 'CLI --help'
 
         # Test binary rename
         cp /app/${PROJECT_NAME}-cli /app/renamed-cli
@@ -49181,28 +49258,28 @@ docker run --rm \
         if /app/renamed-cli --help 2>&1 | grep -q 'renamed-cli'; then
             echo '✓ CLI binary rename works'
         else
-            echo '✗ FAILED: CLI --help does not show renamed binary name'
+            fail 'CLI --help does not show renamed binary name'
         fi
 
         # Full CLI functionality tests against server
         echo '--- CLI Full Functionality Tests ---'
         if [ -n \"\${API_TOKEN:-}\" ]; then
             # Test with API token
-            /app/${PROJECT_NAME}-cli --server http://localhost:64580 --token \"\$API_TOKEN\" status || echo 'CLI status failed'
+            /app/${PROJECT_NAME}-cli --server http://localhost:64580 --token \"\$API_TOKEN\" status || fail 'CLI status failed'
             # Project-specific CLI commands go here (IDEA.md)
             # Example: /app/${PROJECT_NAME}-cli --server http://localhost:64580 --token \"\$API_TOKEN\" list
         else
             # Test without token (anonymous if allowed)
-            /app/${PROJECT_NAME}-cli --server http://localhost:64580 status || echo 'CLI status (no token) failed or not applicable'
+            /app/${PROJECT_NAME}-cli --server http://localhost:64580 status || echo 'WARNING: CLI status (no token) failed or not applicable' >&2
         fi
     else
-        echo 'client not built - skipping'
+        echo 'SKIP: client not built' >&2
     fi
 
     echo '=== Agent Tests (if exists) ==='
     if [ -f /app/${PROJECT_NAME}-agent ]; then
-        /app/${PROJECT_NAME}-agent --version || echo 'FAILED: Agent --version'
-        /app/${PROJECT_NAME}-agent --help || echo 'FAILED: Agent --help'
+        /app/${PROJECT_NAME}-agent --version || fail 'Agent --version'
+        /app/${PROJECT_NAME}-agent --help || fail 'Agent --help'
 
         # Test binary rename
         cp /app/${PROJECT_NAME}-agent /app/renamed-agent
@@ -49210,7 +49287,7 @@ docker run --rm \
         if /app/renamed-agent --help 2>&1 | grep -q 'renamed-agent'; then
             echo '✓ Agent binary rename works'
         else
-            echo '✗ FAILED: Agent --help does not show renamed binary name'
+            fail 'Agent --help does not show renamed binary name'
         fi
 
         # Full Agent functionality tests against server
@@ -49230,6 +49307,7 @@ docker run --rm \
     kill \$SERVER_PID
     wait \$SERVER_PID 2>/dev/null || true
 
+    if [ \"\$FAILURES\" -ne 0 ]; then echo \"\$FAILURES check(s) failed\" >&2; exit 1; fi
     echo '=== All tests passed ==='
 "
 
@@ -49246,8 +49324,8 @@ set -eo pipefail
 
 # Check if incus is available
 if ! command -v incus &>/dev/null; then
-    echo "ERROR: incus not found. Install incus or use tests/docker.sh"
-    exit 1
+    echo "ERROR: incus not found. Install incus or use tests/docker.sh" >&2
+    exit 69
 fi
 
 # Usage: tests/incus.sh [systemd|openrc|all]   (default: all)
@@ -49256,7 +49334,7 @@ MODE="${1:-all}"
 case "$MODE" in
     systemd|openrc) MODES="$MODE" ;;
     all) MODES="systemd openrc" ;;
-    *) echo "Usage: $0 [systemd|openrc|all]"; exit 2 ;;
+    *) echo "Usage: $0 [systemd|openrc|all]" >&2; exit 2 ;;
 esac
 
 # Detect project info
@@ -49327,7 +49405,7 @@ REMOTE_LIB=$(cat <<'REMOTE_LIB_EOF'
 INTERNAL_NAME="${INTERNAL_NAME:-$PROJECT_NAME}"
 INTERNAL_ORG="${INTERNAL_ORG:-$PROJECT_ORG}"
 FAILURES=0
-fail() { echo "✗ FAILED: $*"; FAILURES=$((FAILURES + 1)); }
+fail() { echo "✗ FAILED: $*" >&2; FAILURES=$((FAILURES + 1)); }
 pass() { echo "✓ $*"; }
 check() { local d="$1"; shift; if "$@" >/dev/null 2>&1; then pass "$d"; else fail "$d"; fi; }
 check_not() { local d="$1"; shift; if "$@" >/dev/null 2>&1; then fail "$d"; else pass "$d"; fi; }
@@ -49492,7 +49570,7 @@ if [ "$(overlay tor status)" = "healthy" ]; then
 elif [ "${REQUIRE_OVERLAY:-0}" = "1" ]; then
     fail "Tor did not become healthy within ${TOR_WAIT:-300}s"
 else
-    echo "SKIP: Tor did not bootstrap within ${TOR_WAIT:-300}s (no outbound network?). The contract is still checked."
+    echo "SKIP: Tor did not bootstrap within ${TOR_WAIT:-300}s (no outbound network?). The contract is still checked." >&2
     case "$(overlay tor status)" in
         starting) check "starting maps to checks.tor ok" test "$(healthz | jq -r '.checks.tor')" = "ok" ;;
         unavailable) check "unavailable maps to checks.tor degraded" test "$(healthz | jq -r '.checks.tor')" = "degraded" ;;
@@ -49533,7 +49611,7 @@ if [ "$(overlay i2p status)" = "healthy" ]; then
 elif [ "${REQUIRE_OVERLAY:-0}" = "1" ]; then
     fail "I2P did not become healthy within ${I2P_WAIT:-600}s"
 else
-    echo "SKIP: I2P did not build tunnels within ${I2P_WAIT:-600}s (no outbound network?). The contract is still checked."
+    echo "SKIP: I2P did not build tunnels within ${I2P_WAIT:-600}s (no outbound network?). The contract is still checked." >&2
 fi
 if healthz | grep -Eq '/(etc|var|home|config|data)/'; then fail "health response leaks a filesystem path"; else pass "health response carries no filesystem path"; fi
 
@@ -49566,7 +49644,7 @@ rm -f "${CONF_ROOT}/yaml.d/50-i2p.yml"
 ${PROJECT_NAME} --service restart
 wait_for 60 healthz_up
 
-[ "$FAILURES" -eq 0 ] || { echo "$FAILURES check(s) failed"; exit 1; }
+[ "$FAILURES" -eq 0 ] || { echo "$FAILURES check(s) failed" >&2; exit 1; }
 echo "=== [$INIT_MODE] Main tests passed ==="
 REMOTE_MAIN_EOF
 )
@@ -49596,7 +49674,7 @@ check_not "service not enabled" svc_enabled
 check "service not active" wait_for 30 svc_stopped
 check_not "data directory removed" test -d "/var/lib/${INTERNAL_ORG}/${INTERNAL_NAME}"
 
-[ "$FAILURES" -eq 0 ] || { echo "$FAILURES check(s) failed"; exit 1; }
+[ "$FAILURES" -eq 0 ] || { echo "$FAILURES check(s) failed" >&2; exit 1; }
 echo "=== [$INIT_MODE] All tests passed ==="
 REMOTE_AFTER_EOF
 )
@@ -49702,37 +49780,55 @@ Bootstrapping Tor and I2P needs outbound network access from the container. When
 
 #### tests/virt.sh
 
-**Purpose:** Clean-OS testing in real VMs (Incus `--vm`): a pristine guest with its own kernel and a real boot, once per init system (systemd on Debian, OpenRC on Alpine). It is OPTIONAL: a project adds it only when it really needs a clean system, such as installing onto a pristine OS, a cold power cycle, kernel-dependent behavior, or the "running in a VM" branch. Everything a container can show stays in `tests/docker.sh` (basic) and `tests/incus.sh` (the whole app). It is standalone and developer-initiated like `tests/e2e.sh`: `tests/run_tests.sh` never starts it, and CI never requires it.
+**Purpose:** Clean-OS testing in real VMs: a pristine guest with its own kernel and a real boot, once per init system (systemd on Debian, OpenRC on Alpine), on whichever hypervisor the host has (Incus `--vm`, libvirt or VirtualBox; see "VM Hypervisors"). It is OPTIONAL: a project adds it only when it really needs a clean system, such as installing onto a pristine OS, a cold power cycle, kernel-dependent behavior, or the "running in a VM" branch. Everything a container can show stays in `tests/docker.sh` (basic) and `tests/incus.sh` (the whole app). It is standalone and developer-initiated like `tests/e2e.sh`: `tests/run_tests.sh` never starts it, and CI never requires it.
 
-**virt.sh MUST:** build with `make build`; run the SAME guest-side steps as `tests/incus.sh` (init identity, `--service --install`, restart, stop and start, the reboot, Tor and I2P), so a VM run is a superset; then add the VM-only checks below. It follows "Incus Discipline" and "Incus Virtual Machines" exactly: `{project_name}-XXXXXXXX` names, `trap cleanup EXIT INT TERM` before the first launch, resource caps and a root disk size, one VM at a time, and a ceiling on every wait.
+**virt.sh MUST:** build with `make build`; run the SAME guest-side steps as `tests/incus.sh` (init identity, `--service --install`, restart, stop and start, the reboot, Tor and I2P), so a VM run is a superset; then add the VM-only checks below. It follows "Incus Discipline", "Incus Virtual Machines" and "VM Hypervisors" exactly: `{project_name}-XXXXXXXX` names, `trap cleanup EXIT INT TERM` before the first create, resource caps, one VM at a time, and a ceiling on every wait. A host without a usable hypervisor is an error (`69` and the reason on stderr), never a skip.
 
 ```bash
 #!/usr/bin/env bash
 set -eo pipefail
 
 # Usage: tests/virt.sh [systemd|openrc|all]   (default: all)
-# systemd runs in a Debian VM, openrc in an Alpine VM; each VM is a fresh OS with its own kernel
+# VIRT_BACKEND=auto|incus|libvirt|virtualbox picks the hypervisor (default auto: the first one the host supports)
 MODE="${1:-all}"
 case "$MODE" in
     systemd|openrc) MODES="$MODE" ;;
     all) MODES="systemd openrc" ;;
-    *) echo "Usage: $0 [systemd|openrc|all]"; exit 2 ;;
+    *) echo "Usage: $0 [systemd|openrc|all]" >&2; exit 2 ;;
 esac
 
-if ! command -v incus &>/dev/null; then
-    echo "ERROR: incus not found"
-    exit 1
-fi
+# Each probe returns 0 when its hypervisor is usable, or prints ONE reason line and returns 1
+probe_incus() {
+    command -v incus >/dev/null 2>&1 || { echo "incus is not installed"; return 1; }
+    incus info >/dev/null 2>&1 || { echo "the Incus daemon is not reachable (is the user in the incus-admin group?)"; return 1; }
+    [ -w /dev/kvm ] || { echo "/dev/kvm is missing or not writable: no hardware virtualization, or no permission (Incus VMs need KVM)"; return 1; }
+}
+probe_libvirt() {
+    command -v virsh >/dev/null 2>&1 || { echo "virsh (libvirt) is not installed"; return 1; }
+    command -v virt-install >/dev/null 2>&1 || { echo "virt-install is not installed"; return 1; }
+    virsh -c qemu:///system uri >/dev/null 2>&1 || { echo "libvirtd (qemu:///system) is not reachable (is the service running, is the user in the libvirt group?)"; return 1; }
+}
+probe_virtualbox() {
+    command -v VBoxManage >/dev/null 2>&1 || { echo "VBoxManage (VirtualBox) is not installed"; return 1; }
+    [ "$(uname -s)" != "Linux" ] || [ -c /dev/vboxdrv ] || { echo "the vboxdrv kernel module is not loaded (/dev/vboxdrv is missing)"; return 1; }
+}
 
-# A VM needs hardware virtualization: without a usable /dev/kvm the run is skipped, unless REQUIRE_VM=1
-if [ ! -w /dev/kvm ]; then
-    if [ "${REQUIRE_VM:-0}" = "1" ]; then
-        echo "ERROR: no usable /dev/kvm"
-        exit 1
-    fi
-    echo "SKIP: no /dev/kvm"
-    exit 0
-fi
+# Pick the backend; with none usable print every reason to stderr and exit 69 (EX_UNAVAILABLE)
+detect_backend() {
+    local want="${VIRT_BACKEND:-auto}" b reason report=""
+    case "$want" in
+        auto|incus|libvirt|virtualbox) ;;
+        *) echo "ERROR: VIRT_BACKEND must be auto, incus, libvirt or virtualbox" >&2; exit 2 ;;
+    esac
+    for b in incus libvirt virtualbox; do
+        [ "$want" = "auto" ] || [ "$want" = "$b" ] || continue
+        if reason=$(probe_"$b"); then BACKEND="$b"; return 0; fi
+        report="${report}  ${b}: ${reason}"$'\n'
+    done
+    printf 'ERROR: no supported hypervisor on this host (VIRT_BACKEND=%s):\n%s' "$want" "$report" >&2
+    exit 69
+}
+detect_backend
 
 # Detect project info
 PROJECT_NAME=$(basename "$PWD")
@@ -49740,35 +49836,49 @@ BIN_DIR="${BIN_DIR:-binaries}"
 VM_PREFIX="${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)"
 VMS=()
 
-# One image per init system: the latest Debian stable and the latest stable Alpine release
+# One image per init system: Incus pulls these itself; libvirt and VirtualBox read VIRT_IMAGE_SYSTEMD and VIRT_IMAGE_OPENRC
 INCUS_IMAGE_SYSTEMD="images:debian/trixie"
 INCUS_IMAGE_OPENRC="images:alpine/3.24"
 
-# Caps for every VM (override from the environment); the root disk is never larger than the test needs
-INCUS_CPUS="${INCUS_CPUS:-2}"
-INCUS_MEM="${INCUS_MEM:-4GiB}"
-VM_DISK="${VM_DISK:-10GiB}"
+# Caps for every VM and a ceiling on every wait and every hypervisor call (override from the environment)
+VIRT_CPUS="${VIRT_CPUS:-2}"
+VIRT_MEM_MB="${VIRT_MEM_MB:-4096}"
+VIRT_DISK_GB="${VIRT_DISK_GB:-10}"
 VM_BOOT_WAIT="${VM_BOOT_WAIT:-180}"
+VIRT_OP_TIMEOUT="${VIRT_OP_TIMEOUT:-600}"
+
+# The six backend operations (the commands of "VM Hypervisors"): ${BACKEND}_create, _wait, _exec, _push, _cycle, _delete.
+# Incus is shown in full; libvirt_* and virtualbox_* implement the same six functions with their own commands.
+incus_create() { timeout "$VIRT_OP_TIMEOUT" incus launch "$2" "$1" --vm -c limits.cpu="$VIRT_CPUS" -c limits.memory="${VIRT_MEM_MB}MiB" -d root,size="${VIRT_DISK_GB}GiB"; }
+incus_wait() {
+    local i
+    for i in $(seq 1 "$VM_BOOT_WAIT"); do
+        incus exec "$1" -- true 2>/dev/null && return 0
+        sleep 1
+    done
+    echo "ERROR: $1 did not come up within ${VM_BOOT_WAIT}s" >&2
+    return 1
+}
+incus_exec() { local vm="$1"; shift; timeout "$VIRT_OP_TIMEOUT" incus exec "$vm" -- "$@"; }
+incus_push() { timeout "$VIRT_OP_TIMEOUT" incus file push "$2" "$1$3"; }
+incus_cycle() { timeout "$VIRT_OP_TIMEOUT" incus stop --force "$1"; timeout "$VIRT_OP_TIMEOUT" incus start "$1"; }
+incus_delete() { incus delete --force "$1" 2>/dev/null || true; }
+
+vm_create() { "${BACKEND}_create" "$@"; }
+vm_wait() { "${BACKEND}_wait" "$@"; }
+vm_exec() { "${BACKEND}_exec" "$@"; }
+vm_push() { "${BACKEND}_push" "$@"; }
+vm_cycle() { "${BACKEND}_cycle" "$@"; }
+vm_delete() { "${BACKEND}_delete" "$@"; }
 
 cleanup() {
     local v
-    for v in "${VMS[@]}"; do incus delete --force "$v" 2>/dev/null || true; done
+    for v in "${VMS[@]}"; do vm_delete "$v"; done
 }
 trap cleanup EXIT INT TERM
 
 # The REMOTE_LIB, REMOTE_MAIN and REMOTE_AFTER guest-side step scripts and the remote() helper are the
-# definitions of tests/incus.sh, unchanged: a VM runs exactly the same steps as a container
-
-# Wait for the Incus agent inside the VM within VM_BOOT_WAIT seconds (the init-ready wait is part of the shared guest-side steps)
-wait_agent() {
-    local vm="$1" i
-    for i in $(seq 1 "$VM_BOOT_WAIT"); do
-        incus exec "$vm" -- true 2>/dev/null && return 0
-        sleep 1
-    done
-    echo "ERROR: $vm did not come up within ${VM_BOOT_WAIT}s"
-    return 1
-}
+# definitions of tests/incus.sh (remote() runs them through vm_exec): a VM runs exactly the same steps as a container
 
 run_mode() {
     local init="$1" image vm
@@ -49776,28 +49886,27 @@ run_mode() {
     vm="${VM_PREFIX}-${init}"
     VMS+=("$vm")
 
-    echo "=== [$init] Launching Incus VM ($image) ==="
-    incus launch "$image" "$vm" --vm -c limits.cpu="$INCUS_CPUS" -c limits.memory="$INCUS_MEM" -d root,size="$VM_DISK"
-    wait_agent "$vm"
+    echo "=== [$init] Creating the VM on $BACKEND ($image) ==="
+    vm_create "$vm" "$image"
+    vm_wait "$vm"
 
     echo "=== [$init] VM-only checks ==="
-    incus exec "$vm" -- sh -c 'grep -qw hypervisor /proc/cpuinfo' || { echo "FAILED: not a VM (no hypervisor flag)"; return 1; }
-    incus exec "$vm" -- sh -c '! grep -qE "lxc|docker" /proc/1/cgroup' || { echo "FAILED: the guest looks like a container"; return 1; }
+    vm_exec "$vm" sh -c 'grep -qw hypervisor /proc/cpuinfo' || { echo "FAILED: not a VM (no hypervisor flag)" >&2; return 1; }
+    vm_exec "$vm" sh -c '! grep -qE "lxc|docker" /proc/1/cgroup' || { echo "FAILED: the guest looks like a container" >&2; return 1; }
 
     echo "=== [$init] Installing test tools, tor and i2pd ==="
     # Same package steps as tests/incus.sh for this init system
 
     echo "=== [$init] Copying binaries to the VM ==="
-    incus file push "${BIN_DIR}/${PROJECT_NAME}" "$vm/usr/local/bin/"
-    incus exec "$vm" -- chmod +x "/usr/local/bin/${PROJECT_NAME}"
+    vm_push "$vm" "${BIN_DIR}/${PROJECT_NAME}" /usr/local/bin/
+    vm_exec "$vm" chmod +x "/usr/local/bin/${PROJECT_NAME}"
 
     echo "=== [$init] Running the shared guest-side steps ==="
     remote "$vm" "$init" "${REMOTE_LIB}${REMOTE_MAIN}"
 
-    echo "=== [$init] Cold power cycle (stop, then start) ==="
-    incus stop --force "$vm"
-    incus start "$vm"
-    wait_agent "$vm"
+    echo "=== [$init] Cold power cycle (power off, then on) ==="
+    vm_cycle "$vm"
+    vm_wait "$vm"
     remote "$vm" "$init" "${REMOTE_LIB}${REMOTE_AFTER}"
 }
 
@@ -49806,7 +49915,7 @@ for init in $MODES; do
     run_mode "$init"
 done
 
-echo "VM tests completed successfully ($MODES)"
+echo "VM tests completed successfully ($MODES on $BACKEND)"
 ```
 
 **VM-only checks (in addition to the steps shared with `tests/incus.sh`):**
@@ -49815,7 +49924,7 @@ echo "VM tests completed successfully ($MODES)"
 |-------|----------|
 | Own kernel, not a container | `/proc/cpuinfo` has the `hypervisor` flag and `/proc/1/cgroup` names neither `lxc` nor `docker` |
 | I2P default in a VM | with no explicit setting: `enabled: false`, `status: disabled`, no `checks.i2p` key (opt-in outside containers) |
-| Cold power cycle | after `incus stop --force` and `incus start` the service comes back by itself with a new PID and answers its health route (a power loss, stronger than the `incus restart` reboot of `tests/incus.sh`) |
+| Cold power cycle | after the power off and power on the service comes back by itself with a new PID and answers its health route (a power loss, stronger than the `incus restart` reboot of `tests/incus.sh`) |
 | Clean install | `--service --install` on the pristine image, with nothing installed beyond the test tools, `tor`, `i2pd` and the binary |
 | Project kernel-level checks | whatever IDEA.md declares as kernel-dependent (firewall rules, mounts, filesystems) runs here and nowhere else |
 
@@ -49835,11 +49944,11 @@ elif command -v incus &>/dev/null; then
     echo "Docker not found - falling back to the Incus container tests..."
     exec "$(dirname "$0")/incus.sh"
 else
-    echo "ERROR: Neither incus nor docker found"
-    echo "Please install one of the following:"
-    echo "  - Docker (basic tests): https://docker.com/"
-    echo "  - Incus (fallback): https://linuxcontainers.org/incus/"
-    exit 1
+    echo "ERROR: Neither docker nor incus found" >&2
+    echo "Please install one of the following:" >&2
+    echo "  - Docker (basic tests): https://docker.com/" >&2
+    echo "  - Incus (fallback): https://linuxcontainers.org/incus/" >&2
+    exit 69
 fi
 ```
 
@@ -49865,8 +49974,8 @@ fi
 | **Project-specific tests** | MUST test ALL endpoints from IDEA.md (CRUD, API, frontend) |
 | **Admin authentication** | Test setup token, login, and rejection (no bypass) |
 | **Cleanup** | ALWAYS use `trap` for cleanup |
-| **Exit codes** | 0 = success, non-zero = failure |
-| **Output** | Clear progress messages with `echo` |
+| **Exit codes** | `0` every check passed, `1` one or more checks failed (run every check, then exit `1` naming the count), `2` usage, `69` the script cannot run here (missing Docker, Incus, hypervisor or `/dev/kvm`; the reason is on stderr). A `curl ... \|\| echo FAILED` that only prints is a spec violation: use `fail` (see "Output Streams & Exit Codes") |
+| **Output** | Clear progress messages with `echo` on stdout; every error, warning and `SKIP:` on stderr (`>&2`) |
 | **Error handling** | `set -eo pipefail` for bash/zsh; `set -e` for POSIX sh |
 | **License** | All shell scripts are WTFPL — `# @@License : WTFPL` in header |
 
@@ -59927,17 +60036,22 @@ stty rows 10 cols 40
 
 ### Exit Codes
 
+The CLI uses the shared codes of "Output Streams & Exit Codes":
+
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
 | 1 | General error |
-| 2 | Configuration error |
-| 3 | Connection error |
-| 4 | Authentication error |
-| 5 | Not found |
-| 64 | Usage error (bad arguments) |
+| 2 | Usage error (bad flags or arguments) |
+| 65 | Invalid input data (a value the server rejects as `VALIDATION_FAILED`, a malformed import file) |
+| 66 | Not found (the resource does not exist) |
+| 69 | Connection error (the server is unreachable) |
+| 77 | Authentication or permission error (an invalid token, `401` or `403`) |
+| 78 | Configuration error (`cli.yml` is invalid or missing) |
 
 ### Error Messages
+
+Every error message is written to **stderr**, never stdout, and the exit code is the one from "Exit Codes" above.
 
 ```bash
 # Connection error
