@@ -48411,7 +48411,7 @@ rm -rf "${TMPDIR:-/tmp}/${PROJECT_ORG}/"
 | **Caps** | `-c limits.cpu=`, `-c limits.memory=` and an explicit root disk `-d root,size=` (no larger than the test needs, for example `10GiB`) |
 | **Prerequisite** | `/dev/kvm` must exist and be usable (Incus VMs need KVM). Without it `tests/virt.sh` does not skip: it exits `69` with the reason on stderr (see "VM Hypervisors") |
 | **Boot wait** | A VM boots more slowly than a container. Wait for the Incus agent (`incus exec {instance_name} -- true`) for up to `VM_BOOT_WAIT` seconds (default `180`) before the first command, then run the same init-ready check as for a container |
-| **Secure Boot** | `security.secureboot` is a VM-only key and defaults to `true`: UEFI Secure Boot is enforced with the default Microsoft keys, so an image whose bootloader is not signed with them fails to boot. Set `-c security.secureboot=false` only for such an image; a guest that is not UEFI-capable also needs `-c security.csm=true`. Never set either by default |
+| **Secure Boot** | Incus only (the other backends are in "VM Hypervisors"): `security.secureboot` is a VM-only key and defaults to `true`: UEFI Secure Boot is enforced with the default Microsoft keys, so an image whose bootloader is not signed with them fails to boot. Set `-c security.secureboot=false` only for such an image; a guest that is not UEFI-capable also needs `-c security.csm=true`. Never set either by default |
 | **One VM at a time, never kept** | At most one VM per repository at any moment, and none when a container will do; a VM is deleted by its trap and is never kept between runs |
 | **Where it lives** | `tests/virt.sh` (OPTIONAL, standalone, manual, see "tests/virt.sh"). `tests/incus.sh` is for Incus containers only and never launches `--vm` |
 
@@ -48426,6 +48426,7 @@ rm -rf "${TMPDIR:-/tmp}/${PROJECT_ORG}/"
 | **Probes** | incus: `incus` is installed, `incus info` answers and `/dev/kvm` is writable. libvirt: `virsh` and `virt-install` are installed and `virsh -c qemu:///system uri` answers. virtualbox: `VBoxManage` is installed and, on Linux, `/dev/vboxdrv` exists (the `vboxdrv` module is loaded). Support depends on the host's hardware and software, so a failing probe returns ONE reason line |
 | **Nothing supported** | When no probe passes (or the forced one fails) the script prints `ERROR: no supported hypervisor on this host` and one `backend: reason` line per probe to stderr, and exits `69` (`EX_UNAVAILABLE`). It does not skip and does not exit `0`: a clean-OS test that did not run is not a pass |
 | **Same rules** | Every backend follows "Incus Discipline" in its own terms: VM names `{project_name}-XXXXXXXX-{init}`, `trap cleanup EXIT INT TERM` before the first create (removing by exact name), caps (`VIRT_CPUS=2`, `VIRT_MEM_MB=4096`, `VIRT_DISK_GB=10`), a ceiling on every wait and every hypervisor call (`VM_BOOT_WAIT`, default `180`; `VIRT_OP_TIMEOUT`, default `600`), one VM at a time, and an end-of-task check that lists nothing |
+| **Secure Boot** | Platform specific: each hypervisor has its own default and its own switch (table below). `VIRT_SECUREBOOT=default` (the default) leaves the hypervisor's setting untouched; `VIRT_SECUREBOOT=off` turns Secure Boot off for an image whose bootloader is not signed and fails to boot. Nothing is ever turned on or off silently, and `off` is never the default |
 | **Images** | Incus pulls `images:debian/trixie` and `images:alpine/{latest_stable}` itself. libvirt and VirtualBox have no image server: the caller points `VIRT_IMAGE_SYSTEMD` and `VIRT_IMAGE_OPENRC` at a cloud-init capable qcow2 (libvirt) or an OVA (VirtualBox). A missing or unreadable image exits `69` and names the variable |
 | **Guest access** | Incus uses its agent. libvirt and VirtualBox use SSH with a throwaway key pair generated under `{tempdir}/{project_org}/{internal_name}-XXXXXX/` and removed by the trap; the public key is injected through cloud-init, and host key checking is off because the VM is disposable |
 
@@ -48439,6 +48440,7 @@ rm -rf "${TMPDIR:-/tmp}/${PROJECT_ORG}/"
 | push | `incus file push SRC NAME/DEST` | `scp -i KEY SRC USER@ADDR:DEST` | `scp -i KEY -P PORT SRC USER@127.0.0.1:DEST` |
 | power cycle | `incus stop --force NAME`, then `incus start NAME` | `virsh destroy NAME`, then `virsh start NAME` | `VBoxManage controlvm NAME poweroff`, then `VBoxManage startvm NAME --type headless` |
 | delete | `incus delete --force NAME` | `virsh destroy NAME` (ignore a stopped VM), then `virsh undefine NAME --remove-all-storage --nvram` | `VBoxManage controlvm NAME poweroff` (ignore a stopped VM), then `VBoxManage unregistervm NAME --delete` |
+| Secure Boot (`VIRT_SECUREBOOT=off`) | default: enforced with the Microsoft keys. Off: `-c security.secureboot=false` on `incus launch`; a guest that is not UEFI-capable also needs `-c security.csm=true` | default: BIOS firmware, so nothing to change. For a UEFI guest add `--boot firmware=efi,firmware.feature0.name=secure-boot,firmware.feature0.enabled=no` (to enforce it instead: `enabled=yes`); the `firmware` and `firmware.feature[N].name\|enabled` options exist in `virt-install`, a boot with them was not run | default: BIOS firmware, so nothing to change. Secure Boot exists only with `VBoxManage modifyvm NAME --firmware efi` and enrolled keys (`VBoxManage modifynvram NAME inituefivarstore`, then `enrollmssignatures`); off means EFI without enrolling. Not verified here (VirtualBox is not installed) |
 
 ### Testing Strategy
 
@@ -49797,6 +49799,11 @@ case "$MODE" in
     *) echo "Usage: $0 [systemd|openrc|all]" >&2; exit 2 ;;
 esac
 
+case "${VIRT_SECUREBOOT:-default}" in
+    default|off) ;;
+    *) echo "ERROR: VIRT_SECUREBOOT must be default or off" >&2; exit 2 ;;
+esac
+
 # Each probe returns 0 when its hypervisor is usable, or prints ONE reason line and returns 1
 probe_incus() {
     command -v incus >/dev/null 2>&1 || { echo "incus is not installed"; return 1; }
@@ -49846,10 +49853,16 @@ VIRT_MEM_MB="${VIRT_MEM_MB:-4096}"
 VIRT_DISK_GB="${VIRT_DISK_GB:-10}"
 VM_BOOT_WAIT="${VM_BOOT_WAIT:-180}"
 VIRT_OP_TIMEOUT="${VIRT_OP_TIMEOUT:-600}"
+# Secure Boot is platform specific: default leaves the hypervisor setting alone, off disables it for an image that cannot boot with it
+VIRT_SECUREBOOT="${VIRT_SECUREBOOT:-default}"
 
 # The six backend operations (the commands of "VM Hypervisors"): ${BACKEND}_create, _wait, _exec, _push, _cycle, _delete.
 # Incus is shown in full; libvirt_* and virtualbox_* implement the same six functions with their own commands.
-incus_create() { timeout "$VIRT_OP_TIMEOUT" incus launch "$2" "$1" --vm -c limits.cpu="$VIRT_CPUS" -c limits.memory="${VIRT_MEM_MB}MiB" -d root,size="${VIRT_DISK_GB}GiB"; }
+incus_create() {
+    local args=()
+    if [ "$VIRT_SECUREBOOT" = "off" ]; then args+=(-c security.secureboot=false); fi
+    timeout "$VIRT_OP_TIMEOUT" incus launch "$2" "$1" --vm -c limits.cpu="$VIRT_CPUS" -c limits.memory="${VIRT_MEM_MB}MiB" -d root,size="${VIRT_DISK_GB}GiB" "${args[@]}"
+}
 incus_wait() {
     local i
     for i in $(seq 1 "$VM_BOOT_WAIT"); do
