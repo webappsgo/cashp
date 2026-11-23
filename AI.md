@@ -41492,7 +41492,8 @@ DOCKER_CPUS ?= 2
 # Docker - Set REGISTRY based on your platform (ghcr.io, registry.gitlab.com, git.example.com)
 REGISTRY ?= ghcr.io/$(PROJECT_ORG)/$(PROJECT_NAME)
 # GO_DOCKER_RUN: shared docker run prefix (no image) so targets can add mounts before the image
-GO_DOCKER_RUN := docker run --rm \
+# --rm: never leave an exited container behind; --no-healthcheck: the toolchain image's service HEALTHCHECK must not poll a one-shot build container
+GO_DOCKER_RUN := docker run --rm --no-healthcheck \
 	--name $(PROJECT_NAME)-$$(tr -dc 'a-z0-9' </dev/urandom | head -c8) \
 	--memory=$(DOCKER_MEM) --cpus=$(DOCKER_CPUS) \
 	-v $(PWD):/app \
@@ -41515,8 +41516,7 @@ build: clean
 
 	# Tidy and download modules
 	@echo "Tidying and downloading Go modules..."
-	@$(GO_DOCKER) go mod tidy
-	@$(GO_DOCKER) go mod download
+	@$(GO_DOCKER) sh -c "go mod tidy && go mod download"
 
 	# Build for local OS/ARCH
 	@echo "Building local binary..."
@@ -41574,8 +41574,7 @@ local: clean
 
 	# Tidy and download modules
 	@echo "Tidying and downloading Go modules..."
-	@$(GO_DOCKER) go mod tidy
-	@$(GO_DOCKER) go mod download
+	@$(GO_DOCKER) sh -c "go mod tidy && go mod download"
 
 	# Build server binary
 	@echo "Building $(PROJECT_NAME)..."
@@ -41645,9 +41644,9 @@ docker:
 	# Ensure buildx is available
 	@docker buildx version > /dev/null 2>&1 || (echo "docker buildx required" && exit 1)
 
-	# Create/use builder
-	@docker buildx create --name $(PROJECT_NAME)-builder --use 2>/dev/null || \
-		docker buildx use $(PROJECT_NAME)-builder
+	# Create/use the ONE shared builder (never one per project: every builder is a long-lived buildkit container)
+	@docker buildx create --name multiarch-builder --use 2>/dev/null || \
+		docker buildx use multiarch-builder
 
 	# Build multi-arch locally (no push — pushing is CI/CD's responsibility)
 	@docker buildx build \
@@ -47816,7 +47815,7 @@ pipeline {
 
                     // Build multi-arch with OCI labels and manifest annotations
                     sh """
-                        docker buildx create --name ${PROJECT_NAME}-builder --use 2>/dev/null || docker buildx use ${PROJECT_NAME}-builder
+                        docker buildx create --name multiarch-builder --use 2>/dev/null || docker buildx use multiarch-builder
                         docker buildx build \
                             -f docker/Dockerfile \
                             --platform linux/amd64,linux/arm64 \
@@ -47884,7 +47883,7 @@ pipeline {
 
                     // Build multi-arch all-in-one with OCI labels and manifest annotations
                     sh """
-                        docker buildx create --name ${PROJECT_NAME}-builder --use 2>/dev/null || docker buildx use ${PROJECT_NAME}-builder
+                        docker buildx create --name multiarch-builder --use 2>/dev/null || docker buildx use multiarch-builder
                         docker buildx build \
                             -f docker/Dockerfile.aio \
                             --platform linux/amd64,linux/arm64 \
@@ -47939,7 +47938,7 @@ pipeline {
 
                     // Build multi-arch devel image with OCI labels and manifest annotations
                     sh """
-                        docker buildx create --name ${PROJECT_NAME}-builder --use 2>/dev/null || docker buildx use ${PROJECT_NAME}-builder
+                        docker buildx create --name multiarch-builder --use 2>/dev/null || docker buildx use multiarch-builder
                         docker buildx build \
                             -f docker/Dockerfile.dev \
                             --platform linux/amd64,linux/arm64 \
@@ -48346,6 +48345,24 @@ rm -rf "${TMPDIR:-/tmp}/${PROJECT_ORG}/"
 | **Container testing** | Docker | `alpine:latest` | Quick tests, CI/CD |
 | **Full OS testing (systemd)** | Incus | `debian:latest` | Systemd, services, integration |
 | **Full OS testing (OpenRC)** | Incus | `alpine:latest` (newest numbered release) | OpenRC, services, integration |
+
+### Container Discipline (Keep Usage Low)
+
+**Every container costs CPU, memory and disk. Containers are few and short-lived; a leaked or redundant container is a spec violation.**
+
+| Rule | Description |
+|------|-------------|
+| **`--rm` always** | Every `docker run` uses `--rm`, for debugging, one-off checks and build runs alike. The only exemption is a detached (`-d`) test server or sidecar kept alive so its logs can be read after a failure; it is still named by convention and is removed by exact name before the task ends. An exited container in `docker ps -a` means a run skipped `--rm`: remove it by exact name (Docker Container Rules) and fix the command |
+| **Named by convention** | `--name "{project_name}-XXXXXXXX"` (8 random characters), so every container of the project is found with `docker ps -a --filter "name=^{project_name}-"`. A script that must stop a container later records its name in a variable |
+| **Shared run prefix** | Ad-hoc runs reuse the Makefile prefix flags: `--rm --no-healthcheck`, `--memory`, `--cpus` and the cache mounts. `--no-healthcheck` stops the toolchain image's service `HEALTHCHECK` from polling a one-shot container |
+| **One container per phase** | Steps that belong together run in ONE `docker run ... sh -c "a && b && c"`, never a container per step (`go mod tidy`, then `go mod download`, then `gofmt`, then `go vet`, then one package's tests). Checks a Makefile target does not cover are batched into one container as well. Makefile loops that cross-compile once per platform are the one accepted exception: each platform is its own sequential, `--rm` run |
+| **Gate once per change set** | `make test` runs ONCE, after the edits for a change are finished. A failure is fixed, then the full gate runs again; no container per hypothesis, per file or per formatting fix |
+| **One at a time** | At most ONE toolchain container (a `make` target, a `tests/*.sh` script or an ad-hoc run) per repository at any moment; a second one never starts while the first is running. Sub-agents and forks never start containers: the main session runs the gate |
+| **Teardown even on failure** | A script that starts a container, sidecar, network or volume removes it in a `trap cleanup EXIT INT TERM` handler registered BEFORE the first one starts (see "Test Scripts (tests/ directory)") - a failed or interrupted run leaves nothing behind |
+| **Browser sidecar** | The E2E `chromedp/headless-shell` sidecar lives only while `tests/e2e.sh` runs; it is never left running afterward |
+| **One shared buildx builder** | `multiarch-builder` serves every project; never a builder per project (each is a long-lived buildkit container) |
+| **Caches are mounts, not containers** | Compile and download caches are host directories mounted into each run; a long-lived container is never kept just to hold a warm cache |
+| **End-of-task check** | Before reporting done, `docker ps -a --filter "name=^{project_name}-"` lists nothing; anything listed is removed by exact name (Docker Container Rules) |
 
 ### Testing Strategy
 
@@ -48969,7 +48986,7 @@ fi
    - Test admin authentication (see "Testing Admin Routes")
    - **CLI full functionality** (with API token against running server)
    - **Agent full functionality** (with API token against running server)
-7. Clean up on exit
+7. Clean up on exit: register `trap cleanup EXIT INT TERM` BEFORE the first container starts; it removes every container, sidecar, network and volume the script started, by the exact names the script recorded, so a failed or interrupted run leaves nothing behind (see "Container Discipline")
 
 #### tests/docker.sh
 
@@ -50056,7 +50073,7 @@ The table is illustrative — the rule is universal: enumerate IDEA.md's feature
 | `make test` | Unit + route tests only — the commit gate; NEVER runs E2E | Before every commit |
 | `./tests/e2e.sh` | Full E2E suite (all three tiers) | On demand: beta testing, pre-release, after major frontend work |
 
-`./tests/e2e.sh` follows the same manual, developer-initiated pattern as `./tests/incus.sh` and is Docker-wrapped: the E2E container needs Chromium (`chromedp/headless-shell` as a sidecar, or Chromium installed in the test image). In CI, E2E is at most a manually triggered job (`workflow_dispatch`) that uploads failure artifacts — it is never a required check and never blocks commits, merges, or releases.
+`./tests/e2e.sh` follows the same manual, developer-initiated pattern as `./tests/incus.sh` and is Docker-wrapped: the E2E container needs Chromium (`chromedp/headless-shell` as a sidecar, or Chromium installed in the test image). In CI, E2E is at most a manually triggered job (`workflow_dispatch`) that uploads failure artifacts — it is never a required check and never blocks commits, merges, or releases. The sidecar starts under the `{project_name}-` name prefix, and `tests/e2e.sh` removes it in its `trap cleanup EXIT INT TERM` handler even when the run fails: a sidecar never outlives the script.
 
 ### AI Exploratory Pass (Discovery Only — NEVER the Gate)
 
@@ -50235,7 +50252,7 @@ rm -rf $TEST_DIR
 
 | Rule | Description |
 |------|-------------|
-| **ONLY this project** | Only stop/remove containers named `{project_name}` |
+| **ONLY this project** | Only stop/remove containers whose name starts with `{project_name}-` (the `--name` convention), one exact name at a time |
 | **NEVER other containers** | Even if they look related or unused |
 | **NEVER images not ours** | Only remove `{project_org}/{internal_name}:*` images |
 | **NEVER base images** | Never remove `golang`, `alpine`, `ubuntu`, etc. |
@@ -50243,10 +50260,10 @@ rm -rf $TEST_DIR
 
 **Docker Cleanup Flow:**
 ```
-1. docker ps -a --filter name={project_name}     # List ONLY this project's containers
-2. Verify output shows ONLY {project_name}       # CHECK before removing
-3. docker stop {project_name}                    # Stop gracefully
-4. docker rm {project_name}                      # Remove container
+1. docker ps -a --filter "name=^{project_name}-"  # LIST ONLY this project's containers (listing by pattern is fine; removing by pattern is not)
+2. Verify every listed name starts with {project_name}-   # CHECK before removing
+3. docker stop {container_name}                 # Stop ONE running container by its exact listed name
+4. docker rm {container_name}                   # Remove that exact container (an EXITED container is a leak: it skipped --rm)
 
 # For images:
 1. docker images {project_org}/{internal_name}     # List ONLY this project's images
@@ -50260,8 +50277,9 @@ rm -rf $TEST_DIR
 |---------|-------------|
 | `kill {specific-pid}` | Kill exact PID only (after verification) |
 | `pkill -x {project_name}` | Exact binary name match only |
-| `docker stop {project_name}` | Stop specific container by name |
-| `docker rm {project_name}` | Remove specific container by name |
+| `docker ps -a --filter "name=^{project_name}-"` | List this project's containers (read-only) |
+| `docker stop {container_name}` | Stop one container by its exact name (from the listing) |
+| `docker rm {container_name}` | Remove one container by its exact name (from the listing) |
 | `docker rmi {project_org}/{internal_name}:tag` | Remove specific image:tag |
 | `rm -rf $BUILD_DIR` | Remove temp build dir (from mktemp) |
 | `rm -rf $TEST_DIR` | Remove temp test dir (from mktemp) |
@@ -68647,6 +68665,9 @@ make docker
 - [ ] No `docker rm $(docker ps -aq)`, `docker system prune`, `docker container prune`, `docker volume prune`, `docker network prune`
 - [ ] No `incus delete --force` of an instance not created by the current test
 - [ ] All cleanup targets the SPECIFIC container/instance/PID created by the current task
+- [ ] Every `docker run` in the Makefile, scripts and docs has `--rm` (a detached container kept for log inspection is the only exemption and is removed by name before the task ends) and `--name "{project_name}-XXXXXXXX"`; toolchain runs also have `--no-healthcheck`; no exited `{project_name}-*` container remains after a run
+- [ ] Every `tests/*.sh` registers `trap cleanup EXIT INT TERM` before it starts a container, sidecar, network or volume
+- [ ] One shared `multiarch-builder`; no per-project buildx builder
 
 ### Documentation & Examples
 
