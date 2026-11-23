@@ -9438,7 +9438,7 @@ Port can be changed via `/server/{admin_path}/settings`, but **requires server r
 server:
   # Default: random unused port in 64xxx range
   port: {random}
-  # Auto-detected from host
+  # Host name detected at first run, for reference only: it is not a URL source (set DOMAIN to fix the public host, PART 8 Resolution Order)
   fqdn: {hostname}
   # [::] = all interfaces IPv4/IPv6 (dual-stack). Always quote it: a bare [::] is a YAML flow sequence
   address: "[::]"
@@ -14202,6 +14202,8 @@ All templates, Swagger/OpenAPI, GraphQL, email links, etc. MUST use these resolv
 | 6 | **Public IPv4** | First public IPv4 (excludes 10/8, 172.16/12, 192.168/16) |
 | 7 | **localhost** | Last resort |
 
+**`server.fqdn` is not a source.** The key records the host name detected at first run, for the operator's reference only; it never feeds `{fqdn}` and has no place in this order. To fix the public host name, set `DOMAIN`.
+
 **The request `Host` header (between priorities 1 and 2).** Priority 1 applies only when the TCP peer is a trusted proxy (PART 12 → "Trusted Proxies"); forwarded headers from any other peer are ignored. When no usable forwarded host exists, the request's own `Host` header is used when it is a valid hostname (RFC 1123, optional port) AND either `DOMAIN` is empty or the host is an entry of the `DOMAIN` list (or matches its inferred wildcard). A `Host` that is not in a non-empty `DOMAIN` list is NEVER copied into a URL, redirect, sitemap, feed, `robots.txt` or email link: the first `DOMAIN` entry is used instead (host-header injection defense). Priorities 2-7 apply when no request exists (the startup banner) or when this rule found nothing.
 
 **Public IP Detection (latest stable Go):**
@@ -14283,9 +14285,9 @@ DOMAIN=myapp.com
 **App automatically detects and learns domain patterns from reverse proxy headers:**
 
 When reverse proxy headers are detected, the app:
-1. **Live reloads** URL variables immediately (no restart required)
+1. **Live reloads** the learned-domain state immediately (no restart required)
 2. **Infers wildcard domains** from observed patterns
-3. **Updates cached values** for Swagger/GraphQL/templates
+3. **Updates the learned domains and the CORS allow-list built from them.** URLs rendered into Swagger/GraphQL/templates are never cached: every request builds them with `BuildURL(r, ...)` (see "Usage in Templates/Swagger/GraphQL")
 
 **Domain Learning Algorithm:**
 
@@ -28794,7 +28796,7 @@ src/server/static/
 │   ├── admin.css       # Admin layout styles
 │   └── components.css  # Shared components (modals, buttons, toasts)
 ├── js/
-│   └── app.js          # ALL JavaScript in ONE file (minimal)
+│   └── app.js          # ALL of the project's own JavaScript in ONE file (minimal)
 ├── images/
 │   ├── logo.svg        # App logo (SVG preferred)
 │   ├── favicon.ico     # Favicon
@@ -28835,9 +28837,9 @@ src/server/static/
 
 | Rule | Description |
 |------|-------------|
-| **ONE file only** | All JS in `static/js/app.js` - no multiple files |
+| **ONE file only** | All of the project's own JS in `static/js/app.js` - no multiple files. The one exception is the vendor documentation tools of "Interactive API documentation pages" |
 | **Minimal JS** | CSS-first, JS only when absolutely necessary |
-| **No frameworks** | No React, Vue, Alpine, jQuery, etc. |
+| **No frameworks** | No React, Vue, Alpine, jQuery, etc. in the project's own JS (the vendored documentation tools, which bundle their own, are the exception) |
 | **No bundlers** | No webpack, vite, rollup - plain JS only |
 | **No transpilers** | No TypeScript, Babel - browser-native JS only |
 | **No npm/node** | No package.json for frontend |
@@ -30551,7 +30553,7 @@ Credentials (`Access-Control-Allow-Credentials: true`) are sent only when the re
 | Surface | CSRF |
 |---------|------|
 | Frontend HTML routes and forms (cookie-authenticated) | Per "When CSRF Validation Runs" below |
-| Backend: every `/api/**` route, regardless of auth method | **Never** — no token issued, required, or checked |
+| Backend: every `/api/**` route, regardless of auth method | **Never** — no CSRF token is issued, required, or checked. This is about CSRF tokens only: Bearer-token authentication and authorization still apply wherever a route's contract requires them |
 | Compatibility layers (PART 14 → "External API Compatibility" — external-service routes/APIs) | **Never** — unless the emulated protocol itself defines a CSRF token and expects clients to send it; then enforce exactly what that protocol specifies, on that layer's routes only |
 
 **Rules:**
@@ -31347,6 +31349,7 @@ func trackingScript(r *http.Request) template.HTML {
 | Rule | Detail |
 |------|--------|
 | **Assets** | The tool's JavaScript and CSS are served from the project's own static files (`'self'`, never a CDN) and its start-up code lives in a static file (no inline script, no inline style, no `on*` handler), so the Content Security Policy of PART 11 holds unchanged |
+| **Vendor files** | The tool's libraries (for example React, ReactDOM, GraphiQL, the Swagger UI bundle and its preset) are pinned releases vendored under `static/vendor/{tool}/`, loaded only by their own page, never combined into `app.js` and never edited; the tool's start-up code is one small file, `static/js/docs-{tool}.js`. This is the explicit exception to the one-file, no-framework and no-bundler rules, which govern the project's own JavaScript |
 | **Theme** | The tool follows the project-wide theme through the project's Swagger and GraphiQL theme modules and the shared CSS custom properties; no hardcoded colors |
 | **Without JavaScript** | A `<noscript>` card states that the interactive view needs JavaScript and links to the plain endpoints: the OpenAPI JSON (`/api/{api_version}/server/swagger`) or the GraphQL endpoint (`/api/{api_version}/server/graphql`) |
 | **Same chrome everywhere** | The same header, footer, consent banner and skip links on every page, error pages included. A page never adds, removes or reorders header or footer elements |
@@ -41658,6 +41661,10 @@ build: clean
 		go mod download; \
 		echo "Building $(PROJECT_NAME) (local platform)..."; \
 		GOOS=$$(go env GOOS) GOARCH=$$(go env GOARCH) go build -buildvcs=false -trimpath -ldflags "$$BUILD_LDFLAGS" -o $(BINDIR)/$(PROJECT_NAME) ./src; \
+		if [ -d src/client ]; then \
+			echo "Building $(PROJECT_NAME)-cli (local platform)..."; \
+			GOOS=$$(go env GOOS) GOARCH=$$(go env GOARCH) go build -buildvcs=false -trimpath -ldflags "$$BUILD_LDFLAGS" -o $(BINDIR)/$(PROJECT_NAME)-cli ./src/client; \
+		fi; \
 		for platform in $(PLATFORMS); do \
 			OS=$${platform%/*}; \
 			ARCH=$${platform#*/}; \
@@ -48486,7 +48493,7 @@ rm -rf "$TEST_DIR"
 | **One at a time** | One instance per init system, one after the other, and one `tests/incus.sh` per repository at any moment; instances are never started in parallel |
 | **Shared images** | Test instances launch from the cached `images:` remote (`debian/trixie`, `alpine/{latest_stable}`). Images are shared by every project and expire on their own, so a script never runs `incus image delete`, never publishes a per-run image, and never keeps an instance only to hold a warm package cache |
 | **Shared infrastructure** | Instances use the default profile, `incusbr0` and the `default` storage pool. A script never edits the default profile and never creates a profile, network, storage pool, project or custom volume unless the test needs it; when it does, it gives it a `{project_name}-XXXXXXXX` name and removes it in the same trap |
-| **Bounded** | Every wait loop and every `incus exec` step has a ceiling (`timeout`, or a counted loop such as `wait_boot`), so a stuck instance fails the run instead of hanging it |
+| **Bounded** | Every wait loop and every `incus exec` step in a script has a ceiling: a quick step runs under `timeout "$INCUS_OP_TIMEOUT"` (default `60`), a package install under `INCUS_INSTALL_TIMEOUT` (default `900`) and the remote test run under `INCUS_RUN_TIMEOUT` (default `3600`), all through one `iexec` helper; a counted loop such as `wait_boot` has probes that are themselves under `timeout`. A stuck instance fails the run instead of hanging it. A command typed by hand is not a script and is exempt |
 | **End-of-task check** | `incus list "^{project_name}-"` lists nothing; anything listed is deleted by exact name (Incus Instance Rules) |
 
 ### Incus Virtual Machines (`--vm`)
@@ -49082,7 +49089,7 @@ verify_all_endpoints_tested
 ```bash
 # 1. Build (Makefile-first — always use make when a Makefile exists)
 # If Makefile exists (standard for all bootstrapped projects)
-# → binaries/{project_name}, binaries/{project_name}-cli (all 8 platforms)
+# → binaries/{project_name} and binaries/{project_name}-cli for this host, plus the platform-suffixed binaries of every platform
 make build
 
 # If no Makefile exists yet (bootstrap or manual equivalent)
@@ -49102,10 +49109,10 @@ if command -v incus &>/dev/null; then
   trap 'incus delete --force "$INSTANCE" 2>/dev/null || true' EXIT INT TERM
   incus launch images:debian/trixie "$INSTANCE" -c limits.cpu=2 -c limits.memory=4GiB
   incus file push binaries/{project_name} ${INSTANCE}/usr/local/bin/
-  incus exec ${INSTANCE} -- chmod +x /usr/local/bin/{project_name}
-  incus exec ${INSTANCE} -- {project_name} --help
-  incus exec ${INSTANCE} -- {project_name} --service --install
-  incus exec ${INSTANCE} -- systemctl status {project_name}
+  timeout 60 incus exec ${INSTANCE} -- chmod +x /usr/local/bin/{project_name}
+  timeout 60 incus exec ${INSTANCE} -- {project_name} --help
+  timeout 120 incus exec ${INSTANCE} -- {project_name} --service --install
+  timeout 60 incus exec ${INSTANCE} -- systemctl status {project_name}
   incus delete ${INSTANCE} --force
 else
   # FALLBACK: Quick test in Docker (alpine, no systemd)
@@ -49449,6 +49456,11 @@ INCUS_IMAGE_OPENRC="images:alpine/3.24"
 INCUS_CPUS="${INCUS_CPUS:-2}"
 INCUS_MEM="${INCUS_MEM:-4GiB}"
 
+# Ceilings in seconds: one quick exec step, a package install, and the whole remote test run; override from the environment
+INCUS_OP_TIMEOUT="${INCUS_OP_TIMEOUT:-60}"
+INCUS_INSTALL_TIMEOUT="${INCUS_INSTALL_TIMEOUT:-900}"
+INCUS_RUN_TIMEOUT="${INCUS_RUN_TIMEOUT:-3600}"
+
 cleanup() {
     local c
     for c in "${CONTAINERS[@]}"; do incus delete "$c" --force 2>/dev/null || true; done
@@ -49774,12 +49786,19 @@ echo "=== [$INIT_MODE] All tests passed ==="
 REMOTE_AFTER_EOF
 )
 
+# Every exec step has a ceiling: iexec SECONDS CONTAINER COMMAND...
+iexec() {
+    local secs="$1" container="$2"
+    shift 2
+    timeout "$secs" incus exec "$container" -- "$@"
+}
+
 # Run a script inside the container with the init mode and project names
 # Every script fragment is its own argument: printf puts a newline after each one, because $(cat <<EOF) strips the trailing newline of a heredoc
 remote() {
     local container="$1" init="$2"
     shift 2
-    printf '%s\n' "$@" | incus exec "$container" -- env INIT_MODE="$init" PROJECT_NAME="$PROJECT_NAME" PROJECT_ORG="$PROJECT_ORG" \
+    printf '%s\n' "$@" | timeout "$INCUS_RUN_TIMEOUT" incus exec "$container" -- env INIT_MODE="$init" PROJECT_NAME="$PROJECT_NAME" PROJECT_ORG="$PROJECT_ORG" \
         INTERNAL_NAME="$INTERNAL_NAME" INTERNAL_ORG="$INTERNAL_ORG" REQUIRE_OVERLAY="${REQUIRE_OVERLAY:-0}" \
         TOR_WAIT="${TOR_WAIT:-300}" I2P_WAIT="${I2P_WAIT:-600}" bash -s
 }
@@ -49787,18 +49806,18 @@ remote() {
 # Wait until the container accepts commands, its init system finished booting and the network is up
 wait_boot() {
     local container="$1" init="$2" i state
-    for i in $(seq 1 60); do incus exec "$container" -- true 2>/dev/null && break; sleep 1; done
+    for i in $(seq 1 60); do iexec "$INCUS_OP_TIMEOUT" "$container" true 2>/dev/null && break; sleep 1; done
     if [ "$init" = "systemd" ]; then
         # "degraded" is normal in a container; only "starting" means boot is unfinished
         for i in $(seq 1 90); do
-            state=$(incus exec "$container" -- systemctl is-system-running 2>/dev/null || true)
+            state=$(iexec "$INCUS_OP_TIMEOUT" "$container" systemctl is-system-running 2>/dev/null || true)
             [ -n "$state" ] && [ "$state" != "starting" ] && break
             sleep 1
         done
     else
-        for i in $(seq 1 60); do incus exec "$container" -- test -d /run/openrc 2>/dev/null && break; sleep 1; done
+        for i in $(seq 1 60); do iexec "$INCUS_OP_TIMEOUT" "$container" test -d /run/openrc 2>/dev/null && break; sleep 1; done
     fi
-    for i in $(seq 1 60); do incus exec "$container" -- sh -c 'ip route | grep "^default" >/dev/null' 2>/dev/null && break; sleep 1; done
+    for i in $(seq 1 60); do iexec "$INCUS_OP_TIMEOUT" "$container" sh -c 'ip route | grep "^default" >/dev/null' 2>/dev/null && break; sleep 1; done
 }
 
 run_mode() {
@@ -49813,20 +49832,20 @@ run_mode() {
 
     echo "=== [$init] Installing test tools, tor and i2pd ==="
     if [ "$init" = "systemd" ]; then
-        incus exec "$container" -- bash -c 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl jq file tor i2pd' >/dev/null
+        iexec "$INCUS_INSTALL_TIMEOUT" "$container" bash -c 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl jq file tor i2pd' >/dev/null
         # The distro tor/i2pd services are NOT what is tested: the server runs its own dedicated, isolated instances (PART 32)
-        incus exec "$container" -- systemctl disable --now tor.service tor@default.service i2pd.service 2>/dev/null || true
+        iexec "$INCUS_OP_TIMEOUT" "$container" systemctl disable --now tor.service tor@default.service i2pd.service 2>/dev/null || true
     else
-        incus exec "$container" -- sh -c 'apk add --no-cache bash curl jq file tor i2pd tzdata ca-certificates' >/dev/null
-        incus exec "$container" -- sh -c 'rc-service tor stop; rc-service i2pd stop; rc-update del tor; rc-update del i2pd' 2>/dev/null || true
+        iexec "$INCUS_INSTALL_TIMEOUT" "$container" sh -c 'apk add --no-cache bash curl jq file tor i2pd tzdata ca-certificates' >/dev/null
+        iexec "$INCUS_OP_TIMEOUT" "$container" sh -c 'rc-service tor stop; rc-service i2pd stop; rc-update del tor; rc-update del i2pd' 2>/dev/null || true
     fi
 
     echo "=== [$init] Copying binaries to container ==="
     incus file push "${BIN_DIR}/${PROJECT_NAME}" "$container/usr/local/bin/"
-    incus exec "$container" -- chmod +x "/usr/local/bin/${PROJECT_NAME}"
+    iexec "$INCUS_OP_TIMEOUT" "$container" chmod +x "/usr/local/bin/${PROJECT_NAME}"
     if [ -f "${BIN_DIR}/${PROJECT_NAME}-cli" ]; then
         incus file push "${BIN_DIR}/${PROJECT_NAME}-cli" "$container/usr/local/bin/"
-        incus exec "$container" -- chmod +x "/usr/local/bin/${PROJECT_NAME}-cli"
+        iexec "$INCUS_OP_TIMEOUT" "$container" chmod +x "/usr/local/bin/${PROJECT_NAME}-cli"
     fi
 
     echo "=== [$init] Running tests in Incus ==="
@@ -49964,7 +49983,7 @@ incus_create() {
 incus_wait() {
     local i
     for i in $(seq 1 "$VM_BOOT_WAIT"); do
-        incus exec "$1" -- true 2>/dev/null && return 0
+        timeout 30 incus exec "$1" -- true 2>/dev/null && return 0
         sleep 1
     done
     echo "ERROR: $1 did not come up within ${VM_BOOT_WAIT}s" >&2
