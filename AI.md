@@ -475,7 +475,7 @@ docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -
 make test
 
 # Phase 2: Binary validation — shell scripts run against the compiled binary
-# Auto-detects incus/docker
+# Basic tier: Docker (Incus only as the fallback)
 ./tests/run_tests.sh
 
 # 5. Production test (before release)
@@ -2038,7 +2038,7 @@ Instructions for how this agent should behave...
 | `docker/` | ✓ | Dockerfile, compose files, and build-time `rootfs/` overlay | No |
 | `docs/` | ✓ | MkDocs documentation only | No |
 | `scripts/` | ✓ | Production/install scripts | No |
-| `tests/` | ✓ | Repository-root executable integration test scripts (`run_tests.sh`, `docker.sh`, `incus.sh`, `e2e.sh`, optional helpers). Go unit tests live alongside code as `*_test.go` | No |
+| `tests/` | ✓ | Repository-root executable integration test scripts (`run_tests.sh`, `docker.sh`, `incus.sh`, `e2e.sh`, optional `virt.sh` and helpers). Go unit tests live alongside code as `*_test.go` | No |
 | `deps/` | | Optional, committed, project-specific support files not part of build/release output (e.g. scripts or Dockerfiles for building a dependency) — never a cache or temp/output dir | No |
 | `.github/` | ✓ | GitHub Actions workflows (PART 28: every project ships all five providers' files); on a public GitHub repo also community files and templates | No |
 | `.gitea/` | ✓ | Gitea Actions workflows (PART 28) | No |
@@ -4606,7 +4606,7 @@ make build
 make test
 
 # CORRECT - Integration tests
-# Auto-detects incus/docker
+# Basic tier: Docker (Incus only as the fallback)
 ./tests/run_tests.sh
 # Full OS test with systemd (PREFERRED)
 ./tests/incus.sh
@@ -6395,7 +6395,8 @@ PROJECT_ORG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+
 ├── tests/                  # Repository-root executable integration test scripts (Go unit tests stay next to code as *_test.go)
 │   ├── run_tests.sh        # Auto-detect and run tests (REQUIRED)
 │   ├── docker.sh           # Beta testing with Docker (REQUIRED)
-│   ├── incus.sh            # Beta testing with Incus (REQUIRED)
+│   ├── incus.sh            # Full-app testing in Incus containers, with and without systemd (REQUIRED)
+│   ├── virt.sh             # Clean-OS testing in real VMs (OPTIONAL — only when a clean OS is needed, PART 29)
 │   └── e2e.sh              # Browser E2E beta testing, headless Chromium (REQUIRED — PART 29)
 ├── docker/                 # Docker files
 │   ├── Dockerfile          # Production Dockerfile
@@ -41490,11 +41491,15 @@ PLATFORMS ?= linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 win
 DOCKER_MEM  ?= 4g
 DOCKER_CPUS ?= 2
 
+# Hard ceiling in seconds for ONE container run, so a hung step can never hold a container for hours (raise it for a very long cross-compile)
+DOCKER_TIMEOUT ?= 3600
+
 # Docker - Set REGISTRY based on your platform (ghcr.io, registry.gitlab.com, git.example.com)
 REGISTRY ?= ghcr.io/$(PROJECT_ORG)/$(PROJECT_NAME)
 # GO_DOCKER_RUN: shared docker run prefix (no image) so targets can add mounts before the image
-# --rm: never leave an exited container behind; --no-healthcheck: the toolchain image's service HEALTHCHECK must not poll a one-shot build container
-GO_DOCKER_RUN := docker run --rm --no-healthcheck \
+# --rm: never leave an exited container behind; --no-healthcheck: the toolchain image's service HEALTHCHECK must not poll a one-shot build container;
+# timeout: a hung run is stopped after DOCKER_TIMEOUT seconds (the signal is forwarded to the container, which stops)
+GO_DOCKER_RUN := timeout -k 30 $(DOCKER_TIMEOUT) docker run --rm --no-healthcheck \
 	--name $(PROJECT_NAME)-$$(tr -dc 'a-z0-9' </dev/urandom | head -c8) \
 	--memory=$(DOCKER_MEM) --cpus=$(DOCKER_CPUS) \
 	-v $(PWD):/app \
@@ -41515,54 +41520,29 @@ build: clean
 	@mkdir -p $(BINDIR) $(GO_CACHE) $(GO_BUILD)
 	@echo "Building version $(VERSION)..."
 
-	# Tidy and download modules
-	@echo "Tidying and downloading Go modules..."
-	@$(GO_DOCKER) sh -c "go mod tidy && go mod download"
-
-	# Build for local OS/ARCH
-	@echo "Building local binary..."
-	@$(GO_DOCKER) sh -c "GOOS=\$$(go env GOOS) GOARCH=\$$(go env GOARCH) \
-		go build -buildvcs=false -trimpath -ldflags \"$(LDFLAGS)\" -o $(BINDIR)/$(PROJECT_NAME) ./src"
-
-	# Build server for all platforms
-	@for platform in $(PLATFORMS); do \
-		OS=$${platform%/*}; \
-		ARCH=$${platform#*/}; \
-		OUTPUT=$(BINDIR)/$(PROJECT_NAME)-$$OS-$$ARCH; \
-		[ "$$OS" = "windows" ] && OUTPUT=$$OUTPUT.exe; \
-		echo "Building server $$OS/$$ARCH..."; \
-		$(GO_DOCKER) sh -c "GOOS=$$OS GOARCH=$$ARCH \
-			go build -buildvcs=false -trimpath -ldflags \"$(LDFLAGS)\" \
-			-o $$OUTPUT ./src" || exit 1; \
-	done
-
-	# Build CLI for all platforms (if exists)
-	@if [ -d "src/client" ]; then \
+	# Tidy, download, local build and every platform in ONE container (one sh -c loop, never a container per platform)
+	@$(GO_DOCKER_RUN) -e BUILD_LDFLAGS="$(LDFLAGS)" casjaysdev/go:latest sh -c ' \
+		set -e; \
+		go mod tidy; \
+		go mod download; \
+		echo "Building $(PROJECT_NAME) (local platform)..."; \
+		GOOS=$$(go env GOOS) GOARCH=$$(go env GOARCH) go build -buildvcs=false -trimpath -ldflags "$$BUILD_LDFLAGS" -o $(BINDIR)/$(PROJECT_NAME) ./src; \
 		for platform in $(PLATFORMS); do \
 			OS=$${platform%/*}; \
 			ARCH=$${platform#*/}; \
-			OUTPUT=$(BINDIR)/$(PROJECT_NAME)-cli-$$OS-$$ARCH; \
-			[ "$$OS" = "windows" ] && OUTPUT=$$OUTPUT.exe; \
-			echo "Building CLI $$OS/$$ARCH..."; \
-			$(GO_DOCKER) sh -c "GOOS=$$OS GOARCH=$$ARCH \
-				go build -buildvcs=false -trimpath -ldflags \"$(LDFLAGS)\" \
-				-o $$OUTPUT ./src/client" || exit 1; \
-		done; \
-	fi
-
-	# Build agent for all platforms (if exists)
-	@if [ -d "src/agent" ]; then \
-		for platform in $(PLATFORMS); do \
-			OS=$${platform%/*}; \
-			ARCH=$${platform#*/}; \
-			OUTPUT=$(BINDIR)/$(PROJECT_NAME)-agent-$$OS-$$ARCH; \
-			[ "$$OS" = "windows" ] && OUTPUT=$$OUTPUT.exe; \
-			echo "Building agent $$OS/$$ARCH..."; \
-			$(GO_DOCKER) sh -c "GOOS=$$OS GOARCH=$$ARCH \
-				go build -buildvcs=false -trimpath -ldflags \"$(LDFLAGS)\" \
-				-o $$OUTPUT ./src/agent" || exit 1; \
-		done; \
-	fi
+			EXT=""; \
+			if [ "$$OS" = "windows" ]; then EXT=".exe"; fi; \
+			echo "Building server $$OS/$$ARCH..."; \
+			GOOS=$$OS GOARCH=$$ARCH go build -buildvcs=false -trimpath -ldflags "$$BUILD_LDFLAGS" -o $(BINDIR)/$(PROJECT_NAME)-$$OS-$$ARCH$$EXT ./src; \
+			if [ -d src/client ]; then \
+				echo "Building CLI $$OS/$$ARCH..."; \
+				GOOS=$$OS GOARCH=$$ARCH go build -buildvcs=false -trimpath -ldflags "$$BUILD_LDFLAGS" -o $(BINDIR)/$(PROJECT_NAME)-cli-$$OS-$$ARCH$$EXT ./src/client; \
+			fi; \
+			if [ -d src/agent ]; then \
+				echo "Building agent $$OS/$$ARCH..."; \
+				GOOS=$$OS GOARCH=$$ARCH go build -buildvcs=false -trimpath -ldflags "$$BUILD_LDFLAGS" -o $(BINDIR)/$(PROJECT_NAME)-agent-$$OS-$$ARCH$$EXT ./src/agent; \
+			fi; \
+		done'
 
 	@echo "Build complete: $(BINDIR)/"
 
@@ -41573,28 +41553,21 @@ local: clean
 	@mkdir -p $(BINDIR) $(GO_CACHE) $(GO_BUILD)
 	@echo "Building local binaries version $(VERSION)..."
 
-	# Tidy and download modules
-	@echo "Tidying and downloading Go modules..."
-	@$(GO_DOCKER) sh -c "go mod tidy && go mod download"
-
-	# Build server binary
-	@echo "Building $(PROJECT_NAME)..."
-	@$(GO_DOCKER) sh -c "GOOS=\$$(go env GOOS) GOARCH=\$$(go env GOARCH) \
-		go build -buildvcs=false -trimpath -ldflags \"$(LDFLAGS)\" -o $(BINDIR)/$(PROJECT_NAME) ./src"
-
-	# Build CLI binary (if exists)
-	@if [ -d "src/client" ]; then \
-		echo "Building $(PROJECT_NAME)-cli..."; \
-		$(GO_DOCKER) sh -c "GOOS=\$$(go env GOOS) GOARCH=\$$(go env GOARCH) \
-			go build -buildvcs=false -trimpath -ldflags \"$(LDFLAGS)\" -o $(BINDIR)/$(PROJECT_NAME)-cli ./src/client"; \
-	fi
-
-	# Build agent binary (if exists)
-	@if [ -d "src/agent" ]; then \
-		echo "Building $(PROJECT_NAME)-agent..."; \
-		$(GO_DOCKER) sh -c "GOOS=\$$(go env GOOS) GOARCH=\$$(go env GOARCH) \
-			go build -buildvcs=false -trimpath -ldflags \"$(LDFLAGS)\" -o $(BINDIR)/$(PROJECT_NAME)-agent ./src/agent"; \
-	fi
+	# Tidy, download and build every local binary in ONE container
+	@$(GO_DOCKER_RUN) -e BUILD_LDFLAGS="$(LDFLAGS)" casjaysdev/go:latest sh -c ' \
+		set -e; \
+		go mod tidy; \
+		go mod download; \
+		echo "Building $(PROJECT_NAME)..."; \
+		GOOS=$$(go env GOOS) GOARCH=$$(go env GOARCH) go build -buildvcs=false -trimpath -ldflags "$$BUILD_LDFLAGS" -o $(BINDIR)/$(PROJECT_NAME) ./src; \
+		if [ -d src/client ]; then \
+			echo "Building $(PROJECT_NAME)-cli..."; \
+			GOOS=$$(go env GOOS) GOARCH=$$(go env GOARCH) go build -buildvcs=false -trimpath -ldflags "$$BUILD_LDFLAGS" -o $(BINDIR)/$(PROJECT_NAME)-cli ./src/client; \
+		fi; \
+		if [ -d src/agent ]; then \
+			echo "Building $(PROJECT_NAME)-agent..."; \
+			GOOS=$$(go env GOOS) GOARCH=$$(go env GOARCH) go build -buildvcs=false -trimpath -ldflags "$$BUILD_LDFLAGS" -o $(BINDIR)/$(PROJECT_NAME)-agent ./src/agent; \
+		fi'
 
 	@echo "Local build complete: $(BINDIR)/"
 
@@ -41688,23 +41661,18 @@ test:
 # Builds server + CLI + agent (if they exist)
 dev:
 	@mkdir -p $(GO_CACHE) $(GO_BUILD)
-	@$(GO_DOCKER) go mod tidy
 	@mkdir -p "$${TMPDIR:-/tmp}/$(PROJECT_ORG)" && \
 		BUILD_DIR=$$(mktemp -d "$${TMPDIR:-/tmp}/$(PROJECT_ORG)/$(INTERNAL_NAME)-XXXXXX") && \
 		echo "Quick dev build to $$BUILD_DIR..." && \
-		$(GO_DOCKER_RUN) -v $$BUILD_DIR:/build casjaysdev/go:latest \
-			go build -buildvcs=false -o /build/$(PROJECT_NAME) ./src && \
+		$(GO_DOCKER_RUN) -v $$BUILD_DIR:/build casjaysdev/go:latest sh -c ' \
+			set -e; \
+			go mod tidy; \
+			go build -buildvcs=false -o /build/$(PROJECT_NAME) ./src; \
+			if [ -d src/client ]; then go build -buildvcs=false -o /build/$(PROJECT_NAME)-cli ./src/client; fi; \
+			if [ -d src/agent ]; then go build -buildvcs=false -o /build/$(PROJECT_NAME)-agent ./src/agent; fi' && \
 		echo "Built: $$BUILD_DIR/$(PROJECT_NAME)" && \
-		if [ -d "src/client" ]; then \
-			$(GO_DOCKER_RUN) -v $$BUILD_DIR:/build casjaysdev/go:latest \
-				go build -buildvcs=false -o /build/$(PROJECT_NAME)-cli ./src/client && \
-			echo "Built: $$BUILD_DIR/$(PROJECT_NAME)-cli"; \
-		fi && \
-		if [ -d "src/agent" ]; then \
-			$(GO_DOCKER_RUN) -v $$BUILD_DIR:/build casjaysdev/go:latest \
-				go build -buildvcs=false -o /build/$(PROJECT_NAME)-agent ./src/agent && \
-			echo "Built: $$BUILD_DIR/$(PROJECT_NAME)-agent"; \
-		fi && \
+		if [ -d "src/client" ]; then echo "Built: $$BUILD_DIR/$(PROJECT_NAME)-cli"; fi && \
+		if [ -d "src/agent" ]; then echo "Built: $$BUILD_DIR/$(PROJECT_NAME)-agent"; fi && \
 		echo "Test:  docker run --rm --name $(PROJECT_NAME)-test -v $$BUILD_DIR:/app alpine:latest /app/$(PROJECT_NAME) --help"
 
 # =============================================================================
@@ -41780,7 +41748,7 @@ All Docker builds use persistent Go module caching to avoid re-downloading depen
 6. Builds all platform binaries: `binaries/{project_name}-{os}-{arch}`
 7. Uses `CGO_ENABLED=0` for static binaries
 8. Embeds Version, CommitID, BuildEpoch, OfficialSite via `-ldflags` (BuildDate is derived from BuildEpoch in `init()`, not embedded)
-9. All builds via Docker (`casjaysdev/go:latest`)
+9. All builds via Docker (`casjaysdev/go:latest`), in ONE container for the whole target (dependencies, the local binary and every platform in a single `sh -c` run, never a container per platform)
 
 ### `make release`
 
@@ -41869,9 +41837,10 @@ docker run --rm \
 
 | Script | Container | Best For |
 |--------|-----------|----------|
-| `./tests/run_tests.sh` | Auto-detect | General testing (picks best available) |
+| `./tests/run_tests.sh` | Docker (Incus fallback) | The basic tier: runs `docker.sh`; `incus.sh`, `virt.sh` and `e2e.sh` are run explicitly |
 | `./tests/docker.sh` | Docker `alpine:latest` | Quick binary validation |
-| `./tests/incus.sh [systemd\|openrc\|all]` | Incus `debian/trixie` (systemd) and `alpine/{latest_stable}` (OpenRC) | **PREFERRED** - Full OS, both init systems, service lifecycle, reboot, Tor and I2P |
+| `./tests/incus.sh [systemd\|openrc\|all]` | Incus CONTAINERS: `debian/trixie` (with systemd) and `alpine/{latest_stable}` (without it, OpenRC) | **PREFERRED** for the whole app - both init systems, service lifecycle, reboot, Tor and I2P |
+| `./tests/virt.sh [systemd\|openrc\|all]` | Incus VMs (`--vm`): `debian/trixie` and `alpine/{latest_stable}` | OPTIONAL - a clean OS with its own kernel and a real boot, only when a container cannot show it (PART 29) |
 | `./tests/e2e.sh` | Docker + Chromium | Browser E2E beta testing — frontend with and without JS (PART 29) |
 
 **Typical workflow:**
@@ -41883,7 +41852,7 @@ make dev
 make test
 
 # Before commit
-# Integration tests (auto-detects incus/docker)
+# Basic tests (Docker; Incus only as the fallback)
 ./tests/run_tests.sh
 
 # Before release
@@ -48356,9 +48325,10 @@ rm -rf "${TMPDIR:-/tmp}/${PROJECT_ORG}/"
 | **`--rm` always** | Every `docker run` uses `--rm`, for debugging, one-off checks and build runs alike. The only exemption is a detached (`-d`) test server or sidecar kept alive so its logs can be read after a failure; it is still named by convention and is removed by exact name before the task ends. An exited container in `docker ps -a` means a run skipped `--rm`: remove it by exact name (Docker Container Rules) and fix the command |
 | **Named by convention** | `--name "{project_name}-XXXXXXXX"` (8 random characters), so every container of the project is found with `docker ps -a --filter "name=^{project_name}-"`. A script that must stop a container later records its name in a variable |
 | **Shared run prefix** | Ad-hoc runs reuse the Makefile prefix flags: `--rm --no-healthcheck`, `--memory`, `--cpus` and the cache mounts. `--no-healthcheck` stops the toolchain image's service `HEALTHCHECK` from polling a one-shot container |
-| **One container per phase** | Steps that belong together run in ONE `docker run ... sh -c "a && b && c"`, never a container per step (`go mod tidy`, then `go mod download`, then `gofmt`, then `go vet`, then one package's tests). Checks a Makefile target does not cover are batched into one container as well. Makefile loops that cross-compile once per platform are the one accepted exception: each platform is its own sequential, `--rm` run |
+| **One container per phase** | Steps that belong together run in ONE `docker run ... sh -c "a && b && c"`, never a container per step (`go mod tidy`, then `go mod download`, then `gofmt`, then `go vet`, then one package's tests). Checks a Makefile target does not cover are batched into one container as well. The Makefile targets follow the same rule: `build`, `local` and `dev` each run in ONE container, the cross-compile loop over every platform included |
 | **Gate once per change set** | `make test` runs ONCE, after the edits for a change are finished. A failure is fixed, then the full gate runs again; no container per hypothesis, per file or per formatting fix |
 | **One at a time** | At most ONE toolchain container (a `make` target, a `tests/*.sh` script or an ad-hoc run) per repository at any moment; a second one never starts while the first is running. Sub-agents and forks never start containers: the main session runs the gate |
+| **Bounded** | Every container run has a time ceiling: the Makefile prefix wraps `docker run` in `timeout -k 30 $(DOCKER_TIMEOUT)` (default `3600`), and a script or an ad-hoc run does the same. A hung `go vet`, test or build is stopped by the ceiling instead of holding a container, CPU and memory for hours; a run that hits it is diagnosed, never retried with the same value. The signal is forwarded to the container's PID 1, and anything that survives is removed by exact name (Docker Container Rules) |
 | **Teardown even on failure** | A script that starts a container, sidecar, network or volume removes it in a `trap cleanup EXIT INT TERM` handler registered BEFORE the first one starts (see "Test Scripts (tests/ directory)") - a failed or interrupted run leaves nothing behind |
 | **Browser sidecar** | The E2E `chromedp/headless-shell` sidecar lives only while `tests/e2e.sh` runs; it is never left running afterward |
 | **One shared buildx builder** | `multiarch-builder` serves every project; never a builder per project (each is a long-lived buildkit container) |
@@ -48377,6 +48347,7 @@ rm -rf "${TMPDIR:-/tmp}/${PROJECT_ORG}/"
 | **One at a time** | One instance per init system, one after the other, and one `tests/incus.sh` per repository at any moment; instances are never started in parallel |
 | **Shared images** | Test instances launch from the cached `images:` remote (`debian/trixie`, `alpine/{latest_stable}`). Images are shared by every project and expire on their own, so a script never runs `incus image delete`, never publishes a per-run image, and never keeps an instance only to hold a warm package cache |
 | **Shared infrastructure** | Instances use the default profile, `incusbr0` and the `default` storage pool. A script never edits the default profile and never creates a profile, network, storage pool, project or custom volume unless the test needs it; when it does, it gives it a `{project_name}-XXXXXXXX` name and removes it in the same trap |
+| **Bounded** | Every wait loop and every `incus exec` step has a ceiling (`timeout`, or a counted loop such as `wait_boot`), so a stuck instance fails the run instead of hanging it |
 | **End-of-task check** | `incus list "^{project_name}-"` lists nothing; anything listed is deleted by exact name (Incus Instance Rules) |
 
 ### Incus Virtual Machines (`--vm`)
@@ -48393,7 +48364,7 @@ rm -rf "${TMPDIR:-/tmp}/${PROJECT_ORG}/"
 | **Boot wait** | A VM boots more slowly than a container. Wait for the Incus agent (`incus exec {instance_name} -- true`) for up to `VM_BOOT_WAIT` seconds (default `180`) before the first command, then run the same init-ready check as for a container |
 | **Secure Boot** | Set `-c security.secureboot=false` only for an image whose bootloader is unsigned and fails to boot with Secure Boot on; never by default |
 | **One VM at a time, never kept** | At most one VM per repository at any moment, and none when a container will do; a VM is deleted by its trap and is never kept between runs |
-| **Where it lives** | An optional `vm` mode of `tests/incus.sh`. When a project defines it, the usage line lists it (`[systemd\|openrc\|vm\|all]`) and `all` still means systemd plus OpenRC only, so the default run stays containers-only |
+| **Where it lives** | `tests/virt.sh` (OPTIONAL, standalone, manual, see "tests/virt.sh"). `tests/incus.sh` is for Incus containers only and never launches `--vm` |
 
 ### Testing Strategy
 
@@ -48418,7 +48389,7 @@ rm -rf "${TMPDIR:-/tmp}/${PROJECT_ORG}/"
 - Tests project-specific functionality (from IDEA.md)
 - Run with `./tests/run_tests.sh`
 - `./tests/*` means executable shell scripts in the repository-root `tests/` directory
-- Minimum required scripts: `./tests/run_tests.sh`, `./tests/docker.sh`, `./tests/incus.sh`, `./tests/e2e.sh` (browser E2E — see "Browser E2E Testing" below; standalone entry point, not invoked by `./tests/run_tests.sh`)
+- Minimum required scripts: `./tests/run_tests.sh`, `./tests/docker.sh`, `./tests/incus.sh`, `./tests/e2e.sh` (browser E2E — see "Browser E2E Testing" below; standalone entry point, not invoked by `./tests/run_tests.sh`). `./tests/virt.sh` is OPTIONAL (a project adds it only when a clean OS in a real VM is needed) and is also standalone
 - Additional helper scripts are allowed (for example `./tests/test_content_negotiation.sh`)
 - These scripts complement binary coverage; they do **NOT** replace required Go unit tests in `*_test.go`
 
@@ -48995,9 +48966,10 @@ fi
 
 | Script | Purpose | Container | Tests |
 |--------|---------|-----------|-------|
-| `tests/run_tests.sh` | Auto-detect runtime and run tests | Auto-detect | Runs incus.sh or docker.sh |
-| `tests/docker.sh` | Beta testing with Docker | `alpine:latest` | Full integration tests |
-| `tests/incus.sh` | Beta testing with Incus (`[systemd\|openrc\|all]`) | `debian/trixie` + `alpine/{latest_stable}` | Full integration + systemd and OpenRC service tests + Tor and I2P |
+| `tests/run_tests.sh` | Run the basic tier | Docker (Incus only when Docker is absent) | Runs docker.sh; the full-app, clean-OS and browser scripts are explicit |
+| `tests/docker.sh` | Basic tier: the binary-validation suite in Docker | `alpine:latest` | Does it start and answer: version, help, endpoints, CLI; no init system, no service lifecycle |
+| `tests/incus.sh` | Full-app testing in Incus CONTAINERS (`[systemd\|openrc\|all]`) | `debian/trixie` (with systemd) + `alpine/{latest_stable}` (without it, OpenRC) | The same suite plus the whole service lifecycle under a real init, reboot persistence, Tor and I2P |
+| `tests/virt.sh` | Clean-OS testing in real VMs (`[systemd\|openrc\|all]`, OPTIONAL) | Incus VMs: `debian/trixie` + `alpine/{latest_stable}` | The same suite on a pristine OS with its own kernel, plus VM-only checks and a cold power cycle |
 
 **docker.sh and incus.sh MUST:**
 1. Host cache dirs (`GO_CACHE`/`GO_BUILD`) provide persistent Go cache across builds
@@ -49023,7 +48995,7 @@ fi
 
 #### tests/docker.sh
 
-**Purpose:** Full integration testing in Docker Alpine container
+**Purpose:** The basic tier: the binary-validation suite in one Docker Alpine container (does it start and answer). No init system and no service lifecycle: those belong to `tests/incus.sh`
 
 ```bash
 #!/usr/bin/env bash
@@ -49266,7 +49238,7 @@ echo "Docker tests completed successfully"
 
 #### tests/incus.sh
 
-**Purpose:** Full integration testing in Incus system containers, once per init system: **systemd** (Debian) and **OpenRC** (Alpine). Each run installs the service with the binary's own `--service` commands, exercises the full service lifecycle and a reboot, and tests Tor and I2P with both installed.
+**Purpose:** Full-app testing in Incus system CONTAINERS only (never VMs), once per init system: with systemd (**Debian**) and without it (**Alpine**, OpenRC). It tests the whole application under a real init, not just whether it starts; the basic checks stay in `tests/docker.sh`, and a clean OS in a real VM is `tests/virt.sh`. Each run installs the service with the binary's own `--service` commands, exercises the full service lifecycle and a reboot, and tests Tor and I2P with both installed.
 
 ```bash
 #!/usr/bin/env bash
@@ -49720,6 +49692,7 @@ echo "Incus tests completed successfully ($MODES)"
 | Tor with the binary removed | `enabled: false`, `status: disabled`, empty hostname, NO `checks.tor` key (never `error`, never `unavailable`) |
 | I2P in an application container with no explicit setting (`tests/docker.sh`) | `enabled: true`, `provider: i2pd`, `status` is one of the contract words |
 | I2P in an Incus system container with no explicit setting (`tests/incus.sh`) | `enabled: false`, `status: disabled`, no `checks.i2p` key |
+| I2P in a VM with no explicit setting (`tests/virt.sh`) | `enabled: false`, `status: disabled`, no `checks.i2p` key (a VM is not a container: opt-in) |
 | I2P enabled (the shipped default in `tests/docker.sh`, the drop-in in `tests/incus.sh`), once bootstrapped | `enabled: true`, `provider: i2pd`; within `I2P_WAIT` seconds (default 600) it becomes `healthy` with a `.b32.i2p` hostname, `checks.i2p: ok` and a persisted destination key |
 | I2P opted out through a `yaml.d/50-i2p.yml` drop-in (`enabled: false`) | `enabled: false`, `status: disabled`, no `checks.i2p` key |
 | I2P default ON, `i2pd` removed | `enabled: false`, `status: disabled`, `provider: none`, no `checks.i2p` key |
@@ -49727,26 +49700,145 @@ echo "Incus tests completed successfully ($MODES)"
 
 Bootstrapping Tor and I2P needs outbound network access from the container. When the network is missing, the `healthy` checks print `SKIP` and the contract checks still run; `REQUIRE_OVERLAY=1` turns a missing bootstrap into a failure (use it for the release run). The script exits non-zero when any check failed; a failure is never printed and then ignored.
 
-#### tests/run_tests.sh
+#### tests/virt.sh
 
-**Purpose:** Automatic test runner - detects available container runtime and runs appropriate test
+**Purpose:** Clean-OS testing in real VMs (Incus `--vm`): a pristine guest with its own kernel and a real boot, once per init system (systemd on Debian, OpenRC on Alpine). It is OPTIONAL: a project adds it only when it really needs a clean system, such as installing onto a pristine OS, a cold power cycle, kernel-dependent behavior, or the "running in a VM" branch. Everything a container can show stays in `tests/docker.sh` (basic) and `tests/incus.sh` (the whole app). It is standalone and developer-initiated like `tests/e2e.sh`: `tests/run_tests.sh` never starts it, and CI never requires it.
+
+**virt.sh MUST:** build with `make build`; run the SAME guest-side steps as `tests/incus.sh` (init identity, `--service --install`, restart, stop and start, the reboot, Tor and I2P), so a VM run is a superset; then add the VM-only checks below. It follows "Incus Discipline" and "Incus Virtual Machines" exactly: `{project_name}-XXXXXXXX` names, `trap cleanup EXIT INT TERM` before the first launch, resource caps and a root disk size, one VM at a time, and a ceiling on every wait.
 
 ```bash
 #!/usr/bin/env bash
 set -eo pipefail
 
-# Detect available container runtime and run appropriate test
-if command -v incus &>/dev/null; then
-    echo "Incus detected - running the full systemd and OpenRC tests..."
-    exec "$(dirname "$0")/incus.sh"
-elif command -v docker &>/dev/null; then
-    echo "Docker detected - running container tests..."
+# Usage: tests/virt.sh [systemd|openrc|all]   (default: all)
+# systemd runs in a Debian VM, openrc in an Alpine VM; each VM is a fresh OS with its own kernel
+MODE="${1:-all}"
+case "$MODE" in
+    systemd|openrc) MODES="$MODE" ;;
+    all) MODES="systemd openrc" ;;
+    *) echo "Usage: $0 [systemd|openrc|all]"; exit 2 ;;
+esac
+
+if ! command -v incus &>/dev/null; then
+    echo "ERROR: incus not found"
+    exit 1
+fi
+
+# A VM needs hardware virtualization: without a usable /dev/kvm the run is skipped, unless REQUIRE_VM=1
+if [ ! -w /dev/kvm ]; then
+    if [ "${REQUIRE_VM:-0}" = "1" ]; then
+        echo "ERROR: no usable /dev/kvm"
+        exit 1
+    fi
+    echo "SKIP: no /dev/kvm"
+    exit 0
+fi
+
+# Detect project info
+PROJECT_NAME=$(basename "$PWD")
+BIN_DIR="${BIN_DIR:-binaries}"
+VM_PREFIX="${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)"
+VMS=()
+
+# One image per init system: the latest Debian stable and the latest stable Alpine release
+INCUS_IMAGE_SYSTEMD="images:debian/trixie"
+INCUS_IMAGE_OPENRC="images:alpine/3.24"
+
+# Caps for every VM (override from the environment); the root disk is never larger than the test needs
+INCUS_CPUS="${INCUS_CPUS:-2}"
+INCUS_MEM="${INCUS_MEM:-4GiB}"
+VM_DISK="${VM_DISK:-10GiB}"
+VM_BOOT_WAIT="${VM_BOOT_WAIT:-180}"
+
+cleanup() {
+    local v
+    for v in "${VMS[@]}"; do incus delete --force "$v" 2>/dev/null || true; done
+}
+trap cleanup EXIT INT TERM
+
+# The REMOTE_LIB, REMOTE_MAIN and REMOTE_AFTER guest-side step scripts and the remote() helper are the
+# definitions of tests/incus.sh, unchanged: a VM runs exactly the same steps as a container
+
+# Wait for the Incus agent inside the VM within VM_BOOT_WAIT seconds (the init-ready wait is part of the shared guest-side steps)
+wait_agent() {
+    local vm="$1" i
+    for i in $(seq 1 "$VM_BOOT_WAIT"); do
+        incus exec "$vm" -- true 2>/dev/null && return 0
+        sleep 1
+    done
+    echo "ERROR: $vm did not come up within ${VM_BOOT_WAIT}s"
+    return 1
+}
+
+run_mode() {
+    local init="$1" image vm
+    if [ "$init" = "systemd" ]; then image="$INCUS_IMAGE_SYSTEMD"; else image="$INCUS_IMAGE_OPENRC"; fi
+    vm="${VM_PREFIX}-${init}"
+    VMS+=("$vm")
+
+    echo "=== [$init] Launching Incus VM ($image) ==="
+    incus launch "$image" "$vm" --vm -c limits.cpu="$INCUS_CPUS" -c limits.memory="$INCUS_MEM" -d root,size="$VM_DISK"
+    wait_agent "$vm"
+
+    echo "=== [$init] VM-only checks ==="
+    incus exec "$vm" -- sh -c 'grep -qw hypervisor /proc/cpuinfo' || { echo "FAILED: not a VM (no hypervisor flag)"; return 1; }
+    incus exec "$vm" -- sh -c '! grep -qE "lxc|docker" /proc/1/cgroup' || { echo "FAILED: the guest looks like a container"; return 1; }
+
+    echo "=== [$init] Installing test tools, tor and i2pd ==="
+    # Same package steps as tests/incus.sh for this init system
+
+    echo "=== [$init] Copying binaries to the VM ==="
+    incus file push "${BIN_DIR}/${PROJECT_NAME}" "$vm/usr/local/bin/"
+    incus exec "$vm" -- chmod +x "/usr/local/bin/${PROJECT_NAME}"
+
+    echo "=== [$init] Running the shared guest-side steps ==="
+    remote "$vm" "$init" "${REMOTE_LIB}${REMOTE_MAIN}"
+
+    echo "=== [$init] Cold power cycle (stop, then start) ==="
+    incus stop --force "$vm"
+    incus start "$vm"
+    wait_agent "$vm"
+    remote "$vm" "$init" "${REMOTE_LIB}${REMOTE_AFTER}"
+}
+
+# One VM per init system, one after the other (never in parallel)
+for init in $MODES; do
+    run_mode "$init"
+done
+
+echo "VM tests completed successfully ($MODES)"
+```
+
+**VM-only checks (in addition to the steps shared with `tests/incus.sh`):**
+
+| Check | Expected |
+|-------|----------|
+| Own kernel, not a container | `/proc/cpuinfo` has the `hypervisor` flag and `/proc/1/cgroup` names neither `lxc` nor `docker` |
+| I2P default in a VM | with no explicit setting: `enabled: false`, `status: disabled`, no `checks.i2p` key (opt-in outside containers) |
+| Cold power cycle | after `incus stop --force` and `incus start` the service comes back by itself with a new PID and answers its health route (a power loss, stronger than the `incus restart` reboot of `tests/incus.sh`) |
+| Clean install | `--service --install` on the pristine image, with nothing installed beyond the test tools, `tor`, `i2pd` and the binary |
+| Project kernel-level checks | whatever IDEA.md declares as kernel-dependent (firewall rules, mounts, filesystems) runs here and nowhere else |
+
+#### tests/run_tests.sh
+
+**Purpose:** Runs the basic tier: `tests/docker.sh`. `tests/incus.sh` (the whole app), `tests/virt.sh` (a clean OS) and `tests/e2e.sh` (the browser) are never started automatically; a developer runs them explicitly. When Docker is absent it falls back to `tests/incus.sh`
+
+```bash
+#!/usr/bin/env bash
+set -eo pipefail
+
+# Basic tier is Docker; Incus is only the fallback when Docker is absent
+if command -v docker &>/dev/null; then
+    echo "Docker detected - running the basic tests..."
     exec "$(dirname "$0")/docker.sh"
+elif command -v incus &>/dev/null; then
+    echo "Docker not found - falling back to the Incus container tests..."
+    exec "$(dirname "$0")/incus.sh"
 else
     echo "ERROR: Neither incus nor docker found"
     echo "Please install one of the following:"
-    echo "  - Incus (preferred): https://linuxcontainers.org/incus/"
-    echo "  - Docker (fallback): https://docker.com/"
+    echo "  - Docker (basic tests): https://docker.com/"
+    echo "  - Incus (fallback): https://linuxcontainers.org/incus/"
     exit 1
 fi
 ```
@@ -49755,7 +49847,7 @@ fi
 
 | Rule | Requirement |
 |------|-------------|
-| **Location** | `tests/run_tests.sh`, `tests/docker.sh`, `tests/incus.sh`, `tests/e2e.sh` |
+| **Location** | `tests/run_tests.sh`, `tests/docker.sh`, `tests/incus.sh`, `tests/e2e.sh`, and `tests/virt.sh` when the project needs a clean OS |
 | **Permissions** | Executable (`chmod +x tests/*.sh`) |
 | **Build method** | ALWAYS use Docker (casjaysdev/go:latest) with host cache dirs (`GO_CACHE`/`GO_BUILD`) |
 | **Go cache** | Host cache dirs (`GO_CACHE`/`GO_BUILD`) bind-mounted into container |
@@ -67931,6 +68023,7 @@ make docker
 - [ ] tests/docker.sh - Docker-based tests
 - [ ] tests/incus.sh - Incus-based tests
 - [ ] tests/e2e.sh - Browser E2E beta testing, on demand (PART 29)
+- [ ] tests/virt.sh - Clean-OS testing in real VMs, only when a clean OS is needed (OPTIONAL, PART 29)
 - [ ] All tests pass in CI
 - [ ] Test coverage measured
 - [ ] API testing included
@@ -68717,7 +68810,7 @@ make docker
 - [ ] All forbidden-category commands in test scripts are wrapped in `docker exec`, `docker run`, `incus exec`, `lxc exec`, `podman exec`, `virsh`, `vagrant ssh -c`, `multipass exec`, `chroot`, or `ip netns exec`
 - [ ] Test container/instance names follow the `{project_name}-XXXXXXXX` pattern (8 random characters), so they are clearly disposable and found with `docker ps -a --filter "name=^{project_name}-"` or `incus list "^{project_name}-"`
 - [ ] Every `incus launch` has a `{project_name}-XXXXXXXX` name, `-c limits.cpu=` and `-c limits.memory=`, and a `trap cleanup EXIT INT TERM` registered before it
-- [ ] `incus launch --vm` appears only where a container cannot show the behavior, carries `-d root,size=`, and is never part of `all`
+- [ ] `incus launch --vm` appears only in `tests/virt.sh` (never in `tests/incus.sh`), only where a container cannot show the behavior, and carries `-d root,size=`
 - [ ] No `incus image delete`, no edit of the default Incus profile, no `incus stop --all`
 - [ ] No test or debug script assumes "I'm in a container" without checking — `/.dockerenv`, `/run/.containerenv`, `/proc/1/cgroup`, `systemd-detect-virt`, or `$container` is consulted before any host-affecting command
 - [ ] When detection is ambiguous, scripts default to refusing the host-affecting command
