@@ -20472,6 +20472,7 @@ type PrivacyTemplateData struct {
 | `message` | GDPR notice | Main banner text |
 | `policy.text` | "Privacy Policy" | Link text |
 | `policy.url` | "/server/privacy" | Link destination |
+| `policy.version` | `"1"` | Policy version recorded in every `compliance.consent_updated` event |
 | `buttons.decline` | "Decline" | Decline button label |
 | `buttons.accept` | "I Agree" | Accept button label |
 | `position` | `bottom` | Banner position (top/bottom) |
