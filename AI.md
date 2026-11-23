@@ -17819,6 +17819,7 @@ server:
 | `security.ip_unblocked` | IP address unblocked | IP, unblocked_by (system/admin), reason |
 | `security.country_blocked` | Request blocked by GeoIP | IP, country code |
 | `security.csrf_failure` | CSRF token validation failed | IP, endpoint |
+| `security.audit_chain_broken` | Audit log hash chain failed verification | File name, line number (never entry content) |
 | `security.invalid_token` | Invalid API token used | Token type, IP |
 | `security.brute_force_detected` | Brute force attempt detected | IP, target (masked), attempt count |
 | `security.suspicious_activity` | Unusual activity detected | IP, activity type, details |
@@ -17898,7 +17899,8 @@ server:
     "mfa_method": "totp"
   },
   "result": "success",
-  "node_id": "node-1"
+  "node_id": "node-1",
+  "prev": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
 }
 ```
 
@@ -17913,6 +17915,7 @@ server:
 | `severity` | String | `info`, `warn`, `error`, `critical` |
 | `actor` | Object | Who performed the action |
 | `result` | String | `success` or `failure` |
+| `prev` | String | Lowercase hex SHA-256 of the previous entry's line (hash chain, see "Audit Log Integrity") |
 
 **Optional Fields:**
 
@@ -18069,7 +18072,9 @@ server:
 | Append-only | Application can only append, never modify or delete entries |
 | No truncate | Application cannot truncate the log file |
 | Rotation only | Only log rotation can remove old entries |
-| Checksum | Optional: Include running checksum for tamper detection |
+| Hash chain | REQUIRED. Every entry has a `prev` field: the lowercase hex SHA-256 of the previous entry's exact line (without the newline). The first entry ever uses 64 zeros; the first entry of a rotated file carries the hash of the last line of the file it follows. One writer appends entries in order under a lock, so the chain never forks |
+| Verification | The server re-computes the chain of the current file at start and of the closed file at every rotation. A mismatch (an edited, removed or reordered entry) is reported once as `security.audit_chain_broken` (severity `critical`; file name and line number, never entry content); the server keeps running and keeps appending |
+| Limit | Tamper-evident, not tamper-proof: someone who can rewrite the whole file can recompute every hash. Forward the log to another host if that case matters |
 
 **File Permissions:**
 ```
@@ -19568,7 +19573,7 @@ Every outbound webhook POST includes these headers so the receiver can verify th
 
 | Header | Value |
 |--------|-------|
-| `X-Webhook-Signature` | `sha256=<hex_hmac>` where `hmac = HMAC-SHA256(per_webhook_secret, request_body_bytes)`. The `per_webhook_secret` is auto-generated when the webhook URL is first saved (random 32 bytes, persisted in `secrets.yml` next to the URL as `webhooks.<name>_secret`) and shown ONCE in the admin panel for the operator to configure on the receiving end. |
+| `X-Webhook-Signature` | `sha256=<hex_hmac>` where `hmac = HMAC-SHA256(per_webhook_secret, request_body_bytes)`. The `per_webhook_secret` is generated whenever the webhook URL is set and its secret is empty (random 32 bytes, persisted in `secrets.yml` as `webhooks.<name>_secret`). It is never returned by any API response and never shown in the admin panel: the operator reads it from `secrets.yml` (mode `0600`) to configure the receiving end. |
 | `X-Webhook-Timestamp` | Unix seconds — receiver SHOULD reject if delta exceeds `±5 min` to prevent replay |
 | `X-Webhook-ID` | UUID v7 (time-ordered, RFC 9562) — idempotency key the receiver can use to deduplicate retries |
 | `X-Webhook-Event` | The event type (e.g., `security.report_received`, `admin.cluster_failover`) |
@@ -38614,15 +38619,13 @@ server:
       # true if password was set
       enabled: true
       # The password itself is set in the admin panel (stored encrypted at rest, see Password Storage above)
-  compliance:
-    # HIPAA, SOC2, etc.
-    enabled: false
-    # If true, backup.encryption.enabled MUST be true
 ```
+
+**Compliance mode has no setting of its own.** It is ON when ANY standard under `server.compliance` (see "Compliance Standards") is `true`, and OFF when all are `false` (the default). Every standard requires protecting personal data wherever it is stored, and a backup is a full copy of it, so the strictest rule applies as soon as one standard is on (see "Overlap Resolution"). The check runs at every backup.
 
 **Compliance Mode Enforcement:**
 
-When `server.compliance.enabled: true`:
+When compliance mode is on:
 - Backups will NOT run unless encryption password is set
 - WebUI shows mandatory password setup dialog
 - CLI shows error with instructions to set password
@@ -38647,10 +38650,10 @@ When `server.compliance.enabled: true`:
 
 | Action | Location | Notes |
 |--------|----------|-------|
-| Set during setup | Setup wizard Step 4 | Optional (unless compliance) |
+| Set during setup | Setup wizard Step 4 | Optional (unless compliance mode is on) |
 | Set later | `/server/{admin_path}/backup` | Click "Set Encryption Password" |
 | Change password | `/server/{admin_path}/backup` | New backups use new password |
-| Remove encryption | Only if compliance disabled | Cannot remove if compliance enabled |
+| Remove encryption | Only while compliance mode is off | Cannot remove while compliance mode is on |
 
 **Important:**
 - Old backups encrypted with old password still need old password to restore
@@ -67771,8 +67774,8 @@ make docker
 **PART 22: Backup & Restore**
 - [ ] Automatic daily backups (backup_daily task at 02:00)
 - [ ] Optional hourly incremental (backup_hourly task, disabled by default)
-- [ ] Backup encryption (AES-256-GCM) - optional unless compliance enabled
-- [ ] If compliance enabled, encryption REQUIRED (backups blocked without password)
+- [ ] Backup encryption (AES-256-GCM) - optional unless compliance mode is on (any `server.compliance.<standard>` is true)
+- [ ] If compliance mode is on, encryption REQUIRED (backups blocked without password)
 - [ ] Configurable retention: max_backups (default: 1), keep_weekly/monthly/yearly (default: 0)
 - [ ] `--maintenance backup` works
 - [ ] `--maintenance restore {file}` works (prompts for password if encrypted)
@@ -68564,7 +68567,7 @@ make docker
 - [ ] All API error/status responses use translation keys
 - [ ] `<html lang="{{.Lang}}" dir="{{.Dir}}">` on all pages — never hardcoded `lang="en"`
 - [ ] WebUI serves `/locales/{lang}.json` from embedded files for JavaScript
-- [ ] Language selector present in WebUI header/footer
+- [ ] The language is changed only by the `<select name="lang">` in the Language section of `/server/preferences`; the footer shows the active language as a plain link to `/server/preferences#language`; there is NO language selector in the header
 
 ### CLI Translation
 
