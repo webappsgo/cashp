@@ -438,6 +438,7 @@ docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -
 | Container | Best For | Why |
 |-----------|----------|-----|
 | **Incus** (PREFERRED) | Full integration, systemd and OpenRC | Full OS, persistent, SSH-able, real services; Debian for systemd, Alpine for OpenRC |
+| **Incus VM** (`--vm`) | Kernel-level behavior only | Own kernel under QEMU/KVM; the heaviest target, used only when a container cannot show the behavior |
 | **Docker** (fallback) | Quick checks | Ephemeral, fast startup, limited environment |
 
 ### AI as Beta Tester
@@ -48084,14 +48085,14 @@ When a test or debug step requires `reboot`, `systemctl`, `iptables`, `mount`, p
 | Test Need | Run It Where |
 |-----------|--------------|
 | Run or test the compiled binary | `docker run --rm -v "$BUILD_DIR:/app" alpine:latest /app/{project_name}` or `./tests/docker.sh` / `./tests/incus.sh` |
-| Test systemd service install/start/stop | `incus exec test-{project_name} -- systemctl ...` (Debian container) |
-| Test OpenRC service install/start/stop | `incus exec test-{project_name} -- rc-service ...` (Alpine container) |
+| Test systemd service install/start/stop | `incus exec {instance_name} -- systemctl ...` (Debian container) |
+| Test OpenRC service install/start/stop | `incus exec {instance_name} -- rc-service ...` (Alpine container) |
 | Test firewall integration | `docker run --rm --name "{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" --cap-add=NET_ADMIN ...` |
 | Test network interface behavior | `ip netns exec {ns} ...` or inside Incus |
 | Test package install / dependency setup | Inside the build container or test container |
-| Test reboot / service restart behavior | `incus restart test-{project_name}` |
-| Test mount / filesystem operations | Inside Incus or VM |
-| Reproduce a kernel-param-dependent bug | Inside VM (QEMU/KVM) |
+| Test reboot / service restart behavior | `incus restart {instance_name}` |
+| Test mount / filesystem operations | Inside an Incus container, or an Incus VM when the kernel is involved |
+| Reproduce a kernel-param-dependent bug | Inside an Incus VM (`incus launch --vm`, see "Incus Virtual Machines") |
 
 **See PART 0: "Host System Safety Rule" for the full forbidden-command list, allowed contexts, detection guidance, and the required refusal flow. See FINAL: "HOST SYSTEM SAFETY CHECKLIST" for audit items.**
 
@@ -48363,6 +48364,36 @@ rm -rf "${TMPDIR:-/tmp}/${PROJECT_ORG}/"
 | **One shared buildx builder** | `multiarch-builder` serves every project; never a builder per project (each is a long-lived buildkit container) |
 | **Caches are mounts, not containers** | Compile and download caches are host directories mounted into each run; a long-lived container is never kept just to hold a warm cache |
 | **End-of-task check** | Before reporting done, `docker ps -a --filter "name=^{project_name}-"` lists nothing; anything listed is removed by exact name (Docker Container Rules) |
+
+### Incus Discipline (Keep Usage Low)
+
+**An Incus instance is a full OS and costs more than a Docker container. The same rules apply, in Incus terms.**
+
+| Rule | Description |
+|------|-------------|
+| **Named by convention** | `{project_name}-XXXXXXXX` (8 random characters), the same convention as Docker; an init-mode suffix (`-systemd`, `-openrc`) may follow. Fixed names such as `test-{project_name}` are never used: two runs would collide, and a user's own instance could be mistaken for a test's. A script records the name in a variable, and every `incus exec`, `incus file push`, `incus restart` and `incus delete` uses that exact name |
+| **Disposable** | The script that launches an instance deletes it: `trap cleanup EXIT INT TERM`, registered BEFORE `incus launch`, runs `incus delete --force {instance_name}`. A run that never stops or restarts its instance may add `--ephemeral` (the Incus counterpart of `--rm`); a run that restarts it (the boot-persistence test of `tests/incus.sh`) is not ephemeral and relies on the trap |
+| **Resource caps** | Every launch sets `-c limits.cpu=` and `-c limits.memory=` (defaults `INCUS_CPUS=2` and `INCUS_MEM=4GiB`, overridable from the environment), the counterparts of `DOCKER_CPUS` and `DOCKER_MEM` |
+| **One at a time** | One instance per init system, one after the other, and one `tests/incus.sh` per repository at any moment; instances are never started in parallel |
+| **Shared images** | Test instances launch from the cached `images:` remote (`debian/trixie`, `alpine/{latest_stable}`). Images are shared by every project and expire on their own, so a script never runs `incus image delete`, never publishes a per-run image, and never keeps an instance only to hold a warm package cache |
+| **Shared infrastructure** | Instances use the default profile, `incusbr0` and the `default` storage pool. A script never edits the default profile and never creates a profile, network, storage pool, project or custom volume unless the test needs it; when it does, it gives it a `{project_name}-XXXXXXXX` name and removes it in the same trap |
+| **End-of-task check** | `incus list "^{project_name}-"` lists nothing; anything listed is deleted by exact name (Incus Instance Rules) |
+
+### Incus Virtual Machines (`--vm`)
+
+**An Incus VM runs its own kernel under QEMU/KVM. It is the heaviest test target, so it is used only for what a container cannot show.**
+
+| Rule | Description |
+|------|-------------|
+| **A VM is required for** | Behavior that depends on its own kernel or a real boot: kernel parameters, modules and non-namespaced sysctls, mounts, filesystems, LVM or LUKS, firewall behavior against a real kernel, bootloader and initramfs, a power-cycle reboot, and the "running in a VM" detection branch (for example, I2P is off by default in a VM and on in a container) |
+| **A container is enough for** | Service install, the init-system lifecycle, an ordinary reboot (`incus restart`) and networking inside the instance: all of `tests/incus.sh systemd` and `openrc` stay in containers |
+| **Same tool, same rules** | A VM is launched with `incus launch ... --vm` under the same naming (`{project_name}-XXXXXXXX`), `trap cleanup EXIT INT TERM`, resource caps and end-of-task check as an Incus container. Raw `qemu-system-*` or libvirt (`virsh`) is used only when Incus cannot express the need; it uses the same name prefix, and the trap removes it by exact name (`virsh destroy`, then `virsh undefine --remove-all-storage`) |
+| **Caps** | `-c limits.cpu=`, `-c limits.memory=` and an explicit root disk `-d root,size=` (no larger than the test needs, for example `10GiB`) |
+| **Prerequisite** | `/dev/kvm` must exist and be usable. Without it a VM test prints `SKIP: no /dev/kvm` and the checks that need no VM still run; `REQUIRE_VM=1` turns the skip into a failure (the same pattern as `REQUIRE_OVERLAY=1`) |
+| **Boot wait** | A VM boots more slowly than a container. Wait for the Incus agent (`incus exec {instance_name} -- true`) for up to `VM_BOOT_WAIT` seconds (default `180`) before the first command, then run the same init-ready check as for a container |
+| **Secure Boot** | Set `-c security.secureboot=false` only for an image whose bootloader is unsigned and fails to boot with Secure Boot on; never by default |
+| **One VM at a time, never kept** | At most one VM per repository at any moment, and none when a container will do; a VM is deleted by its trap and is never kept between runs |
+| **Where it lives** | An optional `vm` mode of `tests/incus.sh`. When a project defines it, the usage line lists it (`[systemd\|openrc\|vm\|all]`) and `all` still means systemd plus OpenRC only, so the default run stays containers-only |
 
 ### Testing Strategy
 
@@ -48929,13 +48960,15 @@ if command -v incus &>/dev/null; then
   # PREFERRED: Full OS test in Incus (debian + systemd)
   # Use latest Debian stable (currently 13/trixie)
   echo "Testing with Incus (Debian + systemd)..."
-  incus launch images:debian/trixie test-{project_name}
-  incus file push binaries/{project_name} test-{project_name}/usr/local/bin/
-  incus exec test-{project_name} -- chmod +x /usr/local/bin/{project_name}
-  incus exec test-{project_name} -- {project_name} --help
-  incus exec test-{project_name} -- {project_name} --service --install
-  incus exec test-{project_name} -- systemctl status {project_name}
-  incus delete test-{project_name} --force
+  INSTANCE="{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)"
+  trap 'incus delete --force "$INSTANCE" 2>/dev/null || true' EXIT INT TERM
+  incus launch images:debian/trixie "$INSTANCE" -c limits.cpu=2 -c limits.memory=4GiB
+  incus file push binaries/{project_name} ${INSTANCE}/usr/local/bin/
+  incus exec ${INSTANCE} -- chmod +x /usr/local/bin/{project_name}
+  incus exec ${INSTANCE} -- {project_name} --help
+  incus exec ${INSTANCE} -- {project_name} --service --install
+  incus exec ${INSTANCE} -- systemctl status {project_name}
+  incus delete ${INSTANCE} --force
 else
   # FALLBACK: Quick test in Docker (alpine, no systemd)
   echo "Incus not available, testing with Docker..."
@@ -49259,13 +49292,17 @@ PROJECT_NAME=$(basename "$PWD")
 PROJECT_ORG=$(basename "$(dirname "$PWD")")
 INTERNAL_NAME="${INTERNAL_NAME:-$PROJECT_NAME}"
 INTERNAL_ORG="${INTERNAL_ORG:-$PROJECT_ORG}"
-CONTAINER_PREFIX="test-${PROJECT_NAME}-$$"
+CONTAINER_PREFIX="${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)"
 CONTAINERS=()
 
 # Incus images, one per init system: systemd uses the latest Debian stable, OpenRC uses the
 # latest stable Alpine release (update both when new stable releases ship)
 INCUS_IMAGE_SYSTEMD="images:debian/trixie"
 INCUS_IMAGE_OPENRC="images:alpine/3.24"
+
+# Resource caps for every instance (the counterparts of DOCKER_CPUS and DOCKER_MEM); override from the environment
+INCUS_CPUS="${INCUS_CPUS:-2}"
+INCUS_MEM="${INCUS_MEM:-4GiB}"
 
 cleanup() {
     local c
@@ -49624,7 +49661,7 @@ run_mode() {
     CONTAINERS+=("$container")
 
     echo "=== [$init] Launching Incus container ($image) ==="
-    incus launch "$image" "$container"
+    incus launch "$image" "$container" -c limits.cpu="$INCUS_CPUS" -c limits.memory="$INCUS_MEM"
     wait_boot "$container" "$init"
 
     echo "=== [$init] Installing test tools, tor and i2pd ==="
@@ -50111,16 +50148,18 @@ docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -
 
 # Test in Incus (full OS with systemd) - PREFERRED
 # Use latest Debian stable (currently 13/trixie)
-incus launch images:debian/trixie test-{project_name}
-incus file push binaries/{project_name} test-{project_name}/usr/local/bin/
-incus exec test-{project_name} -- {project_name} --help
-incus delete test-{project_name} --force
+INSTANCE="{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)"
+trap 'for i in "$INSTANCE" "${INSTANCE}-openrc"; do incus delete --force "$i" 2>/dev/null || true; done' EXIT INT TERM
+incus launch images:debian/trixie "$INSTANCE" -c limits.cpu=2 -c limits.memory=4GiB
+incus file push binaries/{project_name} ${INSTANCE}/usr/local/bin/
+incus exec ${INSTANCE} -- {project_name} --help
+incus delete ${INSTANCE} --force
 
 # Test in Incus (full OS with OpenRC) - PREFERRED, newest numbered Alpine release
-incus launch images:alpine/3.24 test-{project_name}-openrc
-incus file push binaries/{project_name} test-{project_name}-openrc/usr/local/bin/
-incus exec test-{project_name}-openrc -- {project_name} --help
-incus delete test-{project_name}-openrc --force
+incus launch images:alpine/3.24 "${INSTANCE}-openrc" -c limits.cpu=2 -c limits.memory=4GiB
+incus file push binaries/{project_name} ${INSTANCE}-openrc/usr/local/bin/
+incus exec ${INSTANCE}-openrc -- {project_name} --help
+incus delete ${INSTANCE}-openrc --force
 ```
 
 ### Testing with Config/Data
@@ -50182,20 +50221,22 @@ docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -
   casjaysdev/go:latest go build -buildvcs=false -o /app/binaries/{project_name} ./src
 
 # Launch Incus container (use latest Debian stable)
-incus launch images:debian/trixie test-{project_name}
+INSTANCE="{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)"
+trap 'incus delete --force "$INSTANCE" 2>/dev/null || true' EXIT INT TERM
+incus launch images:debian/trixie "$INSTANCE" -c limits.cpu=2 -c limits.memory=4GiB
 
 # Push binary and test data
-incus file push binaries/{project_name} test-{project_name}/usr/local/bin/
-incus exec test-{project_name} -- mkdir -p /etc/{internal_org}/{internal_name} /var/lib/{internal_org}/{internal_name}
+incus file push binaries/{project_name} ${INSTANCE}/usr/local/bin/
+incus exec ${INSTANCE} -- mkdir -p /etc/{internal_org}/{internal_name} /var/lib/{internal_org}/{internal_name}
 
 # Test
-incus exec test-{project_name} -- {project_name} --help
-incus exec test-{project_name} -- {project_name} --version
-incus exec test-{project_name} -- {project_name} --service --install
-incus exec test-{project_name} -- systemctl status {project_name}
+incus exec ${INSTANCE} -- {project_name} --help
+incus exec ${INSTANCE} -- {project_name} --version
+incus exec ${INSTANCE} -- {project_name} --service --install
+incus exec ${INSTANCE} -- systemctl status {project_name}
 
 # Cleanup
-incus delete test-{project_name} --force
+incus delete ${INSTANCE} --force
 rm -rf $TEST_DIR
 ```
 
@@ -50271,6 +50312,23 @@ rm -rf $TEST_DIR
 3. docker rmi {project_org}/{internal_name}:tag    # Remove SPECIFIC tag
 ```
 
+### Incus Instance Rules
+
+| Rule | Description |
+|------|-------------|
+| **ONLY this project** | Only stop/delete instances whose name starts with `{project_name}-`, one exact name at a time |
+| **NEVER other instances** | Even if they look related, stopped or unused; never `incus stop --all`, never a delete fed by an unfiltered `incus list` |
+| **NEVER shared infrastructure** | Never delete or edit an image, profile, network, storage pool or project that this test did not create |
+| **NEVER custom volumes** | Unless this test created them |
+
+**Incus Cleanup Flow:**
+```
+1. incus list "^{project_name}-"                 # LIST ONLY this project's instances (read-only; listing by pattern is fine, deleting by pattern is not)
+2. Verify every listed name starts with {project_name}-   # CHECK before deleting
+3. incus delete --force {instance_name}          # Delete ONE instance by its exact listed name (stops it first; its snapshots go with it)
+4. incus storage volume delete default {volume_name}   # Only a custom volume this test created
+```
+
 ### Allowed Commands (Project-Scoped ONLY)
 
 | Command | Description |
@@ -50280,6 +50338,8 @@ rm -rf $TEST_DIR
 | `docker ps -a --filter "name=^{project_name}-"` | List this project's containers (read-only) |
 | `docker stop {container_name}` | Stop one container by its exact name (from the listing) |
 | `docker rm {container_name}` | Remove one container by its exact name (from the listing) |
+| `incus list "^{project_name}-"` | List this project's Incus instances (read-only) |
+| `incus delete --force {instance_name}` | Delete one Incus instance by its exact name (from the listing) |
 | `docker rmi {project_org}/{internal_name}:tag` | Remove specific image:tag |
 | `rm -rf $BUILD_DIR` | Remove temp build dir (from mktemp) |
 | `rm -rf $TEST_DIR` | Remove temp test dir (from mktemp) |
@@ -68655,7 +68715,10 @@ make docker
 ### Allowed Contexts Are Explicit
 
 - [ ] All forbidden-category commands in test scripts are wrapped in `docker exec`, `docker run`, `incus exec`, `lxc exec`, `podman exec`, `virsh`, `vagrant ssh -c`, `multipass exec`, `chroot`, or `ip netns exec`
-- [ ] Test container/instance names follow `test-{project_name}` pattern so they are clearly disposable
+- [ ] Test container/instance names follow the `{project_name}-XXXXXXXX` pattern (8 random characters), so they are clearly disposable and found with `docker ps -a --filter "name=^{project_name}-"` or `incus list "^{project_name}-"`
+- [ ] Every `incus launch` has a `{project_name}-XXXXXXXX` name, `-c limits.cpu=` and `-c limits.memory=`, and a `trap cleanup EXIT INT TERM` registered before it
+- [ ] `incus launch --vm` appears only where a container cannot show the behavior, carries `-d root,size=`, and is never part of `all`
+- [ ] No `incus image delete`, no edit of the default Incus profile, no `incus stop --all`
 - [ ] No test or debug script assumes "I'm in a container" without checking — `/.dockerenv`, `/run/.containerenv`, `/proc/1/cgroup`, `systemd-detect-virt`, or `$container` is consulted before any host-affecting command
 - [ ] When detection is ambiguous, scripts default to refusing the host-affecting command
 
