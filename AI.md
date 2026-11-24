@@ -8073,6 +8073,7 @@ X-Maintenance-Reason: database_connection
     "since": "2025-01-15T10:30:00Z",
     "self_healing": {
       "enabled": true,
+      "exhausted": false,
       "attempts": 15,
       "last_attempt": "2025-01-15T10:35:00Z",
       "next_attempt": "2025-01-15T10:35:30Z"
@@ -8127,7 +8128,7 @@ server:
     self_healing:
       # Seconds between retry attempts
       retry_interval: 30s
-      # 0 = unlimited (keep trying forever)
+      # Failed attempts before self-healing gives up; 0 = unlimited (see "Self-healing limit")
       max_attempts: 0
 
     # Auto-cleanup thresholds
@@ -22468,6 +22469,8 @@ func getAPIResponseFormat(r *http.Request) string {
 | **4** | Non-interactive client detected (HTTP tools: curl, wget, httpie, empty UA) | `curl /api/{api_version}/joke` with no explicit `Accept` | Plain text |
 | **5** | Default (browsers, API clients) | `/api/{api_version}/joke` | JSON |
 
+**A route declared `Binary` is outside this table.** It always answers with its binary body and `Content-Type`; no text or JSON form exists for a success, and only its error responses are negotiated as above.
+
 **For frontend routes (`/**`), response format is determined in this order (the MCP aliases are API-class and never use it — see "MCP Endpoint"):**
 
 | Priority | Method | Example | Returns |
@@ -28234,6 +28237,7 @@ ERROR: VALIDATION_FAILED: email must be valid
 | List of scalars | `OK: {n} items found`, then one item per line |
 | List of objects | `OK: {n} items found`, then each object as `key: value` lines, objects separated by one blank line |
 | No data (create, update, delete, empty success) | `OK: {message}` only |
+| Binary success (an image or a file) | Not text-serializable: a route declared `Binary` keeps its own `Content-Type` and bytes for `Accept: text/plain`, for a detected HTTP tool and for every other client, and it has no `.txt` form (a `.txt` request is `404 NOT_FOUND`); only its error responses follow the negotiation rules |
 | Error | `ERROR: {code}: {message}`, with the same HTTP status as the JSON error |
 | Health (`/api/{api_version}/server/healthz`) | The flat `key: value` layout defined with the health endpoint, no `OK:` line (its JSON is the bare health object) |
 
@@ -28261,6 +28265,8 @@ type Route struct {
     Primary string
     // Default {message} of the text serializer; empty means the operation default
     Message string
+    // Non-empty: the route answers with this binary media type (an image, a file) and skips text and JSON negotiation
+    Binary string
     Handler http.HandlerFunc
 }
 ```
@@ -57094,7 +57100,7 @@ update:
 
 **Why CLI download default is unauthenticated:** the CLI is the entry point for new users. Forcing auth on the download means they need a token before they can install the tool that obtains the token. Operators who run a private deployment can flip `cli.binary_download.require_auth` to `true`.
 
-**Autodiscover response.** `/api/autodiscover` follows the standard envelope like every JSON route (it is unversioned, not unenveloped): `{"ok": true, "data": {...}}`. `data.api.current_version` is the API version prefix the server serves (for example `v1`); `data.cli_versions` and `data.cli_min_version` are described below; the rest of `data` is exactly `name` (the project name), `version` (the running version), `urls` (the public origins, as in "Resolution Order"), and `onion` and `i2p` (the hidden-service addresses, present only when that overlay is enabled with `server.tor.expose` / `server.i2p.expose` set to `true`, default `false`). The server publishes no settings, no config schema and no option list: the CLI carries its own configuration (`cli.yml`). A client, and every test helper, reads these fields under `data`.
+**Autodiscover response.** `/api/autodiscover` follows the standard envelope like every JSON route (it is unversioned, not unenveloped): `{"ok": true, "data": {...}}`. `data.api.current_version` is the API version prefix the server serves (for example `v1`); `data.cli_versions` and `data.cli_min_version` are described below; the rest of `data` is exactly `name` (the project name), `version` (the running version), `urls` (an array of public origins, each `scheme://host[:port]` with no path: the origin of this request first, then every other configured `DOMAIN` entry and learned reverse-proxy host, without duplicates; the `.onion` and `.b32.i2p` addresses are never in it, they have their own fields), and `onion` and `i2p` (the hidden-service addresses, present only when that overlay is enabled with `server.tor.expose` / `server.i2p.expose` set to `true`, default `false`). The server publishes no settings, no config schema and no option list: the CLI carries its own configuration (`cli.yml`). A client, and every test helper, reads these fields under `data`.
 
 **CLI binaries: where they come from.** The binaries the server distributes live in `{data_dir}/cli/` (override: `cli.binary_download.dir`) and are provisioned by the OPERATOR, or by the image or package build, by copying the files of a release into it: `{project_name}-cli-{os}-{arch}[.exe]`, `version.txt` and `sha256.txt` (the release already produces all three: "Release Artifacts"). The server never builds, downloads or edits them. At start, and whenever the directory changes, it derives what it publishes itself: the platforms are the `{os}-{arch}` of the files present, `version` is the line of `version.txt`, and `sha256` is read from `sha256.txt` AND recomputed from the file; a file whose hash does not match is not published and a WARN names it. An empty or missing directory publishes `cli_versions: {}`, `/cli/binaries/*` answers `404 NOT_FOUND`, and the CLI reports that no update is available. `cli_min_version` comes only from `server.update.cli_min_version`.
 
