@@ -38760,9 +38760,47 @@ groups:
       "targets": [
         {"expr": "{project_name}_app_uptime_seconds"}
       ]
+    },
+    {
+      "title": "Scheduler Task Runs",
+      "type": "graph",
+      "targets": [
+        {"expr": "sum by (task, status) (rate({project_name}_scheduler_tasks_total[5m]))", "legendFormat": "{{task}} {{status}}"}
+      ]
+    },
+    {
+      "title": "Scheduler Task Duration (p95)",
+      "type": "graph",
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum by (task, le) (rate({project_name}_scheduler_task_duration_seconds_bucket[1h])))", "legendFormat": "{{task}}"}
+      ]
+    },
+    {
+      "title": "Scheduler Tasks Running",
+      "type": "stat",
+      "targets": [
+        {"expr": "sum({project_name}_scheduler_tasks_running)"}
+      ]
+    },
+    {
+      "title": "Seconds Since Last Task Run",
+      "type": "graph",
+      "targets": [
+        {"expr": "time() - {project_name}_scheduler_last_run_timestamp", "legendFormat": "{{task}}"}
+      ]
+    },
+    {
+      "title": "Items (total and active)",
+      "type": "graph",
+      "targets": [
+        {"expr": "{project_name}_items_total", "legendFormat": "total"},
+        {"expr": "{project_name}_items_active", "legendFormat": "active in 24h"}
+      ]
     }
   ]
 }
+
+**Business panels are application-specific.** The two Items panels use the template's example business metrics; a project replaces them with panels for the business metrics it actually exports (PART 20 -> "Business metrics"), so the served dashboard always has at least one business panel per exported business metric.
 ```
 
 ## Admin Panel (/server/{admin_path}/metrics)
