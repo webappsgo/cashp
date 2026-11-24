@@ -8368,7 +8368,7 @@ This applies to:
 - Case-insensitive: `YES`, `yes`, `Yes` all → `true`
 - Internally convert all to `true` or `false`
 - Empty string or unset → use default value
-- Invalid value → error (don't silently default)
+- Invalid value → depends on the input class. CONFIGURATION input (config files, environment variables, flags that configure the server) never errors: `ParseBoolOrDefault` warns once and uses the default, so startup never stops (PART 5 "Invalid → default"). REQUEST input (API query parameters, form fields, JSON body fields) is an error: `ParseBool` returns it and the handler answers a validation error (`400`), never a silent default
 
 **Go Implementation (`src/config/bool.go`):**
 
@@ -8465,13 +8465,21 @@ if config.IsTruthy(flagValue) {
 
 // API request parameters
 func handleRequest(w http.ResponseWriter, r *http.Request) {
-    includeDeleted, _ := config.ParseBool(r.URL.Query().Get("include_deleted"), false)
+    includeDeleted, err := config.ParseBool(r.URL.Query().Get("include_deleted"), false)
+    if err != nil {
+        http.Error(w, t(r, "errors.invalid_format"), http.StatusBadRequest)
+        return
+    }
     // ...
 }
 
 // Form inputs
 func handleForm(w http.ResponseWriter, r *http.Request) {
-    newsletter, _ := config.ParseBool(r.FormValue("subscribe_newsletter"), false)
+    newsletter, err := config.ParseBool(r.FormValue("subscribe_newsletter"), false)
+    if err != nil {
+        http.Error(w, t(r, "errors.invalid_format"), http.StatusBadRequest)
+        return
+    }
     // ...
 }
 
@@ -9518,7 +9526,7 @@ server:
 
   # Admin Panel
   admin:
-    email: admin@{fqdn}
+    email: ""
     # Note: username, password, and token are stored in database (admins table)
     # NOT in this config file for security
 
@@ -9540,7 +9548,7 @@ server:
 
     letsencrypt:
       enabled: false
-      email: admin@{fqdn}
+      email: ""
       # http-01, tls-alpn-01, dns-01
       challenge: http-01
       # Use staging server for testing
@@ -16880,7 +16888,7 @@ func extractContextFromPath(path string) (*Context, error) {
                 if len(parts) > 2 && validAdminRootPaths[parts[2]] {
                     return &Context{Type: TargetAdminServer}, nil
                 }
-                // /api/{api_version}/server/{admin_path}/ and /{admin_username}/* - admin dashboard and the admin's own area
+                // /api/{api_version}/server/{admin_path} and /{admin_username}/* - admin dashboard and the admin's own area
                 return &Context{Type: TargetAdmin}, nil
             }
         }
@@ -19270,7 +19278,7 @@ labels:
 **Behavior:**
 - All routes prefixed with baseurl (e.g., `/myproject/server/healthz`, `/myproject/api/v1/...`)
 - Static assets served from `{baseurl}/static/`
-- Admin panel at `{baseurl}/server/{admin_path}/`
+- Admin panel at `{baseurl}/server/{admin_path}`
 - Generated URLs (redirects, links) use detected baseurl
 - Trailing slash normalized (both `/myproject` and `/myproject/` work)
 - Empty string treated as `/`
@@ -19603,7 +19611,7 @@ server:
     # NEVER public. Used as the universal fallback when a role-specific
     # address is empty.
     admin:
-      email: "admin@{fqdn}"
+      email: ""
       webhooks:
         # https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT}
         telegram: ""
@@ -32643,7 +32651,7 @@ Unauthenticated and non-admin requests both fall through the same admin-auth mid
 ### Route Structure
 
 ```
-/server/{admin_path}/                          # Admin root (dashboard)
+/server/{admin_path}                           # Admin root (dashboard, no trailing slash)
 /server/{admin_path}/{admin_username}/         # Admin's own account root
 /server/{admin_path}/{admin_username}/profile  # Admin's own profile
 /server/{admin_path}/{admin_username}/preferences   # Admin's own preferences/settings
@@ -32679,7 +32687,7 @@ Unauthenticated and non-admin requests both fall through the same admin-auth mid
 
 | Rule | Description |
 |------|-------------|
-| **`/server/{admin_path}/` root** | Dashboard ONLY |
+| **`/server/{admin_path}` root** | Dashboard ONLY |
 | **`/server/{admin_path}/{admin_username}/*`** | Admin's OWN account/profile/preferences/notifications only |
 | **`/server/{admin_path}/{section}/*`** | ALL server management goes here; `{section}` is a fixed name from `validAdminRootPaths` (the admin section set) |
 | **No other direct children** | ONLY `{admin_username}` and the names in `validAdminRootPaths` under `/server/{admin_path}/`. There is NO `config` (or any other grouping) segment |
@@ -32690,7 +32698,7 @@ Unauthenticated and non-admin requests both fall through the same admin-auth mid
 
 | Route | Purpose | Example |
 |-------|---------|---------|
-| `/server/{admin_path}/` | Dashboard overview | System status, quick stats |
+| `/server/{admin_path}` | Dashboard overview | System status, quick stats |
 | `/server/{admin_path}/{admin_username}/profile` | Admin's personal account | Change own password, 2FA |
 | `/server/{admin_path}/{admin_username}/preferences` | Admin's UI preferences | Theme, language, timezone |
 | `/server/{admin_path}/{section}/*` | **EVERYTHING server-related** | Settings, users, logs, backup, security, etc. |
@@ -32715,7 +32723,7 @@ Unauthenticated and non-admin requests both fall through the same admin-auth mid
 ### API Route Hierarchy (Same Pattern)
 
 ```
-/api/{api_version}/server/{admin_path}/                         # Admin API root
+/api/{api_version}/server/{admin_path}                          # Admin API root (no trailing slash)
 /api/{api_version}/server/{admin_path}/{admin_username}/profile       # Admin's own profile
 /api/{api_version}/server/{admin_path}/{admin_username}/preferences   # Admin's own preferences
 /api/{api_version}/server/{admin_path}/{admin_username}/notifications # Admin's own notifications
@@ -34574,7 +34582,7 @@ The admin panel MUST include a scheduler section with:
 
 **These admin API routes are ALWAYS available, regardless of whether Multi-User (PART 34) is implemented.**
 
-### Admin - Server (`/api/{api_version}/server/{admin_path}/`)
+### Admin - Server (`/api/{api_version}/server/{admin_path}`)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -49665,7 +49673,7 @@ docker run --rm \
             -H \"X-Setup-Token: \$SETUP_TOKEN\" \\
             -H \"Content-Type: application/json\" \\
             -d '{\"username\":\"testadmin\",\"password\":\"TestPass123!\"}' \\
-            http://localhost:64580/api/{api_version}/server/{admin_path}/setup || echo 'Admin setup failed (may already exist)'
+            http://localhost:64580/api/{api_version}/server/{admin_path}/setup/account || echo 'Admin setup failed (may already exist)'
 
         # Login and get session
         SESSION=\$(curl -q -LSsf -X POST \\
@@ -50534,16 +50542,17 @@ fi
 
 echo "✓ Setup token found: ${SETUP_TOKEN:0:8}..."
 
-# 3. Test admin routes WITH authentication (setup token)
-echo "Testing admin access with setup token..."
-HTTP_CODE=$(curl -q -LSs -o /dev/null -w "%{http_code}" \
-    -H "X-Setup-Token: $SETUP_TOKEN" \
-    http://localhost:64580/server/{admin_path})
+# 3. Verify the setup token (the canonical sequence: GET .../setup status, POST .../setup/verify, POST .../setup/account, POST .../setup/complete)
+echo "Verifying the setup token..."
+HTTP_CODE=$(curl -q -LSs -o /dev/null -w "%{http_code}" -X POST \
+    -H "Content-Type: application/json" \
+    -d "{\"token\":\"$SETUP_TOKEN\"}" \
+    http://localhost:64580/api/{api_version}/server/{admin_path}/setup/verify)
 
 if [ "$HTTP_CODE" = "200" ]; then
-    echo "✓ Admin access works with setup token"
+    echo "✓ Setup token verified"
 else
-    echo "✗ FAILED: Admin access with token returned HTTP $HTTP_CODE"
+    echo "✗ FAILED: Setup token verification returned HTTP $HTTP_CODE"
     kill $SERVER_PID
     exit 1
 fi
@@ -50554,7 +50563,10 @@ curl -q -LSsf -X POST \
     -H "X-Setup-Token: $SETUP_TOKEN" \
     -H "Content-Type: application/json" \
     -d '{"username":"testadmin","password":"TestPass123!"}' \
-    http://localhost:64580/api/{api_version}/server/{admin_path}/setup
+    http://localhost:64580/api/{api_version}/server/{admin_path}/setup/account
+curl -q -LSsf -X POST \
+    -H "X-Setup-Token: $SETUP_TOKEN" \
+    http://localhost:64580/api/{api_version}/server/{admin_path}/setup/complete
 
 # 5. Test login with created admin
 echo "Testing admin login..."
@@ -51778,7 +51790,7 @@ Document:
 
 ## Admin API
 
-Programmatic access via `/api/{api_version}/server/{admin_path}/` with bearer token authentication.
+Programmatic access via `/api/{api_version}/server/{admin_path}` with bearer token authentication.
 ```
 
 ### docs/security.md
@@ -64489,7 +64501,7 @@ Organizations - only for projects with multi-user collaboration.
 | `/orgs/{slug}/security/sessions` | Active sessions (org-wide) |
 | `/orgs/{slug}/billing` | Billing & subscription (if applicable) |
 
-### Admin (`/server/{admin_path}/`)
+### Admin (`/server/{admin_path}`)
 
 | Path | Description |
 |------|-------------|
@@ -64497,7 +64509,7 @@ Organizations - only for projects with multi-user collaboration.
 | `/server/{admin_path}/{admin_username}/profile` | Your admin account (password, API token, 2FA) |
 | `/server/{admin_path}/{admin_username}/preferences` | Admin preferences (theme, notifications) |
 
-### Admin - Server (`/server/{admin_path}/`)
+### Admin - Server (`/server/{admin_path}`)
 
 | Path | Description |
 |------|-------------|
@@ -64754,7 +64766,7 @@ Organizations - only for projects with multi-user collaboration.
 | `/api/{api_version}/orgs/{slug}/security/audit/retention` | PATCH | Update retention (org owner only) |
 | `/api/{api_version}/orgs/{slug}/security/sessions` | GET | List org-wide sessions |
 
-### Admin - Server (`/api/{api_version}/server/{admin_path}/`)
+### Admin - Server (`/api/{api_version}/server/{admin_path}`)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
