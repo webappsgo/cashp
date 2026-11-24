@@ -148,7 +148,7 @@ IDEA.md is the project PLAN. AI.md (this file) is the authoritative template bas
 | IDEA.md MAY | IDEA.md MAY NOT |
 |-------------|-----------------|
 | Define the product's features, data models, business rules and audience, and its API surface: the `### API routes` inventory of what callers can do (method, path, auth, purpose, request/response summary), never how a handler is written | Remove, weaken or waive a mandatory AI.md requirement (server baseline, configuration, security, health, build, CI/CD, i18n, accessibility, documentation, testing) |
-| Choose which of the template's explicitly OPTIONAL capabilities the project uses (the PARTs the template labels optional) | Change how a mandatory requirement is implemented |
+| Choose which of the template's explicitly OPTIONAL capabilities the project uses (the PARTs the template labels optional; PARTS 34-36 are activated in SPEC.md only, IDEA.md just describes the feature) | Change how a mandatory requirement is implemented |
 | State non-goals in product terms (for example "no user accounts") | Use a non-goal as a reason to skip a mandatory part |
 
 **Non-goal vs mandatory requirement:** a non-goal limits the product's FEATURES, never AI.md's baseline. "No accounts" is honored by not enabling the optional multi-user parts; it does not remove the health endpoint, the config file, the security headers or any other mandatory part, which are built exactly as AI.md defines them. If an IDEA.md line contradicts a mandatory AI.md requirement, fix the IDEA.md line (reword it as product scope) — never change the implementation to match it. Log a template defect only when AI.md itself is ambiguous or self-contradictory.
@@ -2471,7 +2471,7 @@ server:
 | FINAL | ~64912 | Compliance Checklist | Final verification, **AI Quick Reference Rules**, **Console/Banner Checklist**, **I18N Checklist**, **Host Safety Checklist** |
 
 **When Implementing OPTIONAL PARTs (34-36, Agent from 33):**
-1. Change PART title from `OPTIONAL` → `NON-NEGOTIABLE` in AI.md
+1. PARTS 34-36: declare the PART in SPEC.md under `## Optional parts` ("SPEC.md — Optional Part Activation"); AI.md is never edited and its marker stays `OPTIONAL`. The Agent binary of PART 33 follows PART 33's own rule
 2. Update IDEA.md to document the feature as implemented
 3. Follow ALL rules in that PART exactly (no longer optional)
 
@@ -2973,7 +2973,7 @@ fi
 **Migration procedure (NEVER overwrite without confirmation):**
 
 1. **Detect** — run the check above. If all three sections exist exactly once, no migration needed; proceed.
-2. **Backup** — copy the existing file: `cp IDEA.md IDEA.md.preMigration.bak`. Tell the user the backup path.
+2. **Backup** — copy the existing file into the project's temp directory, never into the repository (the root files are exhaustive): `mkdir -p "${TMPDIR:-/tmp}/{project_org}" && BAK=$(mktemp -d "${TMPDIR:-/tmp}/{project_org}/{internal_name}-XXXXXX") && cp IDEA.md "$BAK/IDEA.md.preMigration.bak"`. Tell the user the backup path. The previous version is also in git history.
 3. **Read the whole file** before proposing anything. Do NOT skim.
 4. **Map old content to the new sections:**
 
@@ -2990,7 +2990,7 @@ fi
 
 6. **Show the user the proposed rewrite** as a diff or full file preview. Wait for explicit approval. Do NOT write the new file until approved.
 
-7. **Write the migrated file** only after approval. Keep the `.preMigration.bak` until the user confirms the new file is correct.
+7. **Write the migrated file** only after approval. Keep the backup until the user confirms the new file is correct, then delete its temp directory.
 
 **Rules:**
 
@@ -51973,7 +51973,8 @@ func LanguageMiddleware(next http.Handler) http.Handler {
                 MaxAge:   365 * 24 * 60 * 60,
                 SameSite: http.SameSiteLaxMode,
                 Secure:   r.TLS != nil,
-                HttpOnly: true,
+                // Not HttpOnly: preference cookies are read by JavaScript (PART 16, one visibility rule for theme, lang and the _pref_ cookies)
+                HttpOnly: false,
             })
         }
 
