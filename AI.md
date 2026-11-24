@@ -12215,7 +12215,7 @@ func Daemonize() error {
     // On Windows, --daemon flag is ignored with a warning
     // Use Windows Service (--service --install/start) instead
     fmt.Fprintln(os.Stderr, "Warning: --daemon is not supported on Windows")
-    fmt.Fprintln(os.Stderr, "Use --service --install && --service start for Windows Service")
+    fmt.Fprintln(os.Stderr, "Use --service --install for Windows Service (it also enables and starts it)")
     // Continue in foreground
     return nil
 }
@@ -12278,7 +12278,7 @@ healthcheck:
 ```cmd
 C:\> myapp.exe --daemon
 Warning: --daemon is not supported on Windows
-Use --service --install && --service start for Windows Service
+Use --service --install for Windows Service (it also enables and starts it)
 [Server starts in foreground]
 ```
 
@@ -52994,7 +52994,7 @@ var localeFS embed.FS
     "graceful_shutdown": "Apagado graceful completado",
     "shutdown_error": "Error de apagado del servidor HTTP: {error}",
     "windows_daemon_warning": "Advertencia: --daemon no es compatible en Windows",
-    "windows_service_hint": "Use --service --install && --service start para Servicio de Windows",
+    "windows_service_hint": "Use --service --install para Servicio de Windows (también lo habilita e inicia)",
     "error_create_dir": "Error al crear directorio {path}: {error}",
     "error_not_writable": "El directorio {path} no es escribible: {error}",
     "error_reserved_path": "'{path}' es una ruta reservada",
