@@ -21055,7 +21055,7 @@ type StatsInfo struct {
 | **Freshness** | Each data set declares a `max_age` (e.g. 7 days for GeoIP, 72 hours for every blocklist source, fixed, no per-source field); the check compares last successful load/update against it |
 | **Public-safe** | `ok` / `degraded` / `error` only — no paths, URLs, sizes, record counts, versions, or error text |
 
-**Frontend labels:** the Component Status table shows one row per check. Labels come from i18n keys `health.check.{key}`; a key with no translation falls back to a humanized form of the key (`blocklist_ads` → `Blocklist: ads`). Dataset rows follow the core rows, grouped under their kind.
+**Frontend labels:** the Component Status table shows one row per check. Labels come from i18n keys `health.check.{key}`; a key with no translation uses the translated generic label `health.check.unknown` ("Check: {key}") with the stable key as the `{key}` value (`blocklist_ads` → "Check: blocklist_ads"); the key is data, so no English label is ever built or humanized in code. Dataset rows follow the core rows, grouped under their kind.
 
 #### Frontend Display Order
 
@@ -21706,7 +21706,7 @@ When not in cluster mode:
 | **Project counters** | Named `{noun}_total` (lifetime), `{noun}_24h` (rolling day) or `{noun}_active` (right now), snake_case (`pastes_total`, `searches_total`, `engines_healthy`). They register once, like checks: `health.RegisterStat(key, fn)`, and follow the core keys in registration order |
 | **Aggregates only** | No per-user, per-IP, per-query or per-resource values (Security: Public Info Only) |
 | **Cost** | A request reads in-memory counters and cached values; it never runs a database query of its own. Database-backed counters are refreshed by the scheduler at most every 60 seconds |
-| **Labels** | i18n keys `health.stat.{key}`; a key with no translation falls back to the humanized key (`searches_total` → `Searches total`) |
+| **Labels** | i18n keys `health.stat.{key}`; a key with no translation uses the translated generic label `health.stat.unknown` ("Stat: {key}") with the stable key as the `{key}` value (`searches_total` → "Stat: searches_total"); no English label is built in code |
 
 ### Project Components in Health (upstreams, engines, providers, workers)
 
@@ -51824,7 +51824,7 @@ make test
 | **Cookie Consent** | Banner text, category descriptions, button labels |
 | **Privacy/Terms** | Full legal page content |
 
-**Rule: If a human reads it, it gets translated. No exceptions.**
+**Rule: If a human reads it, it gets translated. The only exceptions are the items listed under "What stays untranslated" below.**
 
 ### Core Requirements
 
@@ -53445,7 +53445,7 @@ LANG=es_ES.UTF-8 {project_name}-cli --help
 | **Plurals** | Provide every CLDR plural category the language needs (`zero`, `one`, `two`, `few`, `many`, `other`; see "Plural Rules"). Translators check the category list for their language at the CLDR plural chart; a missing category fails the build |
 | **Whole sentences** | Each value is a complete phrase. Never rely on joining fragments; word order, gender and case differ per language. If an English string looks like a fragment, report it as an issue instead of working around it |
 | **Register and tone** | One consistent register per language (formal "you": `Sie`, `usted`, `vous`, `Lei`, ...). Short and neutral, matching the English UI tone; no slang, humor or idioms that do not travel |
-| **What stays untranslated** | Product and brand names, protocol and technology names (API, Tor, `.onion`, I2P, JSON, token), code, file names, config keys, URLs and the literal values users type (`dark`, `auto`), and the license-mandated attribution text (the DB-IP link text, PART 19). The project's glossary in `docs/translating.md` lists the agreed term for every recurring word (token, paste, rotate, revoke, ...), and translators reuse it |
+| **What stays untranslated** | Product and brand names, protocol and technology names (API, Tor, `.onion`, I2P, JSON, token), code, file names, config keys, URLs and the literal values users type (`dark`, `auto`), the license-mandated attribution text (the DB-IP link text, PART 19), and the service worker's first-use offline fallback: the English `DEFAULT_STRINGS` page (with `lang="en"`) the worker serves only before any page has stored the translated offline strings (PART 16). It is the one hardcoded document language allowed, and it is replaced by the translated strings from the first page load on. The project's glossary in `docs/translating.md` lists the agreed term for every recurring word (token, paste, rotate, revoke, ...), and translators reuse it |
 | **Typography** | Follow the language's own rules (French non-breaking space before `: ; ! ?`, quotation marks, decimal and thousands separators come from `golang.org/x/text`, not from the translation) |
 | **AI and machine translation** | Expected and encouraged: when the AI is fluent enough in the language it translates the strings itself (natural, idiomatic wording, not word-for-word), and a language is NOT held back waiting for a native speaker. Where the AI is not fluent enough to produce a reliable translation (rare or low-resource languages), it says so and the language waits for a human translator instead of shipping guesses. Human translators fix mistakes at any time through a normal pull request, and their corrections win over the AI wording on every later sync |
 | **Layout check** | Translations are often longer than English (up to about 40%). The translator or reviewer opens the app in that language at 320, 768 and 1280 px (see the review matrix) and confirms nothing is clipped, wrapped badly or overflowing; right-to-left languages are also checked mirrored |
