@@ -41625,6 +41625,9 @@ PLATFORMS ?= linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 win
 DOCKER_MEM  ?= 4g
 DOCKER_CPUS ?= 2
 
+# CPU weight under contention (Docker's default is 1024): a build never starves the host's other work
+DOCKER_CPU_SHARES ?= 256
+
 # Hard ceiling in seconds for ONE container run, so a hung step can never hold a container for hours (raise it for a very long cross-compile)
 DOCKER_TIMEOUT ?= 3600
 
@@ -41635,7 +41638,7 @@ REGISTRY ?= ghcr.io/$(PROJECT_ORG)/$(PROJECT_NAME)
 # timeout: a hung run is stopped after DOCKER_TIMEOUT seconds (the signal is forwarded to the container, which stops)
 GO_DOCKER_RUN := timeout -k 30 $(DOCKER_TIMEOUT) docker run --rm --no-healthcheck \
 	--name $(PROJECT_NAME)-$$(tr -dc 'a-z0-9' </dev/urandom | head -c8) \
-	--memory=$(DOCKER_MEM) --cpus=$(DOCKER_CPUS) \
+	--memory=$(DOCKER_MEM) --cpus=$(DOCKER_CPUS) --cpu-shares=$(DOCKER_CPU_SHARES) \
 	-v $(PWD):/app \
 	-v $(GO_CACHE):/usr/local/share/go/pkg/mod \
 	-v $(GO_BUILD):/usr/local/share/go/cache \
@@ -48470,7 +48473,7 @@ rm -rf "$TEST_DIR"
 |------|-------------|
 | **`--rm` always** | Every `docker run` uses `--rm`, for debugging, one-off checks and build runs alike. The only exemption is a detached (`-d`) test server or sidecar kept alive so its logs can be read after a failure; it is still named by convention and is removed by exact name before the task ends. An exited container in `docker ps -a` means a run skipped `--rm`: remove it by exact name (Docker Container Rules) and fix the command |
 | **Named by convention** | `--name "{project_name}-XXXXXXXX"` (8 random characters), so every container of the project is found with `docker ps -a --filter "name=^{project_name}-"`. A script that must stop a container later records its name in a variable |
-| **Shared run prefix** | Ad-hoc runs reuse the Makefile prefix flags: `--rm --no-healthcheck`, `--memory`, `--cpus` and the cache mounts. `--no-healthcheck` stops the toolchain image's service `HEALTHCHECK` from polling a one-shot container |
+| **Shared run prefix** | Ad-hoc runs reuse the Makefile prefix flags: `--rm --no-healthcheck`, `--memory`, `--cpus`, `--cpu-shares` and the cache mounts. `--no-healthcheck` stops the toolchain image's service `HEALTHCHECK` from polling a one-shot container |
 | **One container per phase** | Steps that belong together run in ONE `docker run ... sh -c "a && b && c"`, never a container per step (`go mod tidy`, then `go mod download`, then `gofmt`, then `go vet`, then one package's tests). Checks a Makefile target does not cover are batched into one container as well. The Makefile targets follow the same rule: `build`, `local` and `dev` each run in ONE container, the cross-compile loop over every platform included |
 | **Gate once per change set** | `make test` runs ONCE, after the edits for a change are finished. A failure is fixed, then the full gate runs again; no container per hypothesis, per file or per formatting fix |
 | **One at a time** | At most ONE toolchain container (a `make` target, a `tests/*.sh` script or an ad-hoc run) per repository at any moment; a second one never starts while the first is running. Sub-agents and forks never start containers: the main session runs the gate |
@@ -48489,7 +48492,7 @@ rm -rf "$TEST_DIR"
 |------|-------------|
 | **Named by convention** | `{project_name}-XXXXXXXX` (8 random characters), the same convention as Docker; an init-mode suffix (`-systemd`, `-openrc`) may follow. Fixed names such as `test-{project_name}` are never used: two runs would collide, and a user's own instance could be mistaken for a test's. A script records the name in a variable, and every `incus exec`, `incus file push`, `incus restart` and `incus delete` uses that exact name |
 | **Disposable** | The script that launches an instance deletes it: `trap cleanup EXIT INT TERM`, registered BEFORE `incus launch`, runs `incus delete --force {instance_name}`. A run that never stops its instance may add `--ephemeral` (the Incus counterpart of `--rm`): per the Incus documentation an ephemeral instance is deleted when it is stopped. A run that stops or restarts its instance (the reboot test of `tests/incus.sh`, the power cycle of `tests/virt.sh`) is NOT ephemeral, because the Incus documentation does not define the restart case; it relies on the trap |
-| **Resource caps** | Every launch sets `-c limits.cpu=` and `-c limits.memory=` (defaults `INCUS_CPUS=2` and `INCUS_MEM=4GiB`, overridable from the environment), the counterparts of `DOCKER_CPUS` and `DOCKER_MEM` |
+| **Resource caps** | Every launch sets `-c limits.cpu=` and `-c limits.memory=` (defaults `INCUS_CPUS=2` and `INCUS_MEM=4GiB`, overridable from the environment), the counterparts of `DOCKER_CPUS` and `DOCKER_MEM`. A container also sets `-c limits.cpu.priority=` (default `INCUS_CPU_PRIORITY=2`; the Incus default is `10`, the highest, and `0` the lowest), the counterpart of `DOCKER_CPU_SHARES`: it only matters while CPU is contended. The key is container-only, so an Incus `--vm` instance does not set it |
 | **One at a time** | One instance per init system, one after the other, and one `tests/incus.sh` per repository at any moment; instances are never started in parallel |
 | **Shared images** | Test instances launch from the cached `images:` remote (`debian/trixie`, `alpine/{latest_stable}`). Images are shared by every project and expire on their own, so a script never runs `incus image delete`, never publishes a per-run image, and never keeps an instance only to hold a warm package cache |
 | **Shared infrastructure** | Instances use the default profile, `incusbr0` and the `default` storage pool. A script never edits the default profile and never creates a profile, network, storage pool, project or custom volume unless the test needs it; when it does, it gives it a `{project_name}-XXXXXXXX` name and removes it in the same trap |
@@ -48522,7 +48525,7 @@ rm -rf "$TEST_DIR"
 | **Selection** | `VIRT_BACKEND=auto` (the default) uses the first backend whose probe passes, in the order incus, libvirt, virtualbox. `VIRT_BACKEND=incus\|libvirt\|virtualbox` forces one and fails if its probe fails |
 | **Probes** | incus: `incus` is installed, `incus info` answers and `/dev/kvm` is writable. libvirt: `virsh` and `virt-install` are installed and `virsh -c qemu:///system uri` answers. virtualbox: `VBoxManage` is installed and, on Linux, `/dev/vboxdrv` exists (the `vboxdrv` module is loaded). Support depends on the host's hardware and software, so a failing probe returns ONE reason line |
 | **Nothing supported** | When no probe passes (or the forced one fails) the script prints `ERROR: no supported hypervisor on this host` and one `backend: reason` line per probe to stderr, and exits `69` (`EX_UNAVAILABLE`). It does not skip and does not exit `0`: a clean-OS test that did not run is not a pass |
-| **Same rules** | Every backend follows "Incus Discipline" in its own terms: VM names `{project_name}-XXXXXXXX-{init}`, `trap cleanup EXIT INT TERM` before the first create (removing by exact name), caps (`VIRT_CPUS=2`, `VIRT_MEM_MB=4096`, `VIRT_DISK_GB=10`), a ceiling on every wait and every hypervisor call (`VM_BOOT_WAIT`, default `180`; `VIRT_OP_TIMEOUT`, default `600`), one VM at a time, and an end-of-task check that lists nothing |
+| **Same rules** | Every backend follows "Incus Discipline" in its own terms: VM names `{project_name}-XXXXXXXX-{init}`, `trap cleanup EXIT INT TERM` before the first create (removing by exact name), caps (`VIRT_CPUS=2`, `VIRT_MEM_MB=4096`, `VIRT_DISK_GB=10`), a low CPU priority where the backend has one ("CPU priority of a VM" below), a ceiling on every wait and every hypervisor call (`VM_BOOT_WAIT`, default `180`; `VIRT_OP_TIMEOUT`, default `600`), one VM at a time, and an end-of-task check that lists nothing |
 | **Secure Boot** | Platform specific: each hypervisor has its own default and its own switch (table below). `VIRT_SECUREBOOT=default` (the default) leaves the hypervisor's setting untouched; `VIRT_SECUREBOOT=off` turns Secure Boot off for an image whose bootloader is not signed and fails to boot. Nothing is ever turned on or off silently, and `off` is never the default |
 | **Images** | Incus pulls `images:debian/trixie` and `images:alpine/{latest_stable}` itself. libvirt and VirtualBox have no image server: the caller points `VIRT_IMAGE_SYSTEMD` and `VIRT_IMAGE_OPENRC` at a cloud-init capable qcow2 (libvirt) or an OVA (VirtualBox). A missing or unreadable image exits `69` and names the variable |
 | **Guest access** | Incus uses its agent. libvirt and VirtualBox use SSH with a throwaway key pair generated under `{tempdir}/{project_org}/{internal_name}-XXXXXX/` and removed by the trap; the public key is injected through cloud-init, and host key checking is off because the VM is disposable |
@@ -48538,6 +48541,8 @@ rm -rf "$TEST_DIR"
 | power cycle | `incus stop --force NAME`, then `incus start NAME` | `virsh destroy NAME`, then `virsh start NAME` | `VBoxManage controlvm NAME poweroff`, then `VBoxManage startvm NAME --type headless` |
 | delete | `incus delete --force NAME` | `virsh destroy NAME` (ignore a stopped VM), then `virsh undefine NAME --remove-all-storage --nvram` | `VBoxManage controlvm NAME poweroff` (ignore a stopped VM), then `VBoxManage unregistervm NAME --delete` |
 | Secure Boot (`VIRT_SECUREBOOT=off`) | default: enforced with the Microsoft keys. Off: `-c security.secureboot=false` on `incus launch`; a guest that is not UEFI-capable also needs `-c security.csm=true` | default: BIOS firmware, so nothing to change. For a UEFI guest add `--boot firmware=efi,firmware.feature0.name=secure-boot,firmware.feature0.enabled=no` (to enforce it instead: `enabled=yes`); the `firmware` and `firmware.feature[N].name\|enabled` options exist in `virt-install`, a boot with them was not run | default: BIOS firmware, so nothing to change. Secure Boot exists only with `VBoxManage modifyvm NAME --firmware efi` and enrolled keys (`VBoxManage modifynvram NAME inituefivarstore`, then `enrollmssignatures`); off means EFI without enrolling. Not verified here (VirtualBox is not installed) |
+
+**CPU priority of a VM (set right after `create`, before the first test).** libvirt: `virsh schedinfo NAME --live --config cpu_shares=$VIRT_CPU_SHARES` (default `256`; `--config` keeps it across the power cycle). VirtualBox: `VBoxManage modifyvm NAME --vm-process-priority low`. Incus `--vm`: nothing to set, because `limits.cpu.priority` is container-only, so the caps are its only limit.
 
 ### Testing Strategy
 
@@ -49107,7 +49112,7 @@ if command -v incus &>/dev/null; then
   echo "Testing with Incus (Debian + systemd)..."
   INSTANCE="{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)"
   trap 'incus delete --force "$INSTANCE" 2>/dev/null || true' EXIT INT TERM
-  incus launch images:debian/trixie "$INSTANCE" -c limits.cpu=2 -c limits.memory=4GiB
+  incus launch images:debian/trixie "$INSTANCE" -c limits.cpu=2 -c limits.memory=4GiB -c limits.cpu.priority=2
   incus file push binaries/{project_name} ${INSTANCE}/usr/local/bin/
   timeout 60 incus exec ${INSTANCE} -- chmod +x /usr/local/bin/{project_name}
   timeout 60 incus exec ${INSTANCE} -- {project_name} --help
@@ -49455,6 +49460,9 @@ INCUS_IMAGE_OPENRC="images:alpine/3.24"
 # Resource caps for every instance (the counterparts of DOCKER_CPUS and DOCKER_MEM); override from the environment
 INCUS_CPUS="${INCUS_CPUS:-2}"
 INCUS_MEM="${INCUS_MEM:-4GiB}"
+
+# CPU priority for a container (0 lowest, 10 highest, the Incus default); only matters while CPU is contended
+INCUS_CPU_PRIORITY="${INCUS_CPU_PRIORITY:-2}"
 
 # Ceilings in seconds: one quick exec step, a package install, and the whole remote test run; override from the environment
 INCUS_OP_TIMEOUT="${INCUS_OP_TIMEOUT:-60}"
@@ -49827,7 +49835,7 @@ run_mode() {
     CONTAINERS+=("$container")
 
     echo "=== [$init] Launching Incus container ($image) ==="
-    incus launch "$image" "$container" -c limits.cpu="$INCUS_CPUS" -c limits.memory="$INCUS_MEM"
+    incus launch "$image" "$container" -c limits.cpu="$INCUS_CPUS" -c limits.memory="$INCUS_MEM" -c limits.cpu.priority="$INCUS_CPU_PRIORITY"
     wait_boot "$container" "$init"
 
     echo "=== [$init] Installing test tools, tor and i2pd ==="
@@ -50477,13 +50485,13 @@ docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -
 # Use latest Debian stable (currently 13/trixie)
 INSTANCE="{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)"
 trap 'for i in "$INSTANCE" "${INSTANCE}-openrc"; do incus delete --force "$i" 2>/dev/null || true; done' EXIT INT TERM
-incus launch images:debian/trixie "$INSTANCE" -c limits.cpu=2 -c limits.memory=4GiB
+incus launch images:debian/trixie "$INSTANCE" -c limits.cpu=2 -c limits.memory=4GiB -c limits.cpu.priority=2
 incus file push binaries/{project_name} ${INSTANCE}/usr/local/bin/
 incus exec ${INSTANCE} -- {project_name} --help
 incus delete ${INSTANCE} --force
 
 # Test in Incus (full OS with OpenRC) - PREFERRED, newest numbered Alpine release
-incus launch images:alpine/3.24 "${INSTANCE}-openrc" -c limits.cpu=2 -c limits.memory=4GiB
+incus launch images:alpine/3.24 "${INSTANCE}-openrc" -c limits.cpu=2 -c limits.memory=4GiB -c limits.cpu.priority=2
 incus file push binaries/{project_name} ${INSTANCE}-openrc/usr/local/bin/
 incus exec ${INSTANCE}-openrc -- {project_name} --help
 incus delete ${INSTANCE}-openrc --force
@@ -50550,7 +50558,7 @@ docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -
 # Launch Incus container (use latest Debian stable)
 INSTANCE="{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)"
 trap 'incus delete --force "$INSTANCE" 2>/dev/null || true' EXIT INT TERM
-incus launch images:debian/trixie "$INSTANCE" -c limits.cpu=2 -c limits.memory=4GiB
+incus launch images:debian/trixie "$INSTANCE" -c limits.cpu=2 -c limits.memory=4GiB -c limits.cpu.priority=2
 
 # Push binary and test data
 incus file push binaries/{project_name} ${INSTANCE}/usr/local/bin/
@@ -69059,7 +69067,7 @@ make docker
 
 - [ ] All forbidden-category commands in test scripts are wrapped in `docker exec`, `docker run`, `incus exec`, `lxc exec`, `podman exec`, `virsh`, `vagrant ssh -c`, `multipass exec`, `chroot`, or `ip netns exec`
 - [ ] Test container/instance names follow the `{project_name}-XXXXXXXX` pattern (8 random characters), so they are clearly disposable and found with `docker ps -a --filter "name=^{project_name}-"` or `incus list "^{project_name}-"`
-- [ ] Every `incus launch` has a `{project_name}-XXXXXXXX` name, `-c limits.cpu=` and `-c limits.memory=`, and a `trap cleanup EXIT INT TERM` registered before it
+- [ ] Every `incus launch` has a `{project_name}-XXXXXXXX` name, `-c limits.cpu=` and `-c limits.memory=` (and `-c limits.cpu.priority=` for a container), and a `trap cleanup EXIT INT TERM` registered before it
 - [ ] `incus launch --vm` appears only in `tests/virt.sh` (never in `tests/incus.sh`), only where a container cannot show the behavior, and carries `-d root,size=`
 - [ ] No `incus image delete`, no edit of the default Incus profile, no `incus stop --all`
 - [ ] No test or debug script assumes "I'm in a container" without checking — `/.dockerenv`, `/run/.containerenv`, `/proc/1/cgroup`, `systemd-detect-virt`, or `$container` is consulted before any host-affecting command
