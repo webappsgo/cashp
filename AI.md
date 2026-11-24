@@ -4688,8 +4688,8 @@ go build -o binary/{project_name} ./src
 | **Sanitize for context** | HTML-encode for HTML, SQL-parameterize for SQL |
 | **Reject unknown** | Allowlist permitted values, reject everything else |
 | **No direct execution** | Never pass user input directly to shell, SQL, eval |
-| **Trim whitespace** | `strings.TrimSpace()` on ALL text inputs before processing |
-| **Password whitespace** | Passwords must NOT start or end with whitespace (reject, don't trim) |
+| **Trim whitespace** | `strings.TrimSpace()` on every text input except a password input (next row) before processing |
+| **Password whitespace** | Passwords must NOT start or end with whitespace (reject, don't trim). A password input is a field whose HTML control is `type="password"` or whose request-model field carries the `secret` flag; that flag is the only classification, so nothing is guessed from a field name. The base fields are `password`, `current_password`, `new_password` and `confirm_password`, plus any passphrase or key-derivation input a project defines (for example a crypto API's `key`). Pasted tokens and `code` fields are ordinary text and are trimmed. The shared normalizer trims every unflagged text input and validates every flagged one |
 
 ```go
 // CORRECT - Parameterized query, columns named explicitly
@@ -5914,8 +5914,11 @@ go list -m all
 
 # Use go-licenses tool (recommended)
 go install github.com/google/go-licenses@latest
-go-licenses csv ./... > licenses.csv
-go-licenses save ./... --save_path=third_party_licenses
+# Reports are working files: they go to the project's temp directory, never into the repository root (the root inventories are exhaustive)
+mkdir -p "${TMPDIR:-/tmp}/{project_org}"
+LICDIR=$(mktemp -d "${TMPDIR:-/tmp}/{project_org}/{internal_name}-XXXXXX")
+go-licenses csv ./... > "$LICDIR/licenses.csv"
+go-licenses save ./... --save_path="$LICDIR/third_party_licenses"
 ```
 
 For Node.js projects:
@@ -6057,7 +6060,7 @@ jobs:
           fi
 
       - name: Save license report
-        run: go-licenses save ./... --save_path=third_party_licenses
+        run: go-licenses save ./... --save_path="${RUNNER_TEMP}/third_party_licenses"
 ```
 
 ### License Verification Script
@@ -6090,13 +6093,18 @@ echo "✓ All licenses are compatible"
 
 # Generate license report
 echo "Generating license report..."
-go-licenses csv ./... > licenses.csv
-go-licenses save ./... --save_path=third_party_licenses
+# Reports are working files in the temp directory, removed on exit: never written into the repository (the root inventories are exhaustive)
+mkdir -p "${TMPDIR:-/tmp}/{project_org}"
+LICDIR=$(mktemp -d "${TMPDIR:-/tmp}/{project_org}/{internal_name}-XXXXXX")
+trap 'rm -rf "$LICDIR"' EXIT
+go-licenses csv ./... > "$LICDIR/licenses.csv"
+go-licenses save ./... --save_path="$LICDIR/third_party_licenses"
 
-echo "✓ License report saved to licenses.csv and third_party_licenses/"
+echo "✓ License report generated:"
+cat "$LICDIR/licenses.csv"
 echo ""
 echo "Next steps:"
-echo "1. Review licenses.csv"
+echo "1. Review the report above"
 echo "2. Update LICENSE.md with any new dependencies"
 echo "3. Commit the changes"
 ```
@@ -8457,7 +8465,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | Variable | Description |
 |----------|-------------|
 | `NO_COLOR` | Disable ANSI color output when set and non-empty (see PART 8) |
-| `TERM` | Terminal type; `TERM=dumb` disables ALL ANSI escapes and forces CLI mode (see PART 7) |
+| `TERM` | Terminal type; `TERM=dumb` disables ALL ANSI escapes and forces CLI mode (see PART 7); only an explicit `--color=yes` re-enables color sequences |
 | `DOMAIN` | FQDN override (highest priority for hostname resolution) |
 | `MODE` | `production` (default; shortcut `prod`) · `development` (shortcuts `dev`, `devel`) · `debug` (explicit opt-in only) |
 | `DEBUG` | Truthy value turns the debug flag on (`--debug` wins; precedence and the `/debug/*` endpoints are defined in PART 6 → Debug Flag). Independent of `MODE`: `MODE=debug` only defaults the flag on |
@@ -9755,6 +9763,8 @@ Before proceeding, confirm you understand:
 | `/debug/pprof/symbol` | Symbol lookup |
 | `/debug/pprof/trace` | Execution trace |
 
+**Credentials and pprof.** The profiles served here are statistical (allocation sites, sizes, stack frames, counts): none contains heap contents, so none can expose a credential value, and the "always redacted in dumps" rule is met without a sanitizing layer. Two things need care and are fixed by this template: `/debug/pprof/cmdline` and the `cmdline` entry of `/debug/vars` print the process arguments, so they are replaced by handlers that print only the binary name; and no endpoint produces a heap dump or a core file (`runtime/debug.WriteHeapDump`, `gcore`), the one artifact that would hold credential bytes. Every `/debug/*` request still needs the operator token.
+
 ### Debug API Endpoints
 
 | Endpoint | Method | Purpose |
@@ -10574,7 +10584,7 @@ func (e DisplayEnv) IsAutoDetectDisplayModeHeadless() bool { return e.Mode == Di
 
 | Feature | Normal Terminal | TERM=dumb |
 |---------|-----------------|-----------|
-| ANSI colors | ✅ Yes | ❌ No |
+| ANSI colors | ✅ Yes | ❌ No (only an explicit `--color=yes` forces color sequences) |
 | Emojis | ✅ Yes | ❌ No |
 | Cursor movement | ✅ Yes | ❌ No |
 | Clear screen | ✅ Yes | ❌ No |
@@ -10586,7 +10596,7 @@ func (e DisplayEnv) IsAutoDetectDisplayModeHeadless() bool { return e.Mode == Di
 **Behaviors when `TERM=dumb`:**
 
 1. **Force CLI mode** - Never launch TUI, even if interactive
-2. **No ANSI escapes** - No colors, no cursor control, no clearing
+2. **No ANSI escapes** - No colors, no cursor control, no clearing. The one override is an explicit `--color=yes`: it adds color sequences only, never cursor control, clearing, emojis, spinners or the TUI
 3. **No emojis** - Use text equivalents (`[OK]`, `[ERROR]`, `[WARN]`)
 4. **Simple output** - Plain text, line-by-line
 5. **No spinners** - Use `Processing...` / `Done.` instead
@@ -11156,7 +11166,7 @@ When the `NO_COLOR` environment variable is set and not empty (value doesn't mat
 
 | Priority | Source | Example |
 |----------|--------|---------|
-| 1 | CLI flag | `--color=yes`, `--color=no` |
+| 1 | CLI flag | `--color=yes`, `--color=no` (`--color=yes` also overrides `TERM=dumb`, for color sequences only; every other `TERM=dumb` restriction stays) |
 | 2 | Config file | `output.color: false` |
 | 3 | `NO_COLOR` env var | `NO_COLOR=1` |
 | 4 | Auto-detect | TTY check, `TERM` variable |
@@ -19637,9 +19647,11 @@ server:
 | `discord` | Webhook URL | `POST {url}` body `{"content": "<message>", "username": "{app_name}"}` |
 | `slack` | Incoming Webhook URL | `POST {url}` body `{"text": "<message>"}` |
 | `mattermost` | Incoming Webhook URL | Slack-compatible body |
-| `pushover` | Pushover API URL with `user`/`token` | Standard Pushover params |
-| `gotify` | Gotify URL | `POST {url}/message?token={token}` body `{"title", "message", "priority"}` |
+| `pushover` | `https://api.pushover.net/1/messages.json` with `user` and `token` query parameters | `POST {url}` form fields `user`, `token`, `title` (the subject), `message` (the body) and `priority` (mapping below) |
+| `gotify` | Gotify URL | `POST {url}/message?token={token}` body `{"title", "message", "priority"}` (mapping below) |
 | `generic` | Any HTTPS URL | `POST {url}` JSON body: `{role, event, subject, body, severity, timestamp, project_name, project_version, app_url, tracking_id?}` |
+
+**Severity and priority.** `severity` is `info`, `warning` or `critical` (a success or info event is `info`, a warning is `warning`, an error is `critical`). Pushover `priority` is `0` for `info` and `warning` and `1` for `critical`; the emergency priority `2` is never used because it needs retry and expire parameters. Gotify `priority` is `2` for `info`, `5` for `warning` and `8` for `critical`.
 
 **Additional transports can be plugged in by adding adapters in `src/notify/`. The config schema above is open — any key under `webhooks` is treated as a transport name, and the adapter for that name is invoked.**
 
@@ -25301,7 +25313,7 @@ footer p {
 
 | Rule | Detail |
 |------|--------|
-| **No horizontal overflow, ever** | At every viewport from 320 px up, `document.documentElement.scrollWidth <= window.innerWidth` with NO `overflow-x` backstop applied. A page wider than the screen makes mobile browsers shrink the whole layout (content at ~60% width with a dead strip beside it). Typical causes, all banned: negative-offset off-canvas boxes, fixed pixel widths, `100vw` widths (use `100%`), images without `max-width: 100%`, tables outside a scroll wrapper, unwrapped long strings (see "Long Strings"). `body { overflow-x: clip }` may exist as a last-resort backstop only |
+| **No horizontal overflow, ever** | At every viewport from 320 px up, `document.documentElement.scrollWidth <= window.innerWidth` with the `overflow-x` backstop DISABLED (the automated test removes it first). A page wider than the screen makes mobile browsers shrink the whole layout (content at ~60% width with a dead strip beside it). Typical causes, all banned: negative-offset off-canvas boxes, fixed pixel widths, `100vw` widths (use `100%`), images without `max-width: 100%`, tables outside a scroll wrapper, unwrapped long strings (see "Long Strings"). `body { overflow-x: clip }` may exist in the shipped CSS as a last-resort backstop only; a layout that passes only because of it fails the test |
 | **Content fills the viewport width correctly** | The `.container` rules above apply on every page: phones use the full width minus `1rem` padding; a content column is centered, never stuck left with dead space on the right |
 | **Fixed/overlay containment** | See "Drawer containment" in the header / navigation section ("Mobile Menu Behavior"). Overlays are direct children of `<body>`; no `transform`, `filter`, `backdrop-filter`, `contain` or `will-change` on an ancestor of a `position: fixed` element |
 | **Dynamic viewport** | `100dvh` / `min-height: 100dvh`, never bare `100vh` (mobile browser bars); `env(safe-area-inset-*)` padding on anything touching a screen edge (drawer, toast, banner, bottom actions) |
@@ -26679,7 +26691,7 @@ No JS required — the button is a real form submit whose target is the server-c
 | **Submit validation** | Re-validate all fields on submit, focus first error |
 | **Accessible errors** | Use `aria-describedby` to link error to field |
 | **Trim whitespace** | Trim leading/trailing whitespace on all text inputs before validation |
-| **Password whitespace** | Reject passwords with leading/trailing whitespace (show error, don't trim) |
+| **Password whitespace** | Reject passwords with leading/trailing whitespace (show error, don't trim); which fields are passwords is defined once in PART 1 -> Input Validation |
 
 **Error Message Style:**
 ```html
@@ -30779,7 +30791,7 @@ func ValidateFooterHTML(html string) (string, error) {
 | Allowed | Blocked (Stripped) |
 |---------|-------------------|
 | `<p>`, `<br>`, `<span>`, `<div>` | `<script>`, `<noscript>` |
-| `<strong>`, `<b>`, `<em>`, `<i>` | `<iframe>`, `<frame>` |
+| `<strong>`, `<b>`, `<em>`, `<i>`, `<u>`, `<s>`, `<small>` | `<iframe>`, `<frame>` |
 | `<a href="...">` | `<object>`, `<embed>` |
 | `<img src="...">` | `<form>`, `<input>`, `<button>` |
 | `<ul>`, `<ol>`, `<li>` | `<style>`, `<link>` |
@@ -41854,7 +41866,7 @@ test:
 		COVDIR=\$$(mktemp -d \"\$${TMPDIR:-/tmp}/$(PROJECT_ORG)/$(INTERNAL_NAME)-XXXXXX\") && \
 		go mod download && \
 		go test -v -cover -coverprofile=\$$COVDIR/coverage.out ./... && \
-		COVERAGE=\$$(go tool cover -func=\$$COVDIR/coverage.out | grep total | awk '{print \$$3}' | sed 's/%//') && \
+		COVERAGE=\$$(go tool cover -func=\$$COVDIR/coverage.out | grep '^total:' | awk '{print \$$3}' | sed 's/%//') && \
 		echo \"Coverage: \$$COVERAGE%\" && \
 		if [ \$$(echo \"\$$COVERAGE < 60\" | bc -l) -eq 1 ]; then \
 			echo \"ERROR: Coverage is \$$COVERAGE%, must be >= 60%\"; exit 1; \
@@ -49059,7 +49071,7 @@ test:
 
     - name: Check coverage is >= 60%
       run: |
-        COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+        COVERAGE=$(go tool cover -func=coverage.out | grep '^total:' | awk '{print $3}' | sed 's/%//')
         if [ "$(echo "$COVERAGE < 60" | bc -l)" -eq 1 ]; then
           echo "ERROR: Coverage is $COVERAGE%, must be >= 60%" >&2
           exit 1
