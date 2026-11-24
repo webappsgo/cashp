@@ -3030,6 +3030,7 @@ Exceptions (do NOT translate):
 - Machine-readable responses (health check `OK`, HTTP status codes)
 - System commands and code snippets (shell init output)
 - Technical identifiers (config keys, header names, MIME types)
+- License-mandated attribution text whose wording the license fixes (the DB-IP link text, PART 19); the heading or label around it is still translated
 
 ### If Spec Seems Wrong
 
@@ -6955,7 +6956,7 @@ require modernc.org/sqlite {version}
 | **Turso Cloud** | Managed service at turso.tech |
 | **Self-hosted sqld** | Run your own libSQL server |
 
-**libSQL requires a server URL - it does NOT support embedded/local mode with CGO_ENABLED=0.**
+**libSQL requires a server URL - it does NOT support embedded/local mode with CGO_ENABLED=0.** The driver has no embedded replica and no local file mode, so the optional local cache (PART 10 -> `server.database.cache`) is not a libSQL feature: it is a second, separate handle opened with the SQLite driver on `cache.path`, and the remote database stays the only source of truth. Restore seeding uses two handles the same way: the restored `server.db` is read with the SQLite driver and its rows are written to the empty remote database through the libSQL driver.
 
 **Upstream status:** `libsql-client-go` is marked deprecated upstream. Its suggested replacement `go-libsql` needs `CGO_ENABLED=1` and ships native libraries for linux and darwin on amd64 and arm64 only, and `turso-go` is archived and targets the new Turso Database engine, not libSQL servers. This specification requires `CGO_ENABLED=0` and every supported platform, so `libsql-client-go` stays the required remote driver and `go-libsql` is forbidden. A project may replace `libsql-client-go` only with a pure-Go driver that works on every platform and passes the `govulncheck` gate.
 
@@ -12867,6 +12868,7 @@ When enabled:
 - Writes go to remote, then update local cache
 - If remote unavailable, serve from cache (read-only mode)
 - Background sync keeps cache fresh
+- The cache is a separate SQLite file opened with the SQLite driver, never through the libSQL driver (remote-only, PART 2)
 
 **Multiple Connections & Mixed Mode:**
 
@@ -15059,11 +15061,11 @@ func GetUserWithVersion(ctx context.Context, userID int, version int) (*User, er
 |--------------|---------------------|-------------|
 | Static assets with matching `?v=` build stamp | `public, max-age=31536000, immutable` | 1 year — URL changes every release, so this can never go stale |
 | Static assets without / with mismatched `?v=` | `no-cache` + `ETag` | Always revalidated — never trusted across updates |
-| HTML pages | `no-store` | Always fetch fresh |
+| HTML pages | `no-store` | Always fetch fresh. The service worker's Cache API copy is separate from the HTTP cache and follows "Offline copies are for public pages only" (PART 16) |
 | `/sw.js` and `/manifest.json` | `no-cache` + `ETag` | Browser must see the new service worker on its next update check — never immutable |
 | API responses (public) | `public, max-age=60` | Short cache for CDN |
 | API responses (private) | `private, no-store` | User-specific data |
-| Authenticated pages | `private, no-store` | Never cache |
+| Authenticated pages | `private, no-store` | Never cache, and never put in the service worker cache: they never carry `X-Offline-Cache` |
 | Error pages | `no-store` | Don't cache errors |
 
 ### Asset Version-Busting (REQUIRED)
@@ -15077,7 +15079,7 @@ update. The fix is mandatory URL stamping:
 |------|--------|
 | **`asset()` template helper** | Every static asset reference in every template goes through a shared helper that appends the build stamp: `/static/app.css?v={project_version}-{short_commit}`. Hand-written bare `/static/...` URLs in templates are a bug. |
 | **`immutable` only on a matching stamp** | The static handler sends `public, max-age=31536000, immutable` ONLY when the request's `?v=` equals the running build's stamp. Missing or mismatched stamp → `no-cache` + `ETag` (the bytes still serve — cached HTML from an old version never breaks, it just revalidates). |
-| **HTML is never cached** | All HTML documents: `Cache-Control: no-store` plus an `ETag` derived from the build stamp, so any intermediary that ignores `no-store` still revalidates. |
+| **HTML is never cached** | All HTML documents: `Cache-Control: no-store` plus an `ETag` derived from the build stamp, so any intermediary that ignores `no-store` still revalidates. The one exception is the service worker's offline copy of a public page (PART 16 -> "Offline copies are for public pages only"): it lives in the Cache API, is only ever a fallback after a failed network fetch, and never replaces a fresh response. |
 | **Service worker (if the project adds one)** | Cache name MUST embed the full build stamp `{project_version}-{short_commit}` (`{asset_stamp}`); `activate` deletes all caches from other versions. `/sw.js` and `/manifest.json` are served `no-cache` + build-stamp `ETag` — a cached service worker script delays every other update mechanism. |
 | **Version-change purge (`Clear-Site-Data`)** | Recovery layer for already-poisoned browsers — see "Version-Change Purge" below. Value is `"cache", "storage"` ONLY; `"cookies"` would destroy the session and cookie-stored preferences. |
 
@@ -17483,7 +17485,7 @@ All three coexist under the admin tree. The admin-panel UI groups them under a s
 | Action | Behavior |
 |--------|----------|
 | **Generate** | Generates an Ed25519 (signing) + Curve25519 (encryption) keypair. Identity is `{app_name} Security <{security_contact}>`. Expires 2 years from generation. Private key is encrypted with a key derived from `installation_secret` and stored in `{config_dir}/security/pgp.priv.asc.enc`. Public key stored at `{config_dir}/security/pgp.pub.asc` (also served at `/.well-known/pgp-key.asc`). |
-| **Rotate** | Generates a new keypair, signs the new pubkey with the old key, publishes the rotation to configured keyservers. In ONE database transaction, taken under the same lock the submission step uses, it re-encrypts every stored `body_enc` whose `body_alg` is `pgp` to the new key (decrypt with the old private key, encrypt to the new public key). If any row fails, the transaction rolls back and the old key stays active, so no retained report is ever left readable only by a discarded key. After a successful rotation every stored body is readable with the current key for its whole retention period. The old private key is kept encrypted at `{config_dir}/security/pgp.priv.old.asc.enc` for 30 days, only for items already in transit (notifications sent to the old key, researchers who fetched the old public key); the daily `security_cleanup` task then deletes it. |
+| **Rotate** | Runs under the same lock the submission step uses, in this order: (1) generates the new keypair, signs the new pubkey with the old key and writes both new files as STAGED files (`pgp.pub.asc.new`, `pgp.priv.asc.enc.new`) beside the active ones, so every file write happens before any transaction; (2) in ONE database `Write` transaction with no file I/O inside it, re-encrypts every stored `body_enc` whose `body_alg` is `pgp` to the new key (decrypt with the old private key, encrypt to the new public key); if any row fails, the transaction rolls back, the staged files are deleted and the old key stays active, so no retained report is ever left readable only by a discarded key; (3) after the commit, renames the staged files over the active ones (the old private key moves to the `.old` file below first), sets `last_rotated_at` and publishes the new key to configured keyservers. The commit is the single point of no return. Crash recovery runs at every start, before submissions are accepted: when staged files exist, the key ID in the recipient packet of one stored `pgp` body decides. It names the staged key: the commit happened, so step 3 is finished. It names the active key, or no `pgp` body exists: the transaction never committed, so the staged files are deleted. A mixed state cannot exist, because every row changes in the one transaction. After a successful rotation every stored body is readable with the current key for its whole retention period. The old private key is kept encrypted at `{config_dir}/security/pgp.priv.old.asc.enc` for 30 days, only for items already in transit (notifications sent to the old key, researchers who fetched the old public key); the daily `security_cleanup` task then deletes it. |
 | **Publish to keyservers** | POST the public key to each entry in `web.security.keyservers`. Each entry is a keyserver host name and the host decides the submission form. `keys.openpgp.org` (VKS): `POST https://keys.openpgp.org/vks/v1/upload` with the JSON body `{"keytext": "<ASCII-armored public key>"}`; success is `200` with a JSON body holding `key_fpr` and `status`. Any other host, for example `keyserver.ubuntu.com` (HKP): `POST https://{host}/pks/add` with `Content-Type: application/x-www-form-urlencoded` and the field `keytext=<URL-encoded armored key>`; success is `200`. Triggered automatically on generate/rotate; manually via the "Republish" button. A network error, `5xx` or `429` is logged and retried with exponential backoff: 1 minute, doubling each time up to 6 hours, at most 8 attempts per keyserver and key, durable across restarts (the attempt count and the next time are kept in `keyservers.state`, and the scheduler task `keyserver_retry` submits again whenever a stored time has passed). Any other `4xx` is final: logged once and never retried. A keyserver that `keyservers.state` already lists for this fingerprint is skipped. |
 | **Export public key** | Download `pgp.pub.asc` directly from the admin panel. Or use the public URL `/.well-known/pgp-key.asc`. |
 | **Export private key** | **Full export, ASCII-armored, decrypted with the operator's confirmation password.** Triggers a sensitive-operation flow (PART 5 → "Sensitive Operations"): re-prompt admin password, log to `audit.log` as `security.private_key_exported`, return the file as a single download. **The download is rate-limited to 1 per hour per admin and the audit entry includes admin username, IP, and reason text the admin must type.** |
@@ -19651,6 +19653,8 @@ server:
 | `gotify` | Gotify URL | `POST {url}/message?token={token}` body `{"title", "message", "priority"}` (mapping below) |
 | `generic` | Any HTTPS URL | `POST {url}` JSON body: `{role, event, subject, body, severity, timestamp, project_name, project_version, app_url, tracking_id?}` |
 
+**Generic payload `timestamp`.** The event time as an RFC 3339 string in UTC with a `Z` suffix and whole seconds (`2026-01-15T10:30:00Z`), set by the server when the event is raised, never local time. It is the same instant as the `X-Webhook-Timestamp` header, which carries it as Unix seconds.
+
 **Severity and priority.** `severity` is `info`, `warning` or `critical` (a success or info event is `info`, a warning is `warning`, an error is `critical`). Pushover `priority` is `0` for `info` and `warning` and `1` for `critical`; the emergency priority `2` is never used because it needs retry and expire parameters. Gotify `priority` is `2` for `info`, `5` for `warning` and `8` for `critical`.
 
 **Additional transports can be plugged in by adding adapters in `src/notify/`. The config schema above is open — any key under `webhooks` is treated as a transport name, and the adapter for that name is invoked.**
@@ -20216,13 +20220,14 @@ server:
 
       # Preference cookies (theme, language, UI settings)
       preferences:
-        # Default on, user can disable via Decline
+        # Whether the category is OFFERED (banner, /server/preferences, toggles). It is not the consent state:
+        # a visitor with no consent action has the category off until they accept it
         enabled: true
-        description: "Remember your settings such as theme (dark/light), language, and UI preferences. Disabling will reset to defaults on each visit."
+        description: "Remember your settings such as theme (dark/light), language, and UI preferences. Without it nothing is saved and the defaults apply on each visit."
 
       # Analytics cookies (only active if server.tracking configured)
       analytics:
-        # Default on, user can disable via Decline
+        # Whether the category is OFFERED; the consent state is the visitor's own cookie_consent choice, off until accepted
         enabled: true
         description: "Help us understand how visitors use our site to improve the experience."
         # Dynamic suffix based on data.sold
@@ -20248,7 +20253,7 @@ server:
 
 | Keys | Role |
 |------|------|
-| `consent.*` (banner message, buttons, position, `show_preferences`), `cookies.*.enabled` | Behavior only: they change what the server does, they do not add page text |
+| `consent.*` (banner message, buttons, position, `show_preferences`), `cookies.*.enabled` | Behavior only: they change what the server does, they do not add page text. `cookies.*.enabled` decides only whether a category is offered to the visitor; the consent state is the visitor's own `cookie_consent` cookie, and without it every non-essential category is off |
 | `data.sold` | Behavior AND page: picks the banner message, the CCPA opt-out and the Data Usage text |
 | `data.stored_on_server`, `data.sharing`, `retention.*`, `cookies.*.description`, `third_party.services` | Page content only: they fill the Data Storage, Data Retention, Cookie Policy and Third Parties sections of `/server/privacy` |
 
@@ -23592,7 +23597,7 @@ Need additional compatible endpoints?"
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `ok` | Yes | Always `true` for success. Exceptions: health endpoints return the bare health object (see PART 13); compatibility-layer routes return the target service's native body (see PART 14 → "External API Compatibility"). |
+| `ok` | Yes | Always `true` for success. Exceptions: health endpoints return the bare health object (see PART 13); compatibility-layer routes return the target service's native body (see PART 14 → "External API Compatibility"); a route declared `Binary` returns its own bytes and `Content-Type`. |
 | `data` | Yes | Response payload |
 | `data.id` | If created | ID of created/affected resource |
 | `data.message` | No | Human-readable status message |
@@ -26864,10 +26869,11 @@ if ('serviceWorker' in navigator) {
 > When a service worker calls `event.respondWith()` it owns that response completely. If the promise it passes **resolves to `undefined`** (a cache miss on the last fallback) or **rejects** (an uncaught network failure), the browser shows **`net::ERR_FAILED`** — a dead tab — instead of a page. A transient network blip on a page navigation MUST degrade to a real offline/error page, never a broken site. The handler below, and any service worker a project ships, MUST obey:
 >
 > - **Navigations are network-first** — fetch the network first so a new build's HTML is seen immediately (and the `Clear-Site-Data` build-purge has nothing stale to fight); only on failure fall back to the cached page, then to a **synthesized** `Response`.
+> - **Offline copies are for public pages only** — the server adds the internal header `X-Offline-Cache: public` to a navigation response ONLY when the page is identical for every visitor: the request carries no session or owner cookie, and the body holds no signed-in state, token, per-visitor value or CSRF token. `Cache-Control` stays `no-store`; the header is only a signal to the worker. The worker puts a navigation response in the cache only when it also has that header; any other navigation response is not cached, and the worker deletes an existing entry for that URL, so a page that becomes private leaves no old copy. Authenticated pages, token pages, the admin area and every page with a form never carry the header, and on offline they show the synthesized offline page.
 > - **Every `respondWith()` branch ends in a guaranteed `Response`** — a terminal `.catch()` returning a real `Response` (a synthesized 503 offline page for navigations, a 504 for subresources). Never end a chain on `cached || caches.match('/offline…')`: that link can itself miss and resolve `undefined`.
 > - **Only intercept same-origin GET.** Let API calls, cross-origin requests, and non-GET methods fall through untouched — never call `respondWith()` for them.
 > - **The wait for the network is bounded** — a navigation `fetch` races an 8 s timer (`NAV_TIMEOUT_MS`); on timeout the worker falls back to the cached page, then the offline page. A server that is restarting, updating or hung never leaves a tab on a blank page with a stuck load bar.
-> - **Never cache or replay a redirect or an error** — only `response.ok && !response.redirected` is put in the cache, and a URL that redirects (the age gate, a login redirect, `/` behind a redirect) is never precached. A `redirected` response handed to a navigation is a network error (blank page).
+> - **Never cache or replay a redirect or an error** — only `response.ok && !response.redirected` (and, for a page, `X-Offline-Cache: public`) is put in the cache, and a URL that redirects (the age gate, a login redirect, `/` behind a redirect) is never precached. A `redirected` response handed to a navigation is a network error (blank page).
 > - **A user never has to clear cache, cookies or local storage to recover.** Every state the worker or the page can reach after an update must self-heal: bounded waits, a build-stamped cache name, old caches deleted in `activate`, and the update prompt below that always ends in a reload. Telling a user to clear site data is a defect in the template or the app, never a fix.
 > - **The service worker is an enhancement, never a dependency** — the site stays fully usable if it never installs (the No-JS-first rule above).
 
@@ -26956,9 +26962,13 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       withTimeout(fetch(request), NAV_TIMEOUT_MS)
         .then(response => {
-          if (response.ok && !response.redirected) {
+          // Only a public page (X-Offline-Cache: public) is kept for offline use; anything else is
+          // not cached and any older copy of that URL is deleted
+          if (response.ok && !response.redirected && response.headers.get('X-Offline-Cache') === 'public') {
             const clone = response.clone();
             caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+          } else {
+            caches.open(CACHE_NAME).then(cache => cache.delete(request));
           }
           return response;
         })
@@ -27622,7 +27632,7 @@ Sync page (`/server/preferences/sync`), one form, one Import button:
 | Resource Type | Cache Strategy | Offline Behavior |
 |---------------|----------------|------------------|
 | **Static assets** (CSS, JS, images) | Cache-first | Served from cache |
-| **HTML pages** | Network-first, cache fallback | Show cached version if offline |
+| **HTML pages** | Network-first; cache fallback for public pages only (`X-Offline-Cache: public`) | Show the cached copy of a public page; any other page shows the offline page |
 | **API calls** | Network-only (the service worker never intercepts them) | Show the offline indicator; nothing is queued unless IDEA.md names the action ("Background Sync"), and that queue belongs to page code, not to the fetch handler |
 | **Fonts** | Cache-first | Served from cache |
 | **User data** | IndexedDB | Full offline access |
@@ -28310,13 +28320,13 @@ type Route struct {
 
 ### Newline Rules
 
-**ALL non-HTML responses MUST end with a single newline (`\n`).**
+**ALL text responses, HTML included, MUST end with a single newline (`\n`).**
 
 | Format | Rule | Example |
 |--------|------|---------|
 | JSON | Single `\n` after closing `}` or `]` | `{"ok": true}\n` |
 | Text | Single `\n` after last line | `OK: done\n` |
-| HTML | No trailing newline requirement | `</html>` |
+| HTML | Single `\n` after `</html>` | `</html>\n` |
 
 **Why:** Ensures consistent parsing, clean terminal output, proper file concatenation.
 
@@ -36713,7 +36723,7 @@ Task state is stored in `server.db`, in the `scheduler_tasks` table (PART 10); t
 | `name` | Text | Human-readable name |
 | `schedule` | Text | Cron/interval expression |
 | `last_run` | Integer | Unix seconds when the task last ran |
-| `last_status` | Text | success, failed, running, skipped |
+| `last_status` | Text | success, failed, running, skipped, interrupted |
 | `last_error` | Text | Error message if failed |
 | `next_run` | Integer | Unix seconds of the next execution |
 | `run_count` | Integer | Total successful runs |
@@ -36976,7 +36986,7 @@ Wait for running tasks to complete (max 30 seconds)
            │
            ▼
            Force release locks
-           Mark interrupted tasks for retry on next start
+           Mark tasks still running as last_status=interrupted (retried at the next start)
        │
        ▼
 Save scheduler state to database
@@ -37052,6 +37062,7 @@ All databases come from [sapics/ip-location-db](https://github.com/sapics/ip-loc
 ```
 
 - Attribution MUST be visible on the page — not hidden behind a click-through, tooltip, or collapsed section
+- The link text is the one localization exception (PART 30 -> "What stays untranslated"): it stays exactly as shown, in English, on every language's page; a heading or label around it still goes through the translation keys
 - The DB-IP notice is ALWAYS required, because the City database is always in use; PDDL databases need no notice, though `LICENSE.md`'s third-party table still lists their source and license
 - If a future database swap changes the license (e.g. adding a PDDL-only source), update this section — do not carry stale attribution for a database no longer in use, and do not drop attribution for one still in use
 
@@ -53368,7 +53379,7 @@ LANG=es_ES.UTF-8 {project_name}-cli --help
 | **Plurals** | Provide every CLDR plural category the language needs (`zero`, `one`, `two`, `few`, `many`, `other`; see "Plural Rules"). Translators check the category list for their language at the CLDR plural chart; a missing category fails the build |
 | **Whole sentences** | Each value is a complete phrase. Never rely on joining fragments; word order, gender and case differ per language. If an English string looks like a fragment, report it as an issue instead of working around it |
 | **Register and tone** | One consistent register per language (formal "you": `Sie`, `usted`, `vous`, `Lei`, ...). Short and neutral, matching the English UI tone; no slang, humor or idioms that do not travel |
-| **What stays untranslated** | Product and brand names, protocol and technology names (API, Tor, `.onion`, I2P, JSON, token), code, file names, config keys, URLs and the literal values users type (`dark`, `auto`). The project's glossary in `docs/translating.md` lists the agreed term for every recurring word (token, paste, rotate, revoke, ...), and translators reuse it |
+| **What stays untranslated** | Product and brand names, protocol and technology names (API, Tor, `.onion`, I2P, JSON, token), code, file names, config keys, URLs and the literal values users type (`dark`, `auto`), and the license-mandated attribution text (the DB-IP link text, PART 19). The project's glossary in `docs/translating.md` lists the agreed term for every recurring word (token, paste, rotate, revoke, ...), and translators reuse it |
 | **Typography** | Follow the language's own rules (French non-breaking space before `: ; ! ?`, quotation marks, decimal and thousands separators come from `golang.org/x/text`, not from the translation) |
 | **AI and machine translation** | Expected and encouraged: when the AI is fluent enough in the language it translates the strings itself (natural, idiomatic wording, not word-for-word), and a language is NOT held back waiting for a native speaker. Where the AI is not fluent enough to produce a reliable translation (rare or low-resource languages), it says so and the language waits for a human translator instead of shipping guesses. Human translators fix mistakes at any time through a normal pull request, and their corrections win over the AI wording on every later sync |
 | **Layout check** | Translations are often longer than English (up to about 40%). The translator or reviewer opens the app in that language at 320, 768 and 1280 px (see the review matrix) and confirms nothing is clipped, wrapped badly or overflowing; right-to-left languages are also checked mirrored |
