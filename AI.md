@@ -1329,7 +1329,7 @@ Claude Code creates `.claude/rules/` on first session (see PART 0: Session Initi
 | `testing-rules.md` | 29, 30, 31 | Testing & Development, ReadTheDocs Documentation, I18N & A11Y |
 | `optional-rules.md` | 34-36 | Multi-User, Organizations, Custom Domains (all OPTIONAL) |
 
-**Note:** PART 37 (IDEA.md Reference) and FINAL (Compliance Checklist) are reference-only, not rule files. Only PARTs 34-36 are truly optional (marked "OPTIONAL - NON-NEGOTIABLE WHEN IMPLEMENTED" in spec). PART 32.1 (Tor Hidden Service) is REQUIRED - auto-enabled when Tor binary is found. PART 32.2 (I2P Eepsite) is OPTIONAL and opt-in - off by default on bare metal and in a VM, ON by default in a container (computed from container detection); set explicitly with `--i2p`, `I2P_ENABLED` or `server.i2p.enabled`.
+**Note:** PART 37 (IDEA.md Reference) and FINAL (Compliance Checklist) are reference-only, not rule files. Only PARTs 34-36 are truly optional (marked "OPTIONAL - NON-NEGOTIABLE WHEN IMPLEMENTED" in spec, and activated only by a declaration in SPEC.md). PART 32.1 (Tor Hidden Service) is REQUIRED - auto-enabled when Tor binary is found. PART 32.2 (I2P Eepsite) is OPTIONAL and opt-in - off by default on bare metal and in a VM, ON by default in a container (computed from container detection); set explicitly with `--i2p`, `I2P_ENABLED` or `server.i2p.enabled`.
 
 **Rules File Features:**
 - All `.md` files in `rules/` are automatically discovered recursively
@@ -2806,7 +2806,7 @@ Before I proceed, can you confirm [specific question]?
 | Task | Business Logic | Implementation |
 |------|----------------|----------------|
 | Admin auth | — | PART 17 |
-| Multi-user | IDEA.md | PART 34 |
+| Multi-user | IDEA.md (what it does); SPEC.md (activation) | PART 34 |
 | Frontend/UI | IDEA.md | PART 16 |
 | API endpoints | IDEA.md | PART 14 |
 | Tests | IDEA.md | PART 29 |
@@ -2933,7 +2933,7 @@ resize_for_context() {
 | "Skip the security headers, this is an internal tool" | A waiver of a mandatory requirement | Remove; mandatory parts are built exactly as AI.md defines them |
 | "Publishes a raw TCP paste port 9999" | WHAT (AI.md says such a port is documented in IDEA.md) | Keep |
 
-**IDEA.md may declare only what AI.md explicitly lets it declare:** the product's features, data models, business rules and audience; the template's explicitly OPTIONAL capabilities the project uses; and the specific items AI.md names as "declared in IDEA.md" (for example a custom build image, a custom raw port, a data class or compliance profile). Everything else IDEA.md says about HOW is either a copy of AI.md (remove it: duplicated rules drift when AI.md changes) or a contradiction (fix it). IDEA.md refers to AI.md by PART number instead of restating a rule.
+**IDEA.md may declare only what AI.md explicitly lets it declare:** the product's features, data models, business rules and audience; the template's explicitly OPTIONAL capabilities the project uses (except PARTS 34-36, whose activation is declared in SPEC.md only); and the specific items AI.md names as "declared in IDEA.md" (for example a custom build image, a custom raw port, a data class or compliance profile). Everything else IDEA.md says about HOW is either a copy of AI.md (remove it: duplicated rules drift when AI.md changes) or a contradiction (fix it). IDEA.md refers to AI.md by PART number instead of restating a rule.
 
 **When to check (every time, not only at setup):**
 
@@ -4544,7 +4544,7 @@ Every feature MUST work via:
 **Endpoint Pattern (applies to ENTIRE app):**
 | Web Route (HTML) | API Route (JSON) | Purpose |
 |------------------|------------------|---------|
-| `/` | `/api/{api_version}/` | Homepage / API root |
+| `/` | `/api/{api_version}` | Homepage / API root (no trailing slash; `/api/{api_version}/` redirects `301` to it) |
 | `/server/healthz` | `/api/{api_version}/server/healthz` | Health status (both exist independently) |
 | `/server/{admin_path}` | `/api/{api_version}/server/{admin_path}` | Admin dashboard |
 | `/server/{admin_path}/settings` | `/api/{api_version}/server/{admin_path}/settings` | Server settings |
@@ -5542,7 +5542,7 @@ Key settings:
 
 ## API
 
-API documentation available at `{official_site}/api/{api_version}/` when running.
+API documentation available at `{official_site}/api/{api_version}` when running.
 
 | Endpoint | Description |
 |----------|-------------|
@@ -5726,7 +5726,7 @@ curl -L https://api.example.com/server/healthz
 | **No AI/ML** | Smart logic only, no machine learning |
 | **Concise Responses** | Short, descriptive, and helpful |
 | **Everything Configurable** | ALL settings MUST be configurable via admin WebUI |
-| **Live Reload** | Configuration changes apply without restart (file-watch hot-reload), except the restart-required settings of "Smart Config Reload" (listen port and address, `server.ssl.*`, `server.database.*`, `server.daemonize`, `server.tor.*`), which the admin panel reports and which apply at the next start |
+| **Live Reload** | Configuration changes apply without restart (file-watch hot-reload), except the restart-required settings of "Smart Config Reload" (listen port and address, `server.ssl.*`, `server.database.*`, `server.daemonize`, `server.pidfile`, `server.tor.*`), which the admin panel reports and which apply at the next start |
 | **Built-in Scheduler** | NEVER use cron, Task Scheduler, or external schedulers (PART 19) |
 
 ### Admin WebUI Configuration
@@ -5772,7 +5772,7 @@ Not every project needs admin UI extensions - it depends on the project's nature
 | **Hot reload** | Application watches for config changes and reloads |
 | **Graceful** | In-flight requests complete before new config applies |
 | **Feedback** | User sees confirmation that changes are active |
-| **Exceptions** | The restart-required settings of "Smart Config Reload" (`server.port`, `server.address`, `server.ssl.*`, `server.daemonize`, `server.database.*`, `server.tor.*`) apply at the next start, with a clear warning; the graceful-reload settings apply without downtime |
+| **Exceptions** | The restart-required settings of "Smart Config Reload" (`server.port`, `server.address`, `server.ssl.*`, `server.daemonize`, `server.pidfile`, `server.database.*`, `server.tor.*`) apply at the next start, with a clear warning; the graceful-reload settings apply without downtime |
 
 **What MUST live reload:**
 - Branding (title, tagline, description)
@@ -5789,6 +5789,7 @@ Not every project needs admin UI extensions - it depends on the project's nature
 - Listen address and port number
 - `server.ssl.*` (the TLS listener)
 - `server.daemonize`
+- `server.pidfile` (PID file creation and checking)
 - `server.database.*` (connection pool and driver)
 - `server.tor.*`
 
@@ -12585,6 +12586,7 @@ The app automatically watches config files and hot-reloads what it can. Settings
 | `server.address` | Bound socket cannot change |
 | `server.ssl.*` | TLS listener must be recreated |
 | `server.daemonize` | Process mode cannot change |
+| `server.pidfile` | The PID file steps run once at start, before the full configuration loads |
 | `server.database.*` | Connection pool must be recreated |
 | `server.tor.*` | Child process must be restarted |
 
@@ -12879,6 +12881,8 @@ When enabled:
 - If remote unavailable, serve from cache (read-only mode)
 - Background sync keeps cache fresh
 - The cache is a separate SQLite file opened with the SQLite driver, never through the libSQL driver (remote-only, PART 2)
+- **Write contract:** the remote write decides the response. When it succeeds and the local cache update then fails, the response is still a success, the cached row is deleted (best effort), one WARN is logged, and when even the delete fails the cache is marked dirty so reads bypass it until the next sync completes. A failed remote write changes nothing locally and answers the error.
+- **Reconciliation:** the cache is a read replica and the remote always wins; it never originates a write, so there are no conflicts to merge. Each sync pulls changed rows and applies a batch in ONE local transaction (all or nothing), deletes rows that no longer exist remotely, and clears the dirty mark only after a batch commits. Entries older than `max_age` are read from the remote.
 
 **Multiple Connections & Mixed Mode:**
 
@@ -15161,7 +15165,7 @@ Called from the HTML middleware only — never on static, API, or `/sw.js` respo
 |------|--------|
 | **Top-level documents only** | Emit the header only when `Sec-Fetch-Dest: document` and `Sec-Fetch-Mode: navigate` (or those headers are absent on an old browser) - never for iframes, prefetch, XHR/fetch, `HEAD`, redirects (3xx) or error responses (4xx/5xx) |
 | **No IndexedDB dependency** | The app MUST NOT hold long-lived IndexedDB connections open (the `storage` wipe blocks on them); open, use and close per operation |
-| **Client watchdog** | `app.js` starts a 10 s boot timer (cleared when the first render completes). On expiry, and at most once per tab (`sessionStorage` flag `{project_name}_recovered`), it unregisters every service worker, deletes every Cache API cache and reloads. A second expiry shows the static error page instead of looping |
+| **Client watchdog** | `app.js` starts a 10 s boot timer (cleared when the first render completes). On expiry, and at most once per tab (`sessionStorage` flag `{project_name}_recovered`), it unregisters every service worker, deletes every Cache API cache and reloads. A second expiry replaces the page body with an error panel that `app.js` builds itself (no network, no cache, no static file): the translated strings the worker stores for its offline page (PART 16), with the English defaults only before any were stored, and a reload link; it never loops |
 | **Never a dependency** | The page works with the purge header ignored: HTML is `no-store`, assets are stamped, so a missed purge costs one revalidation, never a stuck page |
 
 ### Cache Warming
@@ -16744,7 +16748,7 @@ func ValidateToken(token string) (*TokenInfo, error) {
 | `adm_` | `/api/{api_version}/server/{admin_path}/*` | Server admin panel |
 | `usr_` | `/api/{api_version}/users/*`, `/api/{api_version}/orgs/{allowed}/*` | User + orgs they belong to |
 | `org_` | `/api/{api_version}/orgs/{specific}/*` | Single org only |
-| (no token) | `/api/{api_version}/`, `/api/{api_version}/server/*`, `/api/{api_version}/{resource}/*` | Public routes (no auth) |
+| (no token) | `/api/{api_version}`, `/api/{api_version}/server/*`, `/api/{api_version}/{resource}/*` | Public routes (no auth) |
 | any prefix, scope `agent` | the `agents/*` routes of its owner type ONLY | Agent register, heartbeat, report; a `403` anywhere else |
 
 **Context Types:**
@@ -16808,7 +16812,7 @@ func ContextMiddleware(next http.Handler) http.Handler {
 
 // extractContextFromPath determines context from URL path
 func extractContextFromPath(path string) (*Context, error) {
-    // /api/{api_version}/ → Public (project root)
+    // /api/{api_version} → Public (project root)
     // /api/{api_version}/server/* → Server Pages (about, help, contact, privacy)
     // /api/{api_version}/server/auth/* → Auth flows
     // /api/{api_version}/users/* → User context (current user or {username})
@@ -17495,7 +17499,7 @@ All three coexist under the admin tree. The admin-panel UI groups them under a s
 | Action | Behavior |
 |--------|----------|
 | **Generate** | Generates an Ed25519 (signing) + Curve25519 (encryption) keypair. Identity is `{app_name} Security <{security_contact}>`. Expires 2 years from generation. Private key is encrypted with a key derived from `installation_secret` and stored in `{config_dir}/security/pgp.priv.asc.enc`. Public key stored at `{config_dir}/security/pgp.pub.asc` (also served at `/.well-known/pgp-key.asc`). |
-| **Rotate** | Runs under the same lock the submission step uses, in this order: (1) generates the new keypair, signs the new pubkey with the old key and writes both new files as STAGED files (`pgp.pub.asc.new`, `pgp.priv.asc.enc.new`) beside the active ones, so every file write happens before any transaction; (2) in ONE database `Write` transaction with no file I/O inside it, re-encrypts every stored `body_enc` whose `body_alg` is `pgp` to the new key (decrypt with the old private key, encrypt to the new public key); if any row fails, the transaction rolls back, the staged files are deleted and the old key stays active, so no retained report is ever left readable only by a discarded key; (3) after the commit, renames the staged files over the active ones (the old private key moves to the `.old` file below first), sets `last_rotated_at` and publishes the new key to configured keyservers. The commit is the single point of no return. Crash recovery runs at every start, before submissions are accepted: when staged files exist, the key ID in the recipient packet of one stored `pgp` body decides. It names the staged key: the commit happened, so step 3 is finished. It names the active key, or no `pgp` body exists: the transaction never committed, so the staged files are deleted. A mixed state cannot exist, because every row changes in the one transaction. After a successful rotation every stored body is readable with the current key for its whole retention period. The old private key is kept encrypted at `{config_dir}/security/pgp.priv.old.asc.enc` for 30 days, only for items already in transit (notifications sent to the old key, researchers who fetched the old public key); the daily `security_cleanup` task then deletes it. |
+| **Rotate** | Runs under the same lock the submission step uses, in this order: (1) generates the new keypair, signs the new pubkey with the old key and writes both new files as STAGED files (`pgp.pub.asc.new`, `pgp.priv.asc.enc.new`) beside the active ones, so every file write happens before any transaction; (2) in ONE database `Write` transaction with no file I/O inside it, re-encrypts every stored `body_enc` whose `body_alg` is `pgp` to the new key (decrypt with the old private key, encrypt to the new public key) and, in the same transaction, stores the new key's `fingerprint`, `created_at`, `expires_at` and `last_rotated_at`: that stored fingerprint is the commit marker, and it exists even when no report is PGP-encrypted; if any row fails, the transaction rolls back, the staged files are deleted and the old key stays active, so no retained report is ever left readable only by a discarded key; (3) after the commit, renames the staged files over the active ones (the old private key moves to the `.old` file below first), sets `last_rotated_at` and publishes the new key to configured keyservers. The commit is the single point of no return. Crash recovery runs at every start, before submissions are accepted: when staged files exist, the fingerprint of the staged public key is compared with the stored `fingerprint`. Equal: the commit happened, so step 3 is finished. Different: the transaction never committed, so the staged files are deleted. A mixed state cannot exist, because the rows and the marker change in the one transaction. After a successful rotation every stored body is readable with the current key for its whole retention period. The old private key is kept encrypted at `{config_dir}/security/pgp.priv.old.asc.enc` for 30 days, only for items already in transit (notifications sent to the old key, researchers who fetched the old public key); the daily `security_cleanup` task then deletes it. |
 | **Publish to keyservers** | POST the public key to each entry in `web.security.keyservers`. Each entry is a keyserver host name and the host decides the submission form. `keys.openpgp.org` (VKS): `POST https://keys.openpgp.org/vks/v1/upload` with the JSON body `{"keytext": "<ASCII-armored public key>"}`; success is `200` with a JSON body holding `key_fpr` and `status`. Any other host, for example `keyserver.ubuntu.com` (HKP): `POST https://{host}/pks/add` with `Content-Type: application/x-www-form-urlencoded` and the field `keytext=<URL-encoded armored key>`; success is `200`. Triggered automatically on generate/rotate; manually via the "Republish" button. A network error, `5xx` or `429` is logged and retried with exponential backoff: 1 minute, doubling each time up to 6 hours, at most 8 attempts per keyserver and key, durable across restarts (the attempt count and the next time are kept in `keyservers.state`, and the scheduler task `keyserver_retry` submits again whenever a stored time has passed). Any other `4xx` is final: logged once and never retried. A keyserver that `keyservers.state` already lists for this fingerprint is skipped. |
 | **Export public key** | Download `pgp.pub.asc` directly from the admin panel. Or use the public URL `/.well-known/pgp-key.asc`. |
 | **Export private key** | **Full export, ASCII-armored, decrypted with the operator's confirmation password.** Triggers a sensitive-operation flow (PART 5 → "Sensitive Operations"): re-prompt admin password, log to `audit.log` as `security.private_key_exported`, return the file as a single download. **The download is rate-limited to 1 per hour per admin and the audit entry includes admin username, IP, and reason text the admin must type.** |
@@ -19694,11 +19698,11 @@ if !subtle.ConstantTimeCompare([]byte(got), []byte(want)) {
 }
 ```
 
-**Failure handling:** if a webhook returns non-2xx, the server retries with exponential backoff (1m, 5m, 15m, 1h, 6h, 24h — then drops). Retries reuse the same `X-Webhook-ID` so the receiver can dedupe. Permanent failures are logged as `notify.webhook_failed` (per-IP rate-limited so a broken receiver doesn't flood logs).
+**Failure handling:** if a webhook returns non-2xx, the server retries with exponential backoff (1m, 5m, 15m, 1h, 6h, 24h — then drops). Retries reuse the same `X-Webhook-ID` so the receiver can dedupe. Permanent failures are logged as `notify.webhook_failed`, rate-limited per `{role}.{transport}` (at most one line per minute for each), because a background delivery has no request IP; a broken receiver therefore never floods the logs.
 
 ### Per-Role Behavior
 
-| Role | When triggered | What is sent |
+| Role | When triggered | What is sent by email (a webhook of any role carries only the summary below) |
 |------|----------------|--------------|
 | `admin` | Server-internal events: error rate spike, panic, cluster failover, backup failure, cert renewal, security report received (summary only) | Subject + body + severity + a deep-link to `/server/{admin_path}/...`. NEVER includes user content. |
 | `security` | Incoming security report (full content, encrypted), researcher status update, CVE assignment milestone | PGP-encrypted body if a researcher pubkey or admin pubkey is configured (PART 11 → "GPG Keypair Management"). |
@@ -21899,7 +21903,7 @@ Plain text, no color. The first line is always `{project_name} {project_version}
 | **Plural nouns** | All resource names MUST be plural | `/api/{api_version}/user` | `/api/{api_version}/users` |
 | **Lowercase** | All routes MUST be lowercase | `/api/{api_version}/Users` | `/api/{api_version}/users` |
 | **Hyphens** | Multi-word routes use hyphens | `/api/{api_version}/saved_searches` | `/api/{api_version}/saved-searches` |
-| **No trailing slash** | Routes MUST NOT end with `/` (see PART 16 URL Normalization) | `/api/{api_version}/users/` | `/api/{api_version}/users` |
+| **No trailing slash** | Routes MUST NOT end with `/` (see PART 16 URL Normalization); the API root is `/api/{api_version}`, and `/api/{api_version}/` is not a route: it redirects `301` to it | `/api/{api_version}/users/` | `/api/{api_version}/users` |
 | **No verbs** | Routes are nouns, not actions | `/api/{api_version}/getUsers` | `GET /api/{api_version}/users` |
 
 ### Unversioned API Exceptions (Exhaustive)
@@ -41355,8 +41359,10 @@ LOGFILE=/var/log/{internal_org}/{internal_name}/server.log
 case "$1" in
     start)
         echo "Starting $NAME..."
-        mkdir -p $(dirname $PIDFILE) $(dirname $LOGFILE)
-        chown -R $DAEMON_USER:$DAEMON_USER $(dirname $PIDFILE) $(dirname $LOGFILE)
+        # The supervisor pid file lives in the shared /var/run and is written and removed by root: it is never chowned.
+        # Only the app's own log directory is created and handed to the service user
+        mkdir -p $(dirname $LOGFILE)
+        chown -R $DAEMON_USER:$DAEMON_USER $(dirname $LOGFILE)
         # No --chuid: the binary drops privileges itself after binding its ports (PART 8)
         start-stop-daemon --start --quiet --background --make-pidfile \
             --pidfile $PIDFILE --exec $DAEMON \
@@ -42051,7 +42057,7 @@ Every binary MUST have these values embedded at build time:
 | `BuildEpoch` | `1765112713` | Unix build timestamp (seconds, UTC), set via `-ldflags` — the single captured time source; used by the updater's devel-channel check and to derive `BuildDate` |
 | `OfficialSite` | the user's URL, or empty | Default server URL (empty when no official site is defined) |
 
-**Go code requirement** (in `main.go` or `version.go`):
+**Go code requirement** (in `src/version.go`, package `main`: never in `main.go`, which holds only `main()`; the package name stays `main`, so every `-X main.*` flag stays valid):
 
 ```go
 // Build info - set via -ldflags at build time
@@ -49221,7 +49227,7 @@ test:
 
 ### How to Achieve the Coverage Gates (≥60% unit, 100% endpoints)
 
-**0. Keep the process entry thin and testable.** The unit gate counts every package, the root `src` package included, so orchestration left in `main()` drags the percentage down while only the compiled binary can reach it. `src/main.go` holds only `main()`: it parses flags, builds the configuration and calls `run(ctx, cfg) error`. `run` (startup, signal handling, graceful shutdown) lives in a package under `src/` that unit tests reach: the test calls `run` with a cancelable context and a listener on `127.0.0.1:0`, waits for the ready signal, makes one request, cancels the context and asserts a clean return. Phase 2 still tests the compiled binary; its coverage never counts toward the Phase 1 percentage.
+**0. Keep the process entry thin and testable.** The unit gate counts every package, the root `src` package included, so orchestration left in `main()` drags the percentage down while only the compiled binary can reach it. `src/main.go` holds only `main()`: it parses flags, builds the configuration (copying the build metadata `Version`, `CommitID`, `BuildEpoch` and `OfficialSite` from `src/version.go` into it) and calls `run(ctx, cfg) error`; the package `run` lives in never imports `main`. `run` (startup, signal handling, graceful shutdown) lives in a package under `src/` that unit tests reach: the test calls `run` with a cancelable context and a listener on `127.0.0.1:0`, waits for the ready signal, makes one request, cancels the context and asserts a clean return. Phase 2 still tests the compiled binary; its coverage never counts toward the Phase 1 percentage.
 
 **1. Test All Code Paths:**
 ```go
@@ -50186,7 +50192,7 @@ echo "Incus tests completed successfully ($MODES)"
 
 **Every mode runs the same steps, in this order:** init identity (PID 1, and no foreign init) → `--service --install` (file exists, enabled, active, health answers) → `--service restart` (new PID) → `--service stop` (stopped, port closed) → `--service start` → API, project-specific, rename and client tests → Tor tests → I2P tests → `incus restart` of the container (service still enabled and back by itself, health answers) → `--service --disable` (not enabled, not active, file kept) → `--service --install` again → `--service --uninstall` (file removed, not enabled, not active, data removed).
 
-**Tor and I2P are tested with both installed, and both end up enabled in every test.** `tests/docker.sh` runs the image as shipped (an application container), so I2P is on by default there: `features.i2p.enabled` is `true`, and within `I2P_WAIT` seconds `features.i2p.status` is `healthy` with a `.b32.i2p` hostname and `checks.i2p` is `ok`. An Incus container is a system container that runs its own init, so it counts as a host ("Container Detection", System containers: a system container run by systemd or OpenRC is a host) and I2P is opt-in there: `tests/incus.sh` checks the default (off) first and then enables it through a drop-in. The script installs `tor` and `i2pd` in the container (`apt-get install tor i2pd` on Debian, `apk add tor i2pd` on Alpine) and disables the distro's own `tor` and `i2pd` services, because the server runs its own dedicated, isolated instances (PART 32):
+**Tor and I2P are tested with both installed, and both end up enabled in every test.** `tests/docker.sh` runs the compiled binary in an Alpine application container (the binary is mounted; the shipped image is checked separately after `make docker`, "Image check"), so I2P is on by default there: `features.i2p.enabled` is `true`, and within `I2P_WAIT` seconds `features.i2p.status` is `healthy` with a `.b32.i2p` hostname and `checks.i2p` is `ok`. An Incus container is a system container that runs its own init, so it counts as a host ("Container Detection", System containers: a system container run by systemd or OpenRC is a host) and I2P is opt-in there: `tests/incus.sh` checks the default (off) first and then enables it through a drop-in. The script installs `tor` and `i2pd` in the container (`apt-get install tor i2pd` on Debian, `apk add tor i2pd` on Alpine) and disables the distro's own `tor` and `i2pd` services, because the server runs its own dedicated, isolated instances (PART 32):
 
 | Test | Expected |
 |------|----------|
@@ -50195,7 +50201,7 @@ echo "Incus tests completed successfully ($MODES)"
 | I2P in an application container with no explicit setting (`tests/docker.sh`) | `enabled: true`, `provider: i2pd`, `status` is one of the contract words |
 | I2P in an Incus system container with no explicit setting (`tests/incus.sh`) | `enabled: false`, `status: disabled`, no `checks.i2p` key |
 | I2P in a VM with no explicit setting (`tests/virt.sh`) | `enabled: false`, `status: disabled`, no `checks.i2p` key (a VM is not a container: opt-in) |
-| I2P enabled (the shipped default in `tests/docker.sh`, the drop-in in `tests/incus.sh`), once bootstrapped | `enabled: true`, `provider: i2pd`; within `I2P_WAIT` seconds (default 600) it becomes `healthy` with a `.b32.i2p` hostname, `checks.i2p: ok` and a persisted destination key |
+| I2P enabled (the application-container default in `tests/docker.sh`, the drop-in in `tests/incus.sh`), once bootstrapped | `enabled: true`, `provider: i2pd`; within `I2P_WAIT` seconds (default 600) it becomes `healthy` with a `.b32.i2p` hostname, `checks.i2p: ok` and a persisted destination key |
 | I2P opted out through a `yaml.d/50-i2p.yml` drop-in (`enabled: false`) | `enabled: false`, `status: disabled`, no `checks.i2p` key |
 | I2P default ON, `i2pd` removed | `enabled: false`, `status: disabled`, `provider: none`, no `checks.i2p` key |
 | I2P enabled by the `yaml.d/50-i2p.yml` drop-in in an Incus system container, `i2pd` removed (`tests/incus.sh`) | `enabled: false`, `status: disabled`, `provider: none`, no `checks.i2p` key |
@@ -53567,7 +53573,7 @@ separate Makefile target is needed.
 
 ### Date/Time/Number Formatting
 
-**Use Go's `golang.org/x/text` package for locale-aware formatting.**
+**Use Go's `golang.org/x/text` packages (`message`, `number`, `currency`) for locale-aware numbers, percentages and currency. `x/text` has no date or time formatter (`message` does not format a `time.Time`), so dates and times use the locale file instead:** each language provides `format.date`, `format.time` and `format.datetime` as Go reference-time layouts (en `01/02/2006` and `3:04 PM`; de `02.01.2006` and `15:04`), optional `format.am` and `format.pm` for the day-period words, and optional `format.digits` (the ten digits of the language's numeral system, for example Arabic-Indic). `FormatTime(t, lang)` applies `t.In(zone).Format(layout)`, then substitutes the day-period words and the digits.
 
 | Format Type | Example (en-US) | Example (de-DE) | Example (ar-SA) | Example (it-IT) |
 |-------------|-----------------|-----------------|-----------------|-----------------|
