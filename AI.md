@@ -8018,7 +8018,7 @@ Self-Healing Successful?                        │
 **Auto-cleaned:**
 - Logs older than retention policy
 - Temp files older than 24 hours
-- Old backup files (keeps last 5)
+- Old backup files beyond the configured retention (`server.backup.retention`, PART 21): the disk-pressure cleanup applies that policy, never a fixed count
 
 **Permission Denied:**
 
@@ -15067,7 +15067,7 @@ update. The fix is mandatory URL stamping:
 | **`asset()` template helper** | Every static asset reference in every template goes through a shared helper that appends the build stamp: `/static/app.css?v={project_version}-{short_commit}`. Hand-written bare `/static/...` URLs in templates are a bug. |
 | **`immutable` only on a matching stamp** | The static handler sends `public, max-age=31536000, immutable` ONLY when the request's `?v=` equals the running build's stamp. Missing or mismatched stamp → `no-cache` + `ETag` (the bytes still serve — cached HTML from an old version never breaks, it just revalidates). |
 | **HTML is never cached** | All HTML documents: `Cache-Control: no-store` plus an `ETag` derived from the build stamp, so any intermediary that ignores `no-store` still revalidates. |
-| **Service worker (if the project adds one)** | Cache name MUST embed `{project_version}`; `activate` deletes all caches from other versions. `/sw.js` and `/manifest.json` are served `no-cache` + build-stamp `ETag` — a cached service worker script delays every other update mechanism. |
+| **Service worker (if the project adds one)** | Cache name MUST embed the full build stamp `{project_version}-{short_commit}` (`{asset_stamp}`); `activate` deletes all caches from other versions. `/sw.js` and `/manifest.json` are served `no-cache` + build-stamp `ETag` — a cached service worker script delays every other update mechanism. |
 | **Version-change purge (`Clear-Site-Data`)** | Recovery layer for already-poisoned browsers — see "Version-Change Purge" below. Value is `"cache", "storage"` ONLY; `"cookies"` would destroy the session and cookie-stored preferences. |
 
 **Result:** deploying a new version changes every asset URL, so browsers fetch the
@@ -17089,6 +17089,10 @@ web:
     # Primary contact — GitHub private vulnerability reporting
     report_url: "https://github.com/{project_org}/{project_name}/security/advisories/new"
     # The secondary/CC contact email is `server.contact.security.email` (PART 12, Contact Configuration); there is no key for it here
+    # Publish the security PGP public key at /.well-known/pgp-key.asc and as the Encryption: line of security.txt.
+    # Boolean, default true: the key is published while a keypair exists. false: pgp-key.asc answers 404 and security.txt has no Encryption: line,
+    # even when a keypair exists (--maintenance pgp delete sets it to false)
+    publish_pgp_key: true
     # Auto-calculated 1 year from generation
     expires: "{1year}"
   well_known:
@@ -17425,7 +17429,7 @@ CREATE TABLE IF NOT EXISTS security_thanks (
 | Endpoint | Method | Auth | Purpose |
 |----------|--------|------|---------|
 | `/.well-known/security.txt` | GET | None | RFC 9116 file — see above |
-| `/.well-known/pgp-key.asc` | GET | None | Project's PGP public key (ASCII-armored). 404 if no keypair generated yet. |
+| `/.well-known/pgp-key.asc` | GET | None | Project's PGP public key (ASCII-armored). 404 if no keypair exists or `web.security.publish_pgp_key` is `false`. |
 | `/server/security` | GET | None | Security overview page (HTML). Human-readable rendering of everything in `/.well-known/security.txt` — contact channels in RFC 9116 preference order (GitHub private vulnerability reporting, `/server/contact?security_id={id}`, `mailto:` CC address), `Expires`, and the `Encryption` key when a keypair exists — plus plain-language instructions for reporting a vulnerability and a short section for other reports (terms violations, DMCA notices, privacy requests) linking to `/server/contact`. This is the only public page that links to the form. Links to `/server/security/policy`, `/server/security/thanks`, `/.well-known/pgp-key.asc`, and the machine-readable `/.well-known/security.txt`. Rendered from live config — nothing to edit. |
 | `/server/security/policy` | GET | None | Disclosure policy page (HTML). Default content provided; editable from admin panel. Lists the coordinated-disclosure window, in-scope domains, out-of-scope behaviors, safe-harbor language. |
 | `/server/security/thanks` | GET | None | Acknowledgments page. Lists researchers who opted in (real name, handle, or anonymized "Anonymous Researcher #n") with the year and severity: the `security_thanks` entries, newest first (the same entries as the API mirror). |
@@ -22475,6 +22479,8 @@ func getAPIResponseFormat(r *http.Request) string {
 | **5** | CLI/curl (no browser UA) | `curl /joke` | Plain text |
 | **6** | Default | Any request | HTML |
 
+**Mapping for `Accept: application/json` on a frontend route.** The paired API route is the same path under the API prefix: `/jokes/random` is `/api/{api_version}/jokes/random`, `/server/about` is `/api/{api_version}/server/about`; the JSON is that route's response, byte for byte. The pairing rule (PART 1) guarantees the pair exists, so a page never has "no API route": a form or tool page whose API operation is not a plain `GET` pairs with the `GET` form descriptor of that API route (as `GET /api/{api_version}/server/contact` does for the contact form), and a hub or information page pairs with an API route that returns the same structured content. A page found without a pair is a defect fixed by adding the pair, never by inventing a JSON shape for the page.
+
 **Health endpoints (`/server/healthz`, `/healthz`) are ordinary frontend routes:** `Accept: application/json` returns the bare health JSON, byte-identical to `/api/{api_version}/server/healthz`. There is no healthz-specific negotiation.
 
 **HTML variant:** once the format is HTML, the User-Agent picks the variant. Text browsers (lynx, w3m, links) advertise `text/html` but cannot run JavaScript, so they get the no-JS HTML even with an explicit `Accept: text/html`; every other client gets the full HTML.
@@ -27003,7 +27009,7 @@ function offlineFallbackResponse() {
 | **New feature** | Increment minor | `v1.0.1` → `v1.1.0` |
 | **Breaking change** | Increment major | `v1.1.0` → `v2.0.0` |
 
-**Cache naming convention:** `{app_name}-cache-v{major}.{minor}.{patch}`
+**Cache naming convention:** `{app_name}-cache-{asset_stamp}`, where `{asset_stamp}` is `{project_version}-{short_commit}`, the same stamp the `asset()` helper appends as `?v=`, so a rebuild with the same SemVer still gets a new cache
 
 **Update flow:**
 ```
@@ -28232,6 +28238,34 @@ ERROR: VALIDATION_FAILED: email must be valid
 | Health (`/api/{api_version}/server/healthz`) | The flat `key: value` layout defined with the health endpoint, no `OK:` line (its JSON is the bare health object) |
 
 A route opts into bare-value output only by declaring a primary value; there is no per-request switch. Clients that need the structure use JSON.
+
+**Route definition (the one contract every route is registered from).** A route is registered once, as a `Route` value, and the router, Swagger/OpenAPI, llms.txt and the text serializer all read that same value, so nothing is declared twice:
+
+```go
+type Route struct {
+    // GET, POST, PUT, PATCH, DELETE
+    Method string
+    // The versioned path, for example /api/{api_version}/jokes/{id}
+    Path string
+    // Unique, camelCase: listJokes
+    OperationID string
+    // One line; feeds Swagger and llms.txt
+    Summary string
+    // none, owner or operator
+    Auth string
+    // Listed in llms.txt and Swagger (public and authenticated routes; never operator-only ones)
+    Listed bool
+    // Request and response models; the response struct's declared field order is the text output order
+    Request, Response any
+    // Name of the response field returned bare in text output; empty means none
+    Primary string
+    // Default {message} of the text serializer; empty means the operation default
+    Message string
+    Handler http.HandlerFunc
+}
+```
+
+`registry.Add(Route{...})` is the only way to mount a route; Swagger builds its request and response schemas from `Request` and `Response`, llms.txt lists the `Listed` routes by `Summary`, and the text serializer reads `Response`, `Primary` and `Message`.
 
 **Where the pieces come from:** `{message}` is the response's `message` when the handler set one; otherwise the default for the operation: `Retrieved successfully` (GET), `Created successfully` (POST that creates), `Updated successfully` (PUT, PATCH), `Deleted successfully` (DELETE), `OK` (anything else). `message` is optional in a JSON success body, so these defaults exist only for the text output. A route declares its primary value (`Primary`: the JSON field name, empty when there is none) once, in the same route definition that feeds Swagger and `llms.txt`. Field order is the order of the fields in the Go response struct (the order `encoding/json` writes); a `map` is written with its keys sorted alphabetically, so a response whose order matters is a struct, never a map.
 
@@ -29587,7 +29621,7 @@ Full CSS rules (custom properties, theming, layout): see "CSS Rules" earlier in 
 | Swagger theming | `src/swagger/theme.go` | Swagger UI theme application |
 | GraphQL theming | `src/graphql/theme.go` | GraphiQL theme application |
 | WebUI theming | `src/server/template/` | HTML template theme classes |
-| CSS variables | Embedded in templates | Theme-specific CSS custom properties |
+| CSS variables | `static/css/variables.css` (embedded in the binary with the other static assets) | Theme-specific CSS custom properties: the one canonical location, never copied into templates |
 | **TUI theming** | `src/client/tui/styles.go` | Lipgloss styles from palette |
 | **CLI colors** | `src/client/cli/output.go` | ANSI colors from palette |
 | **GUI theming** | `src/client/gui/theme_*.go` | Native widget theming |
@@ -40629,6 +40663,8 @@ Examples:
 | Type | System user (no password, no login) |
 | Gecos | `{internal_name} service account` |
 
+**Legacy macOS accounts.** Earlier implementations created the macOS account as `_{internal_name}` (the underscore convention). Startup never renames, deletes or edits it. When it exists, startup still creates the canonical `{internal_name}` account and group as above, re-owns the application directories (`{config_dir}`, `{data_dir}`, `{log_dir}`, `{cache_dir}`) once from the legacy user to the canonical one, and logs one `warn` naming the legacy account, which the operator removes by hand when it is no longer needed. The server never runs as the legacy account.
+
 ### UID/GID Selection Logic
 
 **The UID and GID MUST be the same value.** Find an unused ID where both UID and GID are available AND not reserved by well-known services:
@@ -41592,6 +41628,12 @@ binaries/
 # Infer PROJECT_NAME and PROJECT_ORG from git remote or directory path (NEVER hardcode)
 PROJECT_NAME := $(shell git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)(\.git)?$$|\1|' || basename "$$(pwd)")
 PROJECT_ORG := $(shell git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+(\.git)?$$|\1|' || basename "$$(dirname "$$(pwd)")")
+
+# INTERNAL_NAME: the frozen identity from IDEA.md (internal_name), PROJECT_NAME on first run (PART 0)
+INTERNAL_NAME := $(shell sed -n 's/^internal_name:[[:space:]]*//p' IDEA.md 2>/dev/null | head -n1 | tr -d '[:space:]')
+ifeq ($(INTERNAL_NAME),)
+INTERNAL_NAME := $(PROJECT_NAME)
+endif
 
 # Local builds only: VERSION env (user override, AI never sets it) > non-empty release.txt > devel rule (short commit id, "devel" outside git)
 VERSION ?= $(shell v=; [ -r release.txt ] && v=$$(tr -d '[:space:]' < release.txt); if [ -n "$$v" ]; then echo "$$v"; else git rev-parse --short=7 HEAD 2>/dev/null || echo devel; fi)
@@ -43844,12 +43886,13 @@ networks:
 | Environment | Registry |
 |-------------|----------|
 | Release | Platform container registry (ghcr.io, registry.gitlab.com, etc.) |
-| Development | Local Docker daemon only |
+| Local development (`:dev`, `:test`) | Local Docker daemon only |
+| Rolling devel image (`:devel`) | Platform container registry; published only from `main`/`master` and the daily schedule by the `build-devel` job |
 
 ### Tag Rules
 
 1. **Release builds** MUST push to `{PLATFORM_CONTAINER_REGISTRY}/{project_org}/{internal_name}`
-2. **Development builds** MUST use local-only tags (no registry prefix)
+2. **Local development builds** (`:dev`, `:test`) MUST use local-only tags (no registry prefix); the rolling `:devel` image is the one development tag that is pushed, by CI only
 3. **NEVER push `:dev` or `:test` tags to production registry**
 4. All release images built for `linux/amd64` AND `linux/arm64`
 
