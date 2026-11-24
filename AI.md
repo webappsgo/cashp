@@ -31,19 +31,23 @@ have_internal_org=$(grep -cE '^internal_org:[[:space:]]*.+$' IDEA.md 2>/dev/null
 
 | Value | Primary Source | Fallback |
 |-------|----------------|----------|
-| `{project_name}` | IDEA.md `## Project variables` | Existing long-form `CLAUDE.md` / `.claude/CLAUDE.md` project details, then `basename "$PWD"` |
-| `{project_org}` | IDEA.md `## Project variables` | Existing long-form `CLAUDE.md` / `.claude/CLAUDE.md` project details, then `basename "$(dirname "$PWD")"` |
-| `{internal_name}` | IDEA.md `## Project variables` (always — set at first run; reset only on an explicit rename or fork) | Existing long-form `CLAUDE.md` / `.claude/CLAUDE.md` project details, then first-time setup: copy from `{project_name}` |
-| `{internal_org}` | IDEA.md `## Project variables` (always — set at first run; reset only on an explicit rename or fork) | Existing long-form `CLAUDE.md` / `.claude/CLAUDE.md` project details, then first-time setup: copy from `{project_org}` |
+| `{project_name}` | IDEA.md `## Project variables` | The git remote (`git remote get-url origin`), then `basename "$PWD"` |
+| `{project_org}` | IDEA.md `## Project variables` | The git remote (`git remote get-url origin`), then `basename "$(dirname "$PWD")"` |
+| `{internal_name}` | IDEA.md `## Project variables` (always — set at first run; reset only on an explicit rename or fork) | First-time setup: copy from `{project_name}` |
+| `{internal_org}` | IDEA.md `## Project variables` (always — set at first run; reset only on an explicit rename or fork) | First-time setup: copy from `{project_org}` |
 | `{plist_name}` | **Derived (not stored)**: `io.github.{internal_org}.{internal_name}` | — |
 
 **Detection commands (use commands — never guess):**
 ```bash
-# Project name: current directory name
-project_name=$(basename "$PWD")
+# Project name: IDEA.md project variables first, then the git remote, then the directory name
+project_name=$(sed -n 's/^project_name:[[:space:]]*//p' IDEA.md 2>/dev/null | head -n1 | tr -d '[:space:]')
+[ -n "$project_name" ] || project_name=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)$|\1|; s|\.git$||')
+[ -n "$project_name" ] || project_name=$(basename "$PWD")
 
-# Project org: parent directory name (assumes ~/org/project structure)
-project_org=$(basename "$(dirname "$PWD")")
+# Project org: IDEA.md project variables first, then the git remote, then the parent directory name (assumes ~/org/project structure)
+project_org=$(sed -n 's/^project_org:[[:space:]]*//p' IDEA.md 2>/dev/null | head -n1 | tr -d '[:space:]')
+[ -n "$project_org" ] || project_org=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+(\.git)?$|\1|')
+[ -n "$project_org" ] || project_org=$(basename "$(dirname "$PWD")")
 
 # Internal name: same as project_name on first run, stable after
 internal_name="$project_name"
@@ -148,7 +152,7 @@ IDEA.md is the project PLAN. AI.md (this file) is the authoritative template bas
 | IDEA.md MAY | IDEA.md MAY NOT |
 |-------------|-----------------|
 | Define the product's features, data models, business rules and audience, and its API surface: the `### API routes` inventory of what callers can do (method, path, auth, purpose, request/response summary), never how a handler is written | Remove, weaken or waive a mandatory AI.md requirement (server baseline, configuration, security, health, build, CI/CD, i18n, accessibility, documentation, testing) |
-| Choose which of the template's explicitly OPTIONAL capabilities the project uses (the PARTs the template labels optional; PARTS 34-36 are activated in SPEC.md only, IDEA.md just describes the feature) | Change how a mandatory requirement is implemented |
+| Choose which of the template's explicitly OPTIONAL capabilities the project uses (the PARTs the template labels optional; for PARTS 34-36 IDEA.md only DESCRIBES the feature, and SPEC.md alone activates it) | Change how a mandatory requirement is implemented |
 | State non-goals in product terms (for example "no user accounts") | Use a non-goal as a reason to skip a mandatory part |
 
 **Non-goal vs mandatory requirement:** a non-goal limits the product's FEATURES, never AI.md's baseline. "No accounts" is honored by not enabling the optional multi-user parts; it does not remove the health endpoint, the config file, the security headers or any other mandatory part, which are built exactly as AI.md defines them. If an IDEA.md line contradicts a mandatory AI.md requirement, fix the IDEA.md line (reword it as product scope) — never change the implementation to match it. Log a template defect only when AI.md itself is ambiguous or self-contradictory.
@@ -941,7 +945,7 @@ The `release` job already has `contents: write` to push assets — this covers t
 | Rule | Description |
 |------|-------------|
 | **SQLite default** | `{db_dir}/server.db` and `{db_dir}/users.db` (see PART 4 for platform-specific paths) |
-| **Password hashing** | Argon2id - NEVER bcrypt |
+| **Password hashing** | Argon2id for every stored hash - NEVER bcrypt for a new hash (an existing legacy bcrypt hash is only verified, then immediately rehashed to Argon2id, PART 11) |
 | **Valkey/Redis** | Every app supports it for caching/clustering |
 
 ## CLI Rules
@@ -1183,7 +1187,7 @@ Quick reference: Accept `yes/no`, `true/false`, `1/0`, `on/off`, `enable/disable
 
 | NEVER | Instead |
 |-------|---------|
-| Use bcrypt for passwords | Use Argon2id |
+| Use bcrypt for new password hashes | Use Argon2id (a legacy bcrypt hash is verified once, then rehashed at once) |
 | Put Dockerfile in project root | Put in `docker/Dockerfile` |
 | Use .env files | Hardcode sane defaults in docker-compose |
 | Run docker-compose in project dir | Use temp directory workflow |
@@ -1394,7 +1398,7 @@ paths:
 ## KEY DECISIONS (pre-answered)
 | Question | Answer | Reference |
 |----------|--------|-----------|
-| What password hash? | Argon2id (NEVER bcrypt) | PART 11 |
+| What password hash? | Argon2id (NEVER bcrypt for a new hash; legacy bcrypt is verify-then-rehash only) | PART 11 |
 | Where is Dockerfile? | `docker/Dockerfile` (NEVER root) | PART 27 |
 | CGO enabled? | NEVER (CGO_ENABLED=0 always) | PART 7 |
 | Premium features? | NEVER (all features free) | PART 1 |
@@ -1671,7 +1675,7 @@ On EVERY new conversation or after "context compacted" message:
 - Most apps only have cluster nodes
 
 ## NEVER Do (Top 19) - VIOLATIONS ARE BUGS
-1. Use bcrypt → Use Argon2id
+1. Store a new bcrypt hash → Use Argon2id (a legacy bcrypt hash is only verified, then rehashed)
 2. Put Dockerfile in root → `docker/Dockerfile`
 3. Use CGO → CGO_ENABLED=0 always
 4. Hardcode dev values → Detect at runtime
@@ -6226,7 +6230,7 @@ package main
 ```bash
 # Method 1: Infer from git remote (PREFERRED - works regardless of directory location)
 # github.com/cloudops/echoip.git → PROJECT_ORG=cloudops, PROJECT_NAME=echoip
-PROJECT_NAME=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)(\.git)?$|\1|')
+PROJECT_NAME=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)$|\1|; s|\.git$||')
 PROJECT_ORG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+(\.git)?$|\1|')
 
 # Method 2: Infer from current directory path (fallback if no git remote)
@@ -6237,7 +6241,7 @@ PROJECT_NAME=$(basename "$PWD")
 PROJECT_ORG=$(basename "$(dirname "$PWD")")
 
 # Method 3: Combined approach (git first, fallback to path)
-PROJECT_NAME=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)(\.git)?$|\1|' || basename "$PWD")
+PROJECT_NAME=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)$|\1|; s|\.git$||' || basename "$PWD")
 PROJECT_ORG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+(\.git)?$|\1|' || basename "$(dirname "$PWD")")
 ```
 
@@ -14031,17 +14035,19 @@ func isWritable(path string) bool {
 // macOS: /Library/Backups/{internal_org}/{internal_name}
 // BSD:   /var/backups/{internal_org}/{internal_name}
 // Windows: %ProgramData%\Backups\{internal_org}\{internal_name}
+// internalOrg and internalName are the frozen identity ({internal_org}/{internal_name}): backup paths use them, never the
+// renameable project_org/project_name, so a rename never orphans existing backups
 func systemBackupDir() string {
     switch runtime.GOOS {
     case "darwin":
-        return filepath.Join("/Library/Backups", projectOrg, projectName)
+        return filepath.Join("/Library/Backups", internalOrg, internalName)
     case "windows":
-        return filepath.Join(os.Getenv("ProgramData"), "Backups", projectOrg, projectName)
+        return filepath.Join(os.Getenv("ProgramData"), "Backups", internalOrg, internalName)
     case "freebsd", "openbsd", "netbsd":
-        return filepath.Join("/var/backups", projectOrg, projectName)
+        return filepath.Join("/var/backups", internalOrg, internalName)
     // linux
     default:
-        return filepath.Join("/mnt/Backups", projectOrg, projectName)
+        return filepath.Join("/mnt/Backups", internalOrg, internalName)
     }
 }
 
@@ -14055,12 +14061,12 @@ func userBackupDir() string {
     home, _ := os.UserHomeDir()
     switch runtime.GOOS {
     case "darwin":
-        return filepath.Join(home, "Library/Backups", projectOrg, projectName)
+        return filepath.Join(home, "Library/Backups", internalOrg, internalName)
     case "windows":
-        return filepath.Join(os.Getenv("LOCALAPPDATA"), "Backups", projectOrg, projectName)
+        return filepath.Join(os.Getenv("LOCALAPPDATA"), "Backups", internalOrg, internalName)
     // linux, bsd
     default:
-        return filepath.Join(home, ".local/share/Backups", projectOrg, projectName)
+        return filepath.Join(home, ".local/share/Backups", internalOrg, internalName)
     }
 }
 ```
@@ -18011,7 +18017,7 @@ server:
 | `event` | String | Event type (e.g., `admin.login`) |
 | `category` | String | Event category (e.g., `authentication`) |
 | `severity` | String | `info`, `warn`, `error`, `critical` |
-| `actor` | Object | Who performed the action: `type` (`owner`, `operator`, `visitor` or `system`), `id` (the owner id, or `server` or `scheduler`) and `ip` when the event arrived over the network. Autonomous events (startup, shutdown, backups, scheduler tasks) have `type: system` and no `ip` |
+| `actor` | Object | Who performed the action: `type` (`owner`, `operator`, `anonymous` or `system`), `id` (the owner id, or `server` or `scheduler`) and `ip` when the event arrived over the network. Autonomous events (startup, shutdown, backups, scheduler tasks) have `type: system` and no `ip` |
 | `result` | String | `success` or `failure` |
 | `prev` | String | Lowercase hex SHA-256 of the previous entry's line (hash chain, see "Audit Log Integrity") |
 
@@ -26882,7 +26888,7 @@ if ('serviceWorker' in navigator) {
 > When a service worker calls `event.respondWith()` it owns that response completely. If the promise it passes **resolves to `undefined`** (a cache miss on the last fallback) or **rejects** (an uncaught network failure), the browser shows **`net::ERR_FAILED`** — a dead tab — instead of a page. A transient network blip on a page navigation MUST degrade to a real offline/error page, never a broken site. The handler below, and any service worker a project ships, MUST obey:
 >
 > - **Navigations are network-first** — fetch the network first so a new build's HTML is seen immediately (and the `Clear-Site-Data` build-purge has nothing stale to fight); only on failure fall back to the cached page, then to a **synthesized** `Response`.
-> - **Offline copies are for public pages only** — the server adds the internal header `X-Offline-Cache: public` to a navigation response ONLY when the page is identical for every visitor: the request carries no session or owner cookie, and the body holds no signed-in state, token, per-visitor value or CSRF token. `Cache-Control` stays `no-store`; the header is only a signal to the worker. The worker puts a navigation response in the cache only when it also has that header; any other navigation response is not cached, and the worker deletes an existing entry for that URL, so a page that becomes private leaves no old copy. Authenticated pages, token pages, the admin area and every page with a form never carry the header, and on offline they show the synthesized offline page.
+> - **Offline copies are for public pages only** — the server adds the internal header `X-Offline-Cache: public` to a navigation response ONLY when the page is identical for every visitor: the request carries no session or owner cookie, and the body holds no signed-in state, owner token or per-visitor value. The CSRF value of the shared header theme form and the consent forms does not count against eligibility: it is only used online, a form submitted from an offline copy fails, and nothing is queued. `Cache-Control` stays `no-store`; the header is only a signal to the worker. The worker puts a navigation response in the cache only when it also has that header; any other navigation response is not cached, and the worker deletes an existing entry for that URL, so a page that becomes private leaves no old copy. Authenticated pages, token pages, the admin area and every page with a form of its own (the shared header theme and consent forms do not count) never carry the header, and on offline they show the synthesized offline page.
 > - **Every `respondWith()` branch ends in a guaranteed `Response`** — a terminal `.catch()` returning a real `Response` (a synthesized 503 offline page for navigations, a 504 for subresources). Never end a chain on `cached || caches.match('/offline…')`: that link can itself miss and resolve `undefined`.
 > - **Only intercept same-origin GET.** Let API calls, cross-origin requests, and non-GET methods fall through untouched — never call `respondWith()` for them.
 > - **The wait for the network is bounded** — a navigation `fetch` races an 8 s timer (`NAV_TIMEOUT_MS`); on timeout the worker falls back to the cached public page, then the synthesized offline page. A server that is restarting, updating or hung never leaves a tab on a blank page with a stuck load bar.
@@ -33212,7 +33218,7 @@ On first run, a one-time setup token is generated and displayed in console. Admi
 - Generated on first run ONLY
 - Displayed in console ONCE (never stored in plain text)
 - Single use - invalidated after setup complete
-- If lost, must reset database to regenerate
+- If lost, run `{project_name} --maintenance setup` as root: while no admin exists it regenerates the token and `{config_dir}/setup_token.txt` after a confirmation; the database is never reset for this
 - Format: 32 hexadecimal characters (128-bit random)
 
 ## Multiple Server Admins
@@ -33621,7 +33627,7 @@ Admin Panel Header:
 **Login page rules:**
 - Centered card on dark background
 - Project name/logo at top
-- No links to public site
+- No links to the public site of its own: the login page is not a shell exception, so it carries the shared header and footer (including the shell's brand link to `/`), and the card adds no further public links
 - Version number at bottom (small)
 - No "Forgot password" (admin resets via CLI if needed)
 
@@ -41614,7 +41620,7 @@ func (ws *windowsService) Execute(args []string, r <-chan svc.ChangeRequest, s c
 - **NEVER guess or assume** - must be explicitly created by the user, and never written by AI
 - Canonical single-line official site source when present
 - If `site.txt` exists, it wins over `IDEA.md`, README, env vars, CI secrets, and other fallbacks
-- If `site.txt` and `IDEA.md ## Project variables` both exist, `IDEA.md` should match `site.txt`; `site.txt` is the easy-to-update operational override
+- `IDEA.md` `official_site` only resolves the `{official_site}` placeholder in README and docs; it is NOT an operational source. The embedded `OfficialSite` and the CLI's default server come only from `site.txt`, `OFFICIAL_SITE` or CI secrets, so with none of them the CLI requires `--server` even when IDEA.md has a value. When both exist, `IDEA.md` should match `site.txt`; `site.txt` is the easy-to-update operational override
 - If not present, CLI/Agent users must always specify `--server` flag
 - Sources checked in order:
   1. File: `site.txt` in project root
@@ -41780,7 +41786,7 @@ binaries/
 # PROJECT_NAME and PROJECT_ORG: IDEA.md project variables first (the same source as {project_name}), then the git remote, then the directory path (NEVER hardcode)
 PROJECT_NAME := $(shell sed -n 's/^project_name:[[:space:]]*//p' IDEA.md 2>/dev/null | head -n1 | tr -d '[:space:]')
 ifeq ($(PROJECT_NAME),)
-PROJECT_NAME := $(shell git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)(\.git)?$$|\1|' || basename "$$(pwd)")
+PROJECT_NAME := $(shell git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)$$|\1|; s|\.git$$||' || basename "$$(pwd)")
 endif
 PROJECT_ORG := $(shell sed -n 's/^project_org:[[:space:]]*//p' IDEA.md 2>/dev/null | head -n1 | tr -d '[:space:]')
 ifeq ($(PROJECT_ORG),)
@@ -43035,7 +43041,7 @@ services:
     environment:
       POSTGRES_DB: {project_name}
       POSTGRES_USER: {project_name}
-      POSTGRES_PASSWORD: {project_name}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD to a random secret, e.g. openssl rand -hex 24}
     volumes:
       - ./volumes/data/db/postgres/{project_name}:/var/lib/postgresql/data:z
     healthcheck:
@@ -43304,14 +43310,6 @@ priority=20
 stdout_logfile=/data/log/valkey.log
 stderr_logfile=/data/log/valkey.log
 
-[program:tor]
-command=/usr/bin/tor -f /config/{project_name}/tor/torrc
-autostart=%(ENV_TOR_ENABLED)s
-autorestart=true
-priority=30
-stdout_logfile=/data/log/tor.log
-stderr_logfile=/data/log/tor.log
-
 [program:app]
 command=/usr/local/bin/{project_name}
 autostart=true
@@ -43431,8 +43429,12 @@ if [ ! -f /data/db/postgres/PG_VERSION ]; then
     su - postgres -c "pg_ctl -D /data/db/postgres -l /data/log/postgres/init.log start"
     sleep 3
 
-    # Create application database and user
-    su - postgres -c "psql -c \"CREATE USER ${DB_USER:-{project_name}} WITH PASSWORD '${DB_PASSWORD:-{project_name}}';\""
+    # The database password is never derived from the project name: a value is generated on first init unless the operator
+# supplied DB_PASSWORD. The app uses the unix socket and never needs it; it is not printed or logged
+DB_PASSWORD="${DB_PASSWORD:-$(openssl rand -hex 24)}"
+
+# Create application database and user
+    su - postgres -c "psql -c \"CREATE USER ${DB_USER:-{project_name}} WITH PASSWORD '${DB_PASSWORD}';\""
     su - postgres -c "psql -c \"CREATE DATABASE ${DB_NAME:-{project_name}} OWNER ${DB_USER:-{project_name}};\""
     su - postgres -c "psql -c \"GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME:-{project_name}} TO ${DB_USER:-{project_name}};\""
 
@@ -43440,14 +43442,13 @@ if [ ! -f /data/db/postgres/PG_VERSION ]; then
     su - postgres -c "pg_ctl -D /data/db/postgres stop"
 fi
 
-# Set Tor enabled flag for supervisor
-# Tor is auto-enabled: the binary is installed in the AIO image; set TOR_ENABLED=false to opt out
-export TOR_ENABLED="${TOR_ENABLED:-true}"
+# Tor is NOT a supervisor program: the app owns the Tor process (PART 32) and starts its own dedicated, isolated instance as the
+# service user when the tor binary installed in the image is found, with its torrc and data under the app's own directories
 
 # I2P_ENABLED is not exported here: the binary's own default is ON in a container. Set I2P_ENABLED=false
 # (or server.i2p.enabled: false) to turn it off. The app prefers the i2pd binary and falls back to SAM.
 
-# Start supervisor (manages postgresql + valkey + tor + app)
+# Start supervisor (manages postgresql + valkey + app; the app manages Tor itself)
 exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
 ```
 
@@ -43468,8 +43469,7 @@ exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
 | `TZ` | `America/New_York` | Timezone |
 | `DB_NAME` | `{project_name}` | PostgreSQL database name |
 | `DB_USER` | `{project_name}` | PostgreSQL username |
-| `DB_PASSWORD` | `{project_name}` | PostgreSQL password |
-| `TOR_ENABLED` | `true` | Tor hidden service (auto-enabled — tor binary is installed; set `false` to disable) |
+| `DB_PASSWORD` | random, generated at first init | PostgreSQL password; never a project-name default. The app connects over the unix socket, so set it only when something connects over TCP |
 | `I2P_ENABLED` | (unset) | I2P eepsite (default ON in a container, set `false` to turn it off; prefers i2pd binary, falls back to SAM) |
 
 **App Connection Strings (internal):**
@@ -43947,7 +43947,7 @@ services:
     environment:
       POSTGRES_DB: {project_name}
       POSTGRES_USER: {project_name}
-      POSTGRES_PASSWORD: {project_name}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD to a random secret, e.g. openssl rand -hex 24}
       TZ: ${TZ:-America/New_York}
     volumes:
       - ./volumes/data/db/postgres/{project_name}:/var/lib/postgresql/data:z
@@ -49473,6 +49473,12 @@ fi
    - **CLI full functionality** (with API token against running server)
    - **Agent full functionality** (with API token against running server)
 7. Clean up on exit: register `trap cleanup EXIT INT TERM` BEFORE the first container starts; it removes every container, sidecar, network and volume the script started, by the exact names the script recorded, so a failed or interrupted run leaves nothing behind (see "Container Discipline")
+
+#### Testing Operator-Token Routes
+
+**Every operator route (`server.token`, `adm_`) is tested with five requests, in `docker.sh` and `incus.sh` alike:** no `Authorization` header → `401`; a wrong token → `401`; an owner or linked token (`own_`) → `403`; the real `server.token` read from `secrets.yml` inside the test container → `200`; and the same route with the token in a query string → `401` (a URL is never a credential). The token value is never echoed: scripts pass it through a variable and print only the route and the status.
+
+**CLI full functionality:** the built client runs against the running server with a linked API token (not just `--help`): `--version`, a status or health command, one read command and one write command, each checked for exit code `0` and expected output, plus one failure case (bad token → non-zero exit and a clear message).
 
 #### tests/docker.sh
 
@@ -58138,9 +58144,9 @@ func EnsureConfigured() error {
 | **Linux** | `github.com/gogpu/ui` + `github.com/gogpu/gogpu` | Pure Go, zero CGO — `goffi` `dlopen`s `libX11`/`libwayland-client` at runtime, no link-time C dependency; native Wayland, not XWayland compat. The binary still needs the system loader, so it is the separate `gui` build only |
 | **macOS** | `github.com/gogpu/ui` + `github.com/gogpu/gogpu` | Pure Go, no cgo — Metal access via the Objective-C runtime through `goffi` |
 | **Windows** | `github.com/gogpu/ui` + `github.com/gogpu/gogpu` | Pure Go, no cgo — DX12 via `goffi` |
-| **BSD** | none | `gogpu/gogpu`'s windowing layer does not implement BSD yet (stubbed via build tags). Compile GUI support out on `freebsd`/`netbsd`/`openbsd` (`caps.GUISupported == false`); falls back to TUI, or CLI if no TTY (see APPLICATION.md's Smart Detect Rules) |
+| **BSD** | none | `gogpu/gogpu`'s windowing layer does not implement BSD yet (stubbed via build tags). Compile GUI support out on `freebsd`/`netbsd`/`openbsd` (`caps.GUISupported == false`); automatic mode falls back to TUI, or CLI if no TTY (see APPLICATION.md's Smart Detect Rules); a forced `gui` mode fails with `gui_unavailable` |
 
-**GUI build separation (REQUIRED).** `gogpu` loads the platform's graphics libraries through `goffi`, so a binary that contains it depends on the system dynamic loader even with `CGO_ENABLED=0` (built in the Alpine toolchain on Linux, that is the musl loader): it is NOT a static, cross-distribution binary and it would not even start in a Debian test container. The GUI is therefore compiled out of every default build. The default client `{project_name}-cli-{os}-{arch}` (and the server and the TUI) is built WITHOUT the `gui` build tag: fully static, runs on every distribution, and `caps.GUISupported` is `false`, so a request for GUI mode resolves to the TUI. The GUI is a separate, OPTIONAL artifact `{project_name}-cli-gui-{os}-{arch}`, built with `-tags gui` for Linux, macOS and Windows only; it is documented as dynamically linked (on Linux it needs the loader of the toolchain that built it) and desktop-only, and the update flow of the static client never replaces it.
+**GUI build separation (REQUIRED).** `gogpu` loads the platform's graphics libraries through `goffi`, so a binary that contains it depends on the system dynamic loader even with `CGO_ENABLED=0` (built in the Alpine toolchain on Linux, that is the musl loader): it is NOT a static, cross-distribution binary and it would not even start in a Debian test container. The GUI is therefore compiled out of every default build. The default client `{project_name}-cli-{os}-{arch}` (and the server and the TUI) is built WITHOUT the `gui` build tag: fully static, runs on every distribution, and `caps.GUISupported` is `false`, so automatic mode resolves to the TUI; an explicitly forced `display.mode: gui` still fails with `gui_unavailable` and never degrades. The GUI is a separate, OPTIONAL artifact `{project_name}-cli-gui-{os}-{arch}`, built with `-tags gui` for Linux, macOS and Windows only; it is documented as dynamically linked (on Linux it needs the loader of the toolchain that built it) and desktop-only, and the update flow of the static client never replaces it.
 
 **One toolkit, one implementation, every platform GUI is supported on.** `gogpu/ui` (+ `gogpu/gogpu` for windowing) is cross-platform in a single codebase for Linux/macOS/Windows — there is no per-OS launcher file and no `runtime.GOOS` dispatch. `gioui.org` (Gio) and `fyne.io/fyne/v2` are **NOT compliant** — both require cgo on Linux (Gio's own install docs list `libwayland-dev`/`libx11-dev`/`libxkbcommon-x11-dev`/etc.; Fyne is built on `go-gl`/`glfw`) and are therefore banned project-wide, not just discouraged.
 
@@ -61913,7 +61919,7 @@ Admin clicks "Invite New User"
 
 | Route | Regular User Access |
 |-------|---------------------|
-| `/server/{admin_path}/*` | NO - 403 Forbidden (unless user has admin role) |
+| `/server/{admin_path}/*` | NO - a Regular User is redirected to their own `/users` dashboard (PART 17), whatever their role: Server Admin is only a row in `admins` |
 | `/users/*` | Full access to own profile, settings, tokens |
 | `/server/auth/login` | Login page |
 | `/server/auth/logout` | Logout |
@@ -61922,7 +61928,7 @@ Admin clicks "Invite New User"
 **Regular User Accounts:**
 - Stored in database (users table)
 - Managed via `/users/{id}`, `/users/settings`
-- Can have roles (admin, user, custom)
+- Can have roles (`user` and project-defined custom roles) that scope Regular User features only; no role grants Server Admin access (that is the separate `admins` table, PART 17)
 - Multiple accounts supported
 
 ## User Account Security
@@ -68163,7 +68169,7 @@ maintainer_email: jane@example.com
 
 **Testing (Docker OR Incus):**
 - [ ] **Unit tests** - `make test` in the Docker toolchain image `casjaysdev/go:latest` (locally and in CI/CD), never in `alpine:latest`
-- [ ] **Quick binary checks** - Docker `alpine:latest` (`tests/docker.sh`), for the compiled binary only
+- [ ] **Basic tier** - Docker `alpine:latest` (`tests/docker.sh`): the compiled binary (not the shipped image), the basic suite including Tor and I2P health; the init-system and service lifecycle belong to `tests/incus.sh`
 - [ ] **Full OS tests** - Incus `debian:latest` for systemd (PREFERRED)
 - [ ] **NEVER run binaries locally** - use Docker or Incus container
 
@@ -68752,7 +68758,7 @@ make docker
 ### Authentication & Authorization
 
 - [ ] No hardcoded credentials in code
-- [ ] Passwords hashed with Argon2id (NEVER bcrypt)
+- [ ] Passwords hashed with Argon2id (NEVER bcrypt for a new hash; a legacy bcrypt hash is only verified, then rehashed)
 - [ ] Session tokens are cryptographically random
 - [ ] Session expiration enforced
 - [ ] CSRF protection on all forms

@@ -61,7 +61,7 @@ For each entry, the first source that yields content wins:
 An override lets you publish, for example, a hand-signed `security.txt`
 without giving up generation for every other entry.
 
-Administration is at `config/web/well-known` in the admin panel, with a preview
+Administration is at `web/well-known` in the admin panel, with a preview
 endpoint per entry. See [Admin Panel](admin.md#admin-api).
 
 ## Identity providers
@@ -71,9 +71,9 @@ supported, each configurable with multiple providers.
 
 | Protocol | Admin page |
 |---|---|
-| OIDC | `config/security/auth/oidc` |
-| LDAP | `config/security/auth/ldap` |
-| SAML | `config/security/auth/saml` |
+| OIDC | `security/auth/oidc` |
+| LDAP | `security/auth/ldap` |
+| SAML | `security/auth/saml` |
 
 External authentication flows live under the `/server/auth/*` route scope,
 separate from the local login form. A successful external authentication
@@ -182,7 +182,7 @@ database degrades gracefully — it never blocks hosting, and it never becomes a
 reason a legitimate tenant cannot reach their own control panel.
 
 Configuration is under `server.geoip`; the admin page is
-`config/network/geoip`.
+`network/geoip`.
 
 ## Outbound mail
 
@@ -200,8 +200,8 @@ default.
 
 | Network | Configuration | Admin page |
 |---|---|---|
-| Tor | `server.tor` | `config/network/tor` |
-| I2P | `server.i2p` — SAM bridge at `127.0.0.1:7656` | `config/network/i2p` |
+| Tor | `server.tor` | `network/tor` |
+| I2P | `server.i2p` — SAM bridge at `127.0.0.1:7656` | `network/i2p` |
 
 ## Related
 

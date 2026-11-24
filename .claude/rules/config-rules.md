@@ -8,7 +8,7 @@
 - Single instance: server.yml is source of truth. Cluster mode: remote DB is source of truth, server.yml caches a read-only fallback copy
 - Default port: random unused port in 64000-64999 on first run, then persisted to server.yml
 - Port 80 → enables Let's Encrypt HTTP-01; port 443 → TLS-ALPN-01 + auto SSL
-- Boolean env/config values accept a wide truthy/falsy word list (see `src/config/bool.go`) — unrecognized value is an error, never a silent default
+- Boolean env/config values accept a wide truthy/falsy word list (see `src/config/bool.go`) — unrecognized values keep the configured default and emit a warning; startup continues
 
 ## Environment Variables
 Runtime (always checked): `NO_COLOR`, `TERM`, `DOMAIN`, `MODE`, `DATABASE_DRIVER`, `DATABASE_URL`, `SMTP_*`.

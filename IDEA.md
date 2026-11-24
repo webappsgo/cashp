@@ -130,6 +130,12 @@ Non-goals:
 | Account admin | Their own hosting account / tenant | Manage their own sites, apps, containers, VMs, databases, email domains, DNS zones, users under their account |
 | End user | Whatever an account admin grants them | Use the specific services granted (e.g. a single site's file manager, a single mailbox, a single database) |
 
+### Project-specific admin sections
+
+| Section | Purpose |
+|---|---|
+| `billing` | Global administrators manage plans, payment providers, invoices, and platform billing operations. |
+
 Global admin setup is token-based, not registration-order-based: on first run
 the server generates a one-time setup token (shown once, in console); whoever
 redeems it creates the primary global admin account. There is no "first

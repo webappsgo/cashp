@@ -11,10 +11,11 @@
 - Desktop-first CSS (`max-width` media queries)
 - Let long strings (IPv6, .onion, tokens, hashes) overflow mobile
 - Hardcode hex colors — use `--color-*` properties only
-- Link to `/server/{admin_path}` from any public route
+- Link to `/server/{admin_path}` from a public route — admin paths are never exposed in public navigation
 - Export via JS `Blob`/`showSaveFilePicker()` as the only path
 - Hide `<input type="file">` behind a JS-only trigger
-- Invent admin routes outside `{admin_username}/*` or `config/*`
+- Put server-management routes under a `config` segment
+- Let admin usernames collide with fixed admin section names
 - Duplicate an existing `.btn`/badge class
 
 ## CRITICAL - ALWAYS DO
@@ -39,7 +40,7 @@
 | Default theme | Dark | PART 16 § Themes |
 | Theme persistence | `theme` cookie (guests) / DB pref (users) | PART 16 § Themes |
 | Admin default path | `/server/administration`, via `server.admin_path` | PART 17 § Configurable Admin Path |
-| Admin route structure | Only `{admin_username}` and `config` under admin root | PART 17 § Admin Route Hierarchy |
+| Admin route structure | `{admin_username}/*` plus fixed sections such as `settings`, `users`, `security`, and `backup`; no `config` segment | PART 17 § Admin Route Hierarchy |
 | Non-admin hits admin path | Redirected to own dashboard, no hint | PART 17 § Access Control on Admin Routes |
 | File export mechanism | Plain `<a>`/GET, `Content-Disposition: attachment` | PART 16 § Import/Export UI Convention |
 | Modal implementation | Native `<dialog>` + `<form method="dialog">` | PART 16 § HTML5 & CSS Over JavaScript |
@@ -53,7 +54,7 @@
 | Text Browser | Non-graphical client (lynx, w3m); gets no-JS HTML |
 | Vanity URL | Short root URL (`/{username}`) proxying to an API |
 | Smart Content Detection | Picks HTML/text/JSON by `Accept`/User-Agent |
-| Admin root | `/server/{admin_path}/` — dashboard, `config`, `{admin_username}` only |
+| Admin root | `/server/{admin_path}/` — dashboard, a fixed section, or `{admin_username}` only |
 | Progressive enhancement | Works with plain HTML/CSS; JS adds convenience only |
 
 ---

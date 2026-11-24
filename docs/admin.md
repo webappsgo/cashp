@@ -24,7 +24,7 @@ console, and begins serving.
 ### Wizard steps
 
 Visit `/server/{admin_path}/`, enter the token, and you are redirected to
-`/server/{admin_path}/config/setup`:
+`/server/{admin_path}/setup`:
 
 1. **Create the admin account** — username defaults to `administrator`. The
    normal username blocklist does not apply to this account.
@@ -68,14 +68,14 @@ in 5 minutes for an hour.
 
 ## URL structure
 
-The hierarchy is strict. Only two things may live directly beneath
-`/server/{admin_path}/`: the administrator's own username, and `config`.
-Everything that manages the server lives under `config/`.
+The hierarchy is strict. The dashboard, the administrator's own username,
+and the fixed server-management sections live directly beneath
+`/server/{admin_path}/`. There is no `config` grouping segment.
 
 ```text
 /server/{admin_path}/                       # dashboard
 /server/{admin_path}/{admin_username}/      # the admin's own account
-/server/{admin_path}/config/                # all server management
+/server/{admin_path}/settings              # server management sections
 ```
 
 ### The admin's own account
@@ -90,42 +90,42 @@ Everything that manages the server lives under `config/`.
 
 | Path | Purpose |
 |---|---|
-| `config/setup` | First-run wizard |
-| `config/settings` | Core server settings |
-| `config/branding` | Title, tagline, logo, colors |
-| `config/ssl` | Certificates, Let's Encrypt, HSTS |
-| `config/email` | SMTP and outbound mail |
-| `config/scheduler` | The nine built-in scheduled tasks |
-| `config/logs` | Log levels, files, rotation |
-| `config/logs/audit` | Audit trail viewer |
-| `config/backup` | Backup destination, retention, encryption |
-| `config/maintenance` | Maintenance mode and self-healing |
-| `config/updates` | Update channel and installation |
-| `config/info` | Version, build, host facts |
-| `config/metrics` | Metrics endpoints and scraper tokens |
-| `config/help` | Built-in help |
+| `setup` | First-run wizard |
+| `settings` | Core server settings |
+| `branding` | Title, tagline, logo, colors |
+| `ssl` | Certificates, Let's Encrypt, HSTS |
+| `email` | SMTP and outbound mail |
+| `scheduler` | The built-in scheduled tasks |
+| `logs` | Log levels, files, rotation |
+| `logs/audit` | Audit trail viewer |
+| `backup` | Backup destination, retention, encryption |
+| `maintenance` | Maintenance mode and self-healing |
+| `updates` | Update channel and installation |
+| `info` | Version, build, host facts |
+| `metrics` | Metrics endpoints and scraper tokens |
+| `info/help` | Built-in help |
 
 ### Network
 
 | Path | Purpose |
 |---|---|
-| `config/network/tor` | Onion service |
-| `config/network/i2p` | Eepsite |
-| `config/network/geoip` | GeoIP databases and country rules |
-| `config/network/blocklists` | IP blocklist feeds |
+| `network/tor` | Onion service |
+| `network/i2p` | Eepsite |
+| `network/geoip` | GeoIP databases and country rules |
+| `network/blocklists` | IP blocklist feeds |
 
 ### Security
 
 | Path | Purpose |
 |---|---|
-| `config/security/auth` | Authentication policy |
-| `config/security/auth/oidc` | OIDC providers |
-| `config/security/auth/ldap` | LDAP providers |
-| `config/security/auth/saml` | SAML providers |
-| `config/security/tokens` | API token management |
-| `config/security/ratelimit` | Rate-limit tuning |
-| `config/security/firewall` | Firewall rules |
-| `config/security/allowlist` | IP allowlist |
+| `security/auth` | Authentication policy |
+| `security/auth/oidc` | OIDC providers |
+| `security/auth/ldap` | LDAP providers |
+| `security/auth/saml` | SAML providers |
+| `security/tokens` | API token management |
+| `security/ratelimit` | Rate-limit tuning |
+| `security/firewall` | Firewall rules |
+| `security/allowlist` | IP allowlist |
 
 ### Conditional sections
 
@@ -133,13 +133,13 @@ These appear only when the corresponding feature is enabled:
 
 | Path | Requires |
 |---|---|
-| `config/users/` | `server.features.multi_user` |
-| `config/users/invites` | `server.features.multi_user` |
-| `config/moderation/users` | `server.features.multi_user` |
-| `config/orgs/` | `server.features.organizations` |
-| `config/cluster/nodes` | clustering enabled |
-| `config/cluster/add` | clustering enabled |
-| `config/agents/` | agents enabled |
+| `users/` | `server.features.multi_user` |
+| `users/invites` | `server.features.multi_user` |
+| `moderation/users` | `server.features.multi_user` |
+| `orgs/` | `server.features.organizations` |
+| `cluster/nodes` | clustering enabled |
+| `cluster/add` | clustering enabled |
+| `agents/` | agents enabled |
 
 ## Roles
 
@@ -168,21 +168,21 @@ mode is on.
 
 ```bash
 curl -fsS -H "Authorization: Bearer adm_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
-  https://panel.example.com/api/v1/server/administration/config/info
+  https://panel.example.com/api/v1/server/administration/info
 ```
 
 The setup wizard has its own API endpoints, used by the wizard UI itself:
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `config/setup` | GET | Current setup status |
-| `config/setup/verify` | POST | Verify the setup token |
-| `config/setup/account` | POST | Create the admin account |
-| `config/setup/token` | POST | Generate the initial API token |
-| `config/setup/config` | POST | Server configuration |
-| `config/setup/security` | POST | Security settings |
-| `config/setup/services` | POST | Optional services |
-| `config/setup/complete` | POST | Finish setup and invalidate the token |
+| `setup` | GET | Current setup status |
+| `setup/verify` | POST | Verify the setup token |
+| `setup/account` | POST | Create the admin account |
+| `setup/token` | POST | Generate the initial API token |
+| `setup/config` | POST | Server configuration |
+| `setup/security` | POST | Security settings |
+| `setup/services` | POST | Optional services |
+| `setup/complete` | POST | Finish setup and invalidate the token |
 
 Each is relative to `/api/{api_version}/server/{admin_path}/`.
 
@@ -190,14 +190,14 @@ The `/.well-known/` namespace is also administered from here:
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `config/web/well-known` | GET, PATCH | Read and update well-known entry configuration |
-| `config/web/well-known/preview/{name}` | GET | Preview an entry's rendered output |
+| `web/well-known` | GET, PATCH | Read and update well-known entry configuration |
+| `web/well-known/preview/{name}` | GET | Preview an entry's rendered output |
 
 ## Audit trail
 
 Configuration changes, authentication events, security events, and token
 operations are recorded in `audit.log` as JSON, rotated daily, and viewable at
-`config/logs/audit`. Data-access events are recorded too, but that class is off
+`logs/audit`. Data-access events are recorded too, but that class is off
 by default because of its volume — enable it under
 `server.logs.audit.events.data_access` when a compliance regime requires it.
 

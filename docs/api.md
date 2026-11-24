@@ -74,7 +74,7 @@ default, but it is **configurable**. Read it from the config or from
 | Organizations | `/orgs/{slug}/*` |
 | Server admin | `/server/{admin_path}/*` |
 | Admin self | `/server/{admin_path}/{admin_username}/*` |
-| Admin config | `/server/{admin_path}/config/*` |
+| Admin sections | `/server/{admin_path}/{section}/*` |
 
 Route naming is uniform: versioned, plural nouns, lowercase, hyphens rather
 than underscores, no trailing slash, and never a verb — the HTTP method is the
@@ -82,23 +82,17 @@ verb.
 
 ## Authentication
 
-Credentials are looked for in this order; the first one found wins, on every
-authenticated endpoint.
+Credentials are accepted only in supported request headers. Query-string
+credentials are never accepted because URLs can leak through logs, browser
+history, and referrer headers.
 
-| Priority | Header or parameter |
+| Header | Purpose |
 |---|---|
-| 1 | `Authorization: Bearer {token}` (also `Basic` and `Digest`) |
-| 2 | `X-API-Key`, `X-Api-Key`, `API-Key`, `ApiKey` |
-| 3 | `X-Auth-Token`, `X-Access-Token` |
-| 4 | `X-Token`, `Token` |
-| 5 | `?token=` query parameter |
-
-The query parameter works but is the least preferred form — URLs end up in
-proxy logs, browser history, and referrer headers. Avoid it in production.
+| `Authorization: Bearer {token}` | The only native API token presentation |
 
 ```bash
 curl -fsS -H "Authorization: Bearer adm_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
-  https://panel.example.com/api/v1/server/administration/config/info
+  https://panel.example.com/api/v1/server/administration/info
 ```
 
 ### Token format
