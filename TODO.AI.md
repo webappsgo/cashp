@@ -10,6 +10,9 @@ PART 0. AI.md itself is read-only; template defects belong only in
 - [ ] Verify and complete core configuration, path security, runtime modes, startup validation, and binary behavior (PARTS 4–8, 12).
 - [ ] Verify and complete authentication, authorization, tenant isolation, credential handling, database access, cluster behavior, rate limiting, and error/logging controls (PARTS 9–11).
 - [ ] Verify and complete API route behavior, content negotiation, health/version endpoints, OpenAPI/GraphQL parity, and endpoint integration coverage (PARTS 13–14, 29).
+- [ ] Replace the current signal-only composition root with a running HTTP/TLS application that mounts the configured server middleware, public pages, shared auth, admin panel, API, health/readiness/version, metrics, Swagger, and GraphQL handlers (PARTS 8, 12–17).
+- [ ] Rebuild the admin route tree and settings/pages to match PART 17's canonical `/server/{admin_path}/...` structure; remove obsolete route aliases and close every required page/form flow.
+- [ ] Mount all registered user, organization, custom-domain, billing, support, hosting, backup, notification, security, and integration API handlers and their required server-rendered pages (PARTS 14, 16–23, 32–36; IDEA.md).
 - [ ] Verify and complete server rendered public pages, admin pages, no-JavaScript flows, accessibility, content safety, and mobile styling (PARTS 16–17, 31).
 - [ ] Verify and complete activated multi-user, organization, and custom-domain flows, including schema, authorization, ownership proofs, routes, admin controls, and tests (PARTS 34–36; activation governed by SPEC.md).
 

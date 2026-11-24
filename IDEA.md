@@ -1,5 +1,3 @@
-# cashp
-
 ## Project description
 
 CasHp is a self-hostable, all-in-one hosting control panel — a single static
@@ -38,12 +36,6 @@ maintainer_name:  CasjaysDev
 maintainer_email: git-admin@casjaysdev.pro
 binary_name:      cashp
 cli_binary_name:  cashp-cli
-# PART 34 flipped (business logic requires end-user accounts: global_admin/account_admin/end_user roles)
-multi_user:       true
-# PART 35 flipped (business logic requires multi-tenant hosting accounts)
-organizations:    true
-# PART 36 flipped (business logic requires per-tenant custom domains)
-custom_domains:   true
 ```
 
 `internal_name` and `internal_org` are FROZEN — set once at first-time setup
@@ -166,7 +158,7 @@ their 2FA directly.
   Go, Java, .NET, Rust) without hand-written buildpacks.
 - Must support running Docker, Incus, and Podman workloads side by side on
   the same node — not a choice made once at install time
-- The frontend and backend reflects what is actually avaliable/enabled.
+- The frontend and backend reflect what is actually available and enabled.
 
 ### Supported operating systems
 
@@ -482,4 +474,3 @@ username enumeration for targeted attacks.
   sites/VMs/containers, etc.) but must never restrict which features exist —
   a free-tier tenant runs the same code path as a paid tenant, just with
   lower limits.
-

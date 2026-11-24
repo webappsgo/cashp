@@ -37,7 +37,7 @@ On EVERY new conversation or after context compaction:
 14. Skip validation → server validates everything
 15. Implement without reading spec → read relevant PART first
 16. Modify `AI.md` — read-only; project changes go in `IDEA.md`/`SPEC.md`
-17. Edit `## Project variables` in IDEA.md without confirming with the user
+17. Edit `## Project variables` in IDEA.md without user confirmation
 18. Read an image >1000x1000 directly — resize first
 19. Use non-conforming IDEA.md without migration
 
@@ -74,6 +74,7 @@ On EVERY new conversation or after context compaction:
 - CI/CD: `.claude/rules/cicd-rules.md` (PART 28)
 - Testing/docs/i18n: `.claude/rules/testing-rules.md` (PART 29-31)
 - Optional (multi-user/orgs/domains): `.claude/rules/optional-rules.md` (PART 34-36)
+- Optional PART activation: declare adopted PARTs under `## Optional parts` in `SPEC.md`; never activate by editing AI.md or IDEA.md.
 - Full spec: `AI.md` (~65k lines) ← **SOURCE OF TRUTH**
 - Product/business logic: `IDEA.md`
 
