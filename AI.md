@@ -12293,7 +12293,7 @@ Use --service --install for Windows Service (it also enables and starts it)
 
 **Unix (Linux, macOS, FreeBSD):**
 
-| Signal | Number | Action | Description |
+| Signal | Number (Linux) | Action | Description |
 |--------|--------|--------|-------------|
 | `SIGTERM` | 15 | Graceful shutdown | Default kill signal, clean exit |
 | `SIGINT` | 2 | Graceful shutdown | Ctrl+C, clean exit |
@@ -12301,7 +12301,9 @@ Use --service --install for Windows Service (it also enables and starts it)
 | `SIGHUP` | 1 | Ignored | Config auto-reloads via file watcher |
 | `SIGUSR1` | 10 | Reopen logs | Log rotation |
 | `SIGUSR2` | 12 | Status dump | Dump status to log |
-| `SIGRTMIN+3` | 37 | Graceful shutdown | Docker STOPSIGNAL |
+| `SIGRTMIN+3` | 37 | Graceful shutdown | Docker STOPSIGNAL, **Linux only**: Docker sends 37 to a Linux container whatever its libc. macOS has no real-time signals and FreeBSD numbers them differently (`SIGRTMIN` is 65 there), so the handler is registered on Linux only and nowhere else |
+
+**The numbers are Linux's.** macOS and FreeBSD number `SIGUSR1` and `SIGUSR2` as 30 and 31, so code always uses the named constants (`syscall.SIGUSR1`), never a number. The one literal number is `SIGRTMIN+3` = 37, because no Go constant exists for it, and it is guarded by `runtime.GOOS == "linux"`.
 
 **Windows:**
 
@@ -12371,8 +12373,11 @@ func setupSignalHandler(server *http.Server, pidFile string) {
         syscall.SIGUSR2,
     )
 
-    // Handle SIGRTMIN+3 (Docker STOPSIGNAL) - signal 37
-    signal.Notify(sigChan, syscall.Signal(37))
+    // Handle SIGRTMIN+3 (Docker STOPSIGNAL) - signal 37, Linux only: other Unix systems number
+    // (or lack) real-time signals differently, so 37 would be an unrelated signal there
+    if runtime.GOOS == "linux" {
+        signal.Notify(sigChan, syscall.Signal(37))
+    }
 
     // Ignore SIGHUP - config reloads automatically via file watcher
     signal.Ignore(syscall.SIGHUP)
