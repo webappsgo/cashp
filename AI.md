@@ -6221,7 +6221,7 @@ package main
 
 ### Inferring Variables from Path
 
-**NEVER hardcode `{project_name}` or `{project_org}` - always infer from git remote or directory path.**
+**NEVER hardcode `{project_name}` or `{project_org}`. Resolve them in ONE order everywhere (the Auto-Detecting table, the Makefile, scripts): 1) IDEA.md `## Project variables`; 2) the git remote; 3) the directory path.** The repository slug and `{project_name}` may differ (a slug `whois` with `project_name: caswhois`): IDEA.md wins, and nothing derives `{project_name}` from the slug once IDEA.md holds the value. The methods below are fallbacks 2 and 3, for a project whose IDEA.md has no value yet.
 
 **Recommended path structure:** `~/Projects/{gitprovider}/{project_org}/{internal_name}` (but works with any location)
 
@@ -8555,7 +8555,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | **Reload** | The file watcher watches `server.yml`, `yaml.d/`, `secrets.yml` and `assets/`. A change, add or remove re-merges everything; an invalid value resets that key to its default and an unparseable file keeps its last good copy ("Validation") |
 | **Generated values** | The server writes generated values (the saved random port) to `server.yml` and the secrets to `secrets.yml`. It writes area files only for the automatic migration, the admin panel, the setup flow, the CLI and the database sync. If two files set the same key, the later one wins and the startup log says which file did |
 | **Permissions** | `server.yml`, `secrets.yml` and every drop-in are ALWAYS `0600`, and `yaml.d/` is `0700` (PART 8 → "Directory Validation Rules": private paths); a wrong mode is fixed at start, and a drop-in that is group or world writable and cannot be fixed is refused: it is ignored and the error is logged |
-| **Early read** | Before the privileged bind (PART 8 startup, step 8e), ONLY `server.port`, `server.address` and `server.daemonize` are read (`ssl.enabled` is not among them: it only decides whether an already bound single-port listener serves TLS, and the full load at step 13 reads it), from the same merged view (`server.yml`, then drop-ins in order). So a drop-in MAY set any of these three settings and it takes effect on the first start; none of them is re-read or rebound later, so changing `server.port`, `server.address` or `server.daemonize` needs a restart (PART 12) |
+| **Early read** | Before the privileged bind (PART 8 startup, step 8e), ONLY `server.port`, `server.address`, `server.daemonize` and `server.pidfile` are read (`ssl.enabled` is not among them: it only decides whether an already bound single-port listener serves TLS, and the full load at step 13 reads it), from the same merged view (`server.yml`, then drop-ins in order). So a drop-in MAY set any of these four settings and it takes effect on the first start; none of them is re-read or rebound later, so changing `server.port`, `server.address`, `server.daemonize` or `server.pidfile` needs a restart (PART 12) |
 | **Backup** | `{config_dir}/yaml.d/` and `{config_dir}/secrets.yml` are included in backups whenever they exist (PART 22 → "Backup Contents") |
 - **Admin panel:** the panel writes each setting to the file that owns it ("Area Files and Automatic Migration"), `secrets.yml` for the secret keys ("Secrets File") and `assets/` for uploaded images ("Image Files"). A setting that a file OTHER than its owner sets is shown read-only with the file name (`set by yaml.d/90-local.yml`) and cannot be changed in the panel; edit that file instead.
 - **Cluster Mode:** the area files are synced through the database ("Config Sync"); `server.yml` and `secrets.yml` are node-local.
@@ -8654,7 +8654,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | **Written by** | The server writes generated, rotated and moved secrets to `secrets.yml` and ONLY there, never to `server.yml` and never to a drop-in (this limits what the server writes; an operator may still hand-write a value elsewhere, see "Operator-set values"): the first-run `server.token`, `server.security.encryption_key` with its version, and every rotation (`--maintenance secret rotate encryption_key`) |
 | **Operator-set values** | An operator MAY write a secret key in `server.yml` or a drop-in (for example from configuration management). The automatic migration moves it to `secrets.yml` at the next start ("Area Files and Automatic Migration"), where it wins over any other file. A value may also be an environment reference such as `${DB_PASSWORD}`, which is moved like any other value. A plaintext DNS credential is rewritten as `enc:v1:` in the file that holds it. So `secrets.yml` is where a secret lives at rest, and a secret in `server.yml` or a drop-in is a hand-off that ends at the next start |
 | **Migration** | At start, if `server.token` or `server.security.encryption_key` is found in `server.yml` and `secrets.yml` does not hold it, the server writes `secrets.yml` first (atomic, `0600`, fsynced) and only then rewrites `server.yml` without those keys, so a secret is never in both files and never lost |
-| **Early read** | The early config read (PART 8 startup, step 8e) never opens `secrets.yml`: it needs only `server.port`, `server.address` and `server.daemonize` |
+| **Early read** | The early config read (PART 8 startup, step 8e) never opens `secrets.yml`: it needs only `server.port`, `server.address`, `server.daemonize` and `server.pidfile` |
 | **Permissions** | Always `0600` (PART 8 → "Directory Validation Rules": private paths); a wrong mode is fixed at start |
 | **Reload** | The file watcher watches it with `server.yml`, `yaml.d/` and `assets/`; a change re-merges everything and an invalid result keeps the last good config |
 | **Backup** | Included in every backup whenever it exists (PART 22 → "Backup Contents"), so a restore brings back the same token and encryption key |
@@ -9473,7 +9473,8 @@ server:
   user: {auto}
   group: {auto}
 
-  # PID file
+  # PID file: true (default) = create and check it at start (PART 8 steps 11-12); false = none outside containers.
+  # Read by the early config peek; ignored in containers, which never use a PID file
   pidfile: true
 
   # Daemonize on start (detach from terminal)
@@ -11434,7 +11435,7 @@ func EnsurePIDFile(path string, isRoot bool) error {
 
 **Two PID files, never one:** the server's OWN PID file is `/var/run/{internal_org}/{internal_name}/{internal_name}.pid` (steps 11-12 of the startup). A service manager that needs a PID file of its own (OpenRC `pidfile` with `command_background=true`, FreeBSD `daemon -P`, SysV `start-stop-daemon --make-pidfile`) uses a DIFFERENT path, `/var/run/{internal_org}-{internal_name}.pid`; sharing the path makes the server read the supervisor's PID as its own and exit "already running".
 
-**Containers: no PID file.** When `isContainer()` is true, skip PID file creation and checking entirely (the `pidfile: true` config default is ignored). The container runtime supervises the process, and PIDs are namespace-local - a PID file on a mounted volume read from the host or another container points at the wrong process or produces a false "already running".
+**Containers: no PID file.** When `isContainer()` is true, skip PID file creation and checking entirely (the `pidfile: true` config default is ignored). Outside containers `server.pidfile: false` skips the PID file steps (11 and 12) entirely, so a second instance is then not detected by PID. The container runtime supervises the process, and PIDs are namespace-local - a PID file on a mounted volume read from the host or another container points at the wrong process or produces a false "already running".
 
 ```go
 // CheckPIDFile checks if PID file exists and if the process is still running
@@ -11713,7 +11714,7 @@ PHASE 5: Server startup (actual server start)
       │   ├─ First port = HTTP
       │   └─ Second port = HTTPS
       ├─ No --port? → check PORT env var (same format)
-      ├─ No env var? → EARLY CONFIG PEEK: read ONLY `server.port`, `server.address` and `server.daemonize` from the merged view of {config_dir}/server.yml and the ordered {config_dir}/yaml.d/* drop-ins (same file selection, order and replace-whole-value rule as PART 5 → "Drop-in Config Directory"; read-only, as root, after the step 8d permission fix; no other key is read or validated here, and a file that does not parse is skipped for these three keys, its error is reported by the full load at step 13)
+      ├─ No env var? → EARLY CONFIG PEEK: read ONLY `server.port`, `server.address`, `server.daemonize` and `server.pidfile` from the merged view of {config_dir}/server.yml and the ordered {config_dir}/yaml.d/* drop-ins (same file selection, order and replace-whole-value rule as PART 5 → "Drop-in Config Directory"; read-only, as root, after the step 8d permission fix; no other key is read or validated here, and a file that does not parse is skipped for these three keys, its error is reported by the full load at step 13)
       └─ No file, or no `server.port` in it? → the default for the context: port `80` in an application container (it starts as root, so step 8f binds it before the drop), otherwise a random port in 64000-64999 (a system container or any host; single, HTTP); step 13 writes it to the new config
       Listen address (resolved in the same early step): `--address` flag > `LISTEN` env > the early peek of `server.address` > default `[::]` (IPv4 `0.0.0.0` fallback when the kernel has no IPv6, logged once as a warning). `[::]` and `::` are both accepted for `--address`, `LISTEN` and `server.address`; the brackets are stripped before the value is parsed as an IP. Privileged sockets are bound to THIS address and never to a broader one; step 13 never rebinds (`server.address` needs a restart, PART 12)
    e2. Daemonize (manual start only; never for `--service start` or in a container, see "Daemonization"): when `--daemon` was given, or the early peek found `server.daemonize: true`, re-execute now (marker `_DAEMON_CHILD=1`) and exit the parent with 0. This happens BEFORE any privileged socket is bound, so the child repeats steps 6-8e (all idempotent) and binds the ports itself; a bound socket never has to cross the re-execute.
@@ -11740,12 +11741,12 @@ PHASE 5: Server startup (actual server start)
     ├─ Set default log level (info)
     └─ Log "Server starting, version X.Y.Z"
 
-11. Check PID file (root: /var/run/{internal_org}/{internal_name}/{internal_name}.pid, user: {data_dir}/{internal_name}.pid):
+11. Check PID file (skipped when `server.pidfile` is false, read by the early peek of step 8e, and in a container; root: /var/run/{internal_org}/{internal_name}/{internal_name}.pid, user: {data_dir}/{internal_name}.pid):
     ├─ PID file exists AND process running → exit 1 "already running"
     ├─ PID file exists AND process dead → remove stale PID, continue
     └─ No PID file → continue
 
-12. Write PID file (current process ID)
+12. Write PID file (current process ID; skipped under the same rule as step 11)
 
 13. Load configuration:
     ├─ Look for {config_dir}/server.yml
@@ -20759,7 +20760,7 @@ server:
 | Feature | Uses Cache | Purpose |
 |---------|------------|---------|
 | Sessions | Yes | Session data storage |
-| Rate limiting | Yes | Request counters per IP/user |
+| Rate limiting | Only with `valkey` or `redis` | Request counters per IP/token live in the external cache; with `none` or `memory` (the default) they stay in `server.db` and `memory` is only the fallback while an external cache is unreachable (PART 12 "Rate Limiting") |
 | API responses | Optional | Response caching |
 | Cluster heartbeat | Yes | Node liveness detection |
 | Pub/Sub events | Yes | Real-time state sync |
@@ -23604,7 +23605,7 @@ Need additional compatible endpoints?"
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `ok` | Yes | Always `true` for success. Exceptions: health endpoints return the bare health object (see PART 13); compatibility-layer routes return the target service's native body (see PART 14 → "External API Compatibility"); a route declared `Binary` returns its own bytes and `Content-Type`. |
+| `ok` | Yes | Always `true` for success. Exceptions: health endpoints return the bare health object (see PART 13); compatibility-layer routes return the target service's native body (see PART 14 → "External API Compatibility"); a route declared `Binary` returns its own bytes and `Content-Type`; the MCP endpoints answer with JSON-RPC 2.0 objects (canonical error body only for a request that cannot be parsed). |
 | `data` | Yes | Response payload |
 | `data.id` | If created | ID of created/affected resource |
 | `data.message` | No | Human-readable status message |
@@ -26879,7 +26880,7 @@ if ('serviceWorker' in navigator) {
 > - **Offline copies are for public pages only** — the server adds the internal header `X-Offline-Cache: public` to a navigation response ONLY when the page is identical for every visitor: the request carries no session or owner cookie, and the body holds no signed-in state, token, per-visitor value or CSRF token. `Cache-Control` stays `no-store`; the header is only a signal to the worker. The worker puts a navigation response in the cache only when it also has that header; any other navigation response is not cached, and the worker deletes an existing entry for that URL, so a page that becomes private leaves no old copy. Authenticated pages, token pages, the admin area and every page with a form never carry the header, and on offline they show the synthesized offline page.
 > - **Every `respondWith()` branch ends in a guaranteed `Response`** — a terminal `.catch()` returning a real `Response` (a synthesized 503 offline page for navigations, a 504 for subresources). Never end a chain on `cached || caches.match('/offline…')`: that link can itself miss and resolve `undefined`.
 > - **Only intercept same-origin GET.** Let API calls, cross-origin requests, and non-GET methods fall through untouched — never call `respondWith()` for them.
-> - **The wait for the network is bounded** — a navigation `fetch` races an 8 s timer (`NAV_TIMEOUT_MS`); on timeout the worker falls back to the cached page, then the offline page. A server that is restarting, updating or hung never leaves a tab on a blank page with a stuck load bar.
+> - **The wait for the network is bounded** — a navigation `fetch` races an 8 s timer (`NAV_TIMEOUT_MS`); on timeout the worker falls back to the cached public page, then the synthesized offline page. A server that is restarting, updating or hung never leaves a tab on a blank page with a stuck load bar.
 > - **Never cache or replay a redirect or an error** — only `response.ok && !response.redirected` (and, for a page, `X-Offline-Cache: public`) is put in the cache, and a URL that redirects (the age gate, a login redirect, `/` behind a redirect) is never precached. A `redirected` response handed to a navigation is a network error (blank page).
 > - **A user never has to clear cache, cookies or local storage to recover.** Every state the worker or the page can reach after an update must self-heal: bounded waits, a build-stamped cache name, old caches deleted in `activate`, and the update prompt below that always ends in a reload. Telling a user to clear site data is a defect in the template or the app, never a fix.
 > - **The service worker is an enhancement, never a dependency** — the site stays fully usable if it never installs (the No-JS-first rule above).
@@ -26907,8 +26908,7 @@ const PRECACHE_ASSETS = [
   '/static/css/app.css?v={asset_stamp}',
   '/static/js/app.js?v={asset_stamp}',
   '/static/icons/icon-192.png?v={asset_stamp}',
-  '/static/icons/icon-512.png?v={asset_stamp}',
-  '/offline.html'
+  '/static/icons/icon-512.png?v={asset_stamp}'
 ];
 
 // INSTALL - Pre-cache static assets
@@ -26936,7 +26936,7 @@ self.addEventListener('activate', event => {
 });
 
 // A navigation never waits on the network forever: it rejects after NAV_TIMEOUT_MS
-// and the .catch() below serves the cached page or the offline page
+// and the .catch() below serves the cached public page or the synthesized, translated offline page
 const NAV_TIMEOUT_MS = 8000;
 function withTimeout(promise, ms) {
   return new Promise((resolve, reject) => {
@@ -26982,7 +26982,6 @@ self.addEventListener('fetch', event => {
         })
         .catch(async () =>
           (await caches.match(request))
-            || (await caches.match('/offline.html'))
             || (await offlineFallbackResponse())
         )
     );
@@ -28010,7 +28009,6 @@ async function requestPersistentStorage() {
 /
 ├── manifest.json                 # App manifest
 ├── sw.js                         # Service worker
-├── offline.html                  # Offline fallback page
 ├── static/
 │   ├── css/
 │   │   └── app.css
@@ -28047,7 +28045,7 @@ async function requestPersistentStorage() {
 | HTTPS enabled | ◻️ | Required for SW |
 | manifest.json valid | ◻️ | All required fields |
 | Service worker registered | ◻️ | Controls all pages |
-| Offline page exists | ◻️ | `/offline.html` |
+| Offline page | ◻️ | Synthesized by the worker from the translated strings the page stored; there is no static `/offline.html` (it could only be English) |
 | SW never yields `undefined`/rejects | ◻️ | Every `respondWith` branch ends in a guaranteed `Response`; transient failure shows the offline page, not `net::ERR_FAILED` |
 | Icons all sizes | ◻️ | 72 to 512px |
 | Maskable icon included | ◻️ | For Android |
@@ -29135,7 +29133,7 @@ partial/
 Brand sits left, nav links are horizontally centered (not pushed right against
 the actions), and the actions cluster (profile/preferences, then theme toggle)
 sits right. Do NOT split header/nav into two separate rows on desktop — that
-pushes links flush right against the header edge with no centering. The items on the right (profile/preferences and theme toggle) are not zones of their own: they all sit inside the one `.header-actions` element (with a session the theme toggle is inside the profile menu), so the DOM has exactly three top-level header zones.
+pushes links flush right against the header edge with no centering. The items on the right (profile/preferences and theme toggle) are not zones of their own: they all sit inside the one `.header-actions` element (with a session the theme toggle is inside the profile menu), so the DOM has exactly three top-level header zones. The hamburger label (`.nav-toggle`) is not a fourth zone: it belongs to the navigation zone as the below-breakpoint form of `.nav-links`, shown only when the links are hidden and never together with them, and in the markup it follows `<nav class="nav-links">` directly as that zone's second element.
 
 **Default Navigation (nav.tmpl):**
 
@@ -29173,7 +29171,7 @@ Mobile:
     <!-- App-specific sections (project-defined) -->
   </nav>
 
-  <!-- Mobile: hamburger toggle (checkbox label) -->
+  <!-- Mobile: hamburger toggle (checkbox label); part of the navigation zone with .nav-links, shown only when the links are hidden -->
   <label for="nav-toggle" class="nav-toggle" aria-label="Toggle navigation">☰</label>
 
   <!-- Actions: profile/preferences zone, then theme toggle (always visible, far right) -->
@@ -33590,7 +33588,9 @@ Admin Panel Header:
 - Delete the additional admin account entirely
 - Re-invite them (they set up fresh credentials)
 
-### Login Page (`/server/{admin_path}`)
+### Login Page (the shared `/server/auth/login`)
+
+**There is no separate admin login route.** An unauthenticated request to `/server/{admin_path}` redirects to the shared `/server/auth/login` form, which handles admin and (when PART 34 is active) user accounts alike and redirects by account type after a successful login. The layout below is that shared form.
 
 ```
 ┌─────────────────────────────────────────┐
@@ -38912,6 +38912,8 @@ groups:
 |--------|---------|
 | Algorithm | AES-256-GCM |
 | Key Derivation | Argon2id (password → encryption key) |
+| Encrypted archive format | A cleartext header, then the AES-256-GCM ciphertext. Header: magic `BKUP1`, `salt` (16 random bytes, new for every archive), the Argon2id parameters (`m`, `t`, `p`), the 12-byte `nonce` and `key_id`. The whole header is bound to the ciphertext as AES-GCM additional data, so any change to it fails decryption. It holds no password and no key material |
+| `key_id` | The first 8 hex characters of `HMAC-SHA256(derived_key, "key-id")`, where `derived_key` is Argon2id over the password with THAT archive's own salt and parameters. The same password gives the same `key_id` only when derived with the same salt, so comparing against another archive means re-deriving with that archive's salt and parameters |
 | File Extension | `.tar.gz` (unencrypted) or `.tar.gz.enc` (encrypted) |
 | Password Storage | Kept only so scheduled backups can run unattended: encrypted at rest with `server.security.encryption_key` (AES-256-GCM), never hashed (it is key material, not a login verifier), never written to a log, manifest or archive, and never returned by any API. Restore never reads it: the admin supplies the password |
 
@@ -39333,7 +39335,7 @@ on a Sunday counts as daily + weekly + monthly + yearly — uses highest priorit
 | **Base protection** | Retention never deletes a full that is the `base_backup` of a retained incremental |
 | **Verification** | An incremental is verified like a full, plus: base file exists and its SHA-256 equals `base_sha256` |
 | **First run** | No previous full: skip the daily incremental |
-| **Password change** | Every encrypted archive's manifest records `key_id`, a non-secret identifier of its encryption key (the first 8 hex characters of `HMAC-SHA256(derived_key, "key-id")`; never the password or the key). When the base full's `key_id` differs from the current key's, the run skips the incremental (as on the first run) and creates a new full under the new password. The incremental that already exists keeps its old base and old password until the next run replaces it, so the full + at most one incremental chain is always decryptable with ONE password |
+| **Password change** | The base full's `key_id` is read from its cleartext header ("Encrypted archive format", PART 21), never from the encrypted manifest, so it is readable whatever password is configured. The run re-derives a key from the CURRENT password with the base's own salt and Argon2id parameters, computes `key_id` and compares: equal = same password, different = the password changed. A header that does not parse (bad magic or parameters) is a corrupt base, not a change. Either way the run skips the daily incremental (as on the first run), creates a new full under the current password and logs it (INFO for a change, WARN for a corrupt base); the integrity of the old base is the job of `--maintenance backup test`. A restorable pair is one full plus the incremental based on it, and a pair always shares ONE password. After a change there are two pairs: the old full with its old incremental (old password) until the old full ages out of retention, and the new full (new password) alone until the next run writes an incremental based on it, which then replaces the old incremental |
 
 **Restore (`--maintenance restore <file>`):**
 
@@ -41768,9 +41770,15 @@ binaries/
 ## Makefile Implementation
 
 ```makefile
-# Infer PROJECT_NAME and PROJECT_ORG from git remote or directory path (NEVER hardcode)
+# PROJECT_NAME and PROJECT_ORG: IDEA.md project variables first (the same source as {project_name}), then the git remote, then the directory path (NEVER hardcode)
+PROJECT_NAME := $(shell sed -n 's/^project_name:[[:space:]]*//p' IDEA.md 2>/dev/null | head -n1 | tr -d '[:space:]')
+ifeq ($(PROJECT_NAME),)
 PROJECT_NAME := $(shell git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)(\.git)?$$|\1|' || basename "$$(pwd)")
+endif
+PROJECT_ORG := $(shell sed -n 's/^project_org:[[:space:]]*//p' IDEA.md 2>/dev/null | head -n1 | tr -d '[:space:]')
+ifeq ($(PROJECT_ORG),)
 PROJECT_ORG := $(shell git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+(\.git)?$$|\1|' || basename "$$(dirname "$$(pwd)")")
+endif
 
 # INTERNAL_NAME: the frozen identity from IDEA.md (internal_name), PROJECT_NAME on first run (PART 0)
 INTERNAL_NAME := $(shell sed -n 's/^internal_name:[[:space:]]*//p' IDEA.md 2>/dev/null | head -n1 | tr -d '[:space:]')
@@ -42017,7 +42025,7 @@ dev:
 		echo "Built: $$BUILD_DIR/$(PROJECT_NAME)" && \
 		if [ -d "src/client" ]; then echo "Built: $$BUILD_DIR/$(PROJECT_NAME)-cli"; fi && \
 		if [ -d "src/agent" ]; then echo "Built: $$BUILD_DIR/$(PROJECT_NAME)-agent"; fi && \
-		echo "Test:  docker run --rm --name $(PROJECT_NAME)-test -v $$BUILD_DIR:/app alpine:latest /app/$(PROJECT_NAME) --help"
+		echo "Test:  docker run --rm --name $(PROJECT_NAME)-$$(tr -dc a-z0-9 </dev/urandom | head -c8) -v $$BUILD_DIR:/app alpine:latest /app/$(PROJECT_NAME) --help"
 
 # =============================================================================
 # CLEAN - Remove build artifacts
@@ -51536,7 +51544,7 @@ pymdown-extensions>=10.0
 
 ```bash
 # Docker
-docker run --name "{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -p 172.17.0.1:64580:80 {PLATFORM_CONTAINER_REGISTRY}/{project_org}/{internal_name}:latest
+docker run --rm --name "{project_name}-$(tr -dc 'a-z0-9' </dev/urandom | head -c8)" -p 172.17.0.1:64580:80 {PLATFORM_CONTAINER_REGISTRY}/{project_org}/{internal_name}:latest
 
 # Binary
 ./{project_name}-linux-amd64 --config server.yml
@@ -53593,13 +53601,37 @@ func FormatNumber(n float64, lang string) string {
 
 **Go Implementation:**
 ```go
-import "golang.org/x/text/feature/plural"
+import (
+    "golang.org/x/text/feature/plural"
+    "golang.org/x/text/language"
+)
+
+// plural.Form has no String method: each constant maps explicitly to its CLDR category key
+var pluralKeys = map[plural.Form]string{
+    plural.Zero:  "zero",
+    plural.One:   "one",
+    plural.Two:   "two",
+    plural.Few:   "few",
+    plural.Many:  "many",
+    plural.Other: "other",
+}
 
 func Pluralize(key string, count int, lang string) string {
     tag := language.MustParse(lang)
-    // Select plural form based on count and language rules
+    texts := translations[lang][key]
+    // An explicit zero text, when the language provides one, wins for a count of 0
+    if count == 0 {
+        if text, ok := texts["zero"]; ok {
+            return text
+        }
+    }
+    // Select the plural category based on count and language rules
     form := plural.Cardinal.MatchPlural(tag, count, 0, 0, 0, 0)
-    return translations[lang][key][form.String()]
+    if text, ok := texts[pluralKeys[form]]; ok {
+        return text
+    }
+    // every plural message has `other`
+    return texts["other"]
 }
 ```
 
@@ -54947,7 +54979,7 @@ The hidden service is declared in the generated torrc; Tor creates and persists 
 
 ### Circuit-ID Export & PROXY-Protocol Backend Listener
 
-`HiddenServiceExportCircuitID haproxy` makes Tor prepend a HAProxy **PROXY-protocol v1 header** to *every* connection it forwards to the hidden-service target, encoding the 64-bit rendezvous-circuit ID in the source address (`fc00::/8` IPv6 range). This ID is the opaque per-session token the committed Tor logging/audit/rate-limit rules key on as `tor:{circuit_id}` — never an IP, never deanonymizing.
+`HiddenServiceExportCircuitID haproxy` makes Tor prepend a HAProxy **PROXY-protocol v1 header** to *every* connection it forwards to the hidden-service target, encoding the 32-bit rendezvous-circuit ID in the LOW 32 bits (the last four bytes, big-endian) of the IPv6 source address; the upper 96 bits are a private prefix that MUST be ignored (Tor uses a unique-local prefix today, but the specification allows any private one), so the ID is never derived from them and the address is never validated against `fc00::/8`. This ID is the opaque per-session token the committed Tor logging/audit/rate-limit rules key on as `tor:{circuit_id}` — never an IP, never deanonymizing.
 
 Because the PROXY header is sent on every connection, the `HiddenServicePort` target MUST be a **dedicated loopback listener** the app binds specifically for Tor (`127.0.0.1:{tor_backend_port}`), **separate from the public clearnet listener** — clearnet connections carry no PROXY header and would fail to parse against a listener that requires one. The app:
 
@@ -61631,45 +61663,35 @@ binaries/
 
 ---
 
-# OPTIONAL → REQUIRED FLIP MECHANISM (PARTS 34-36)
+# SPEC.md — Optional Part Activation (PARTS 34-36)
 
-**PARTS 34, 35, and 36 are the ONLY parts of TEMPLATE.md / AI.md that may be edited per-project. Everything else is read-only spec.**
+**PARTS 34, 35 and 36 ship marked `OPTIONAL - NON-NEGOTIABLE WHEN IMPLEMENTED`. AI.md is read-only in every project: it is never edited, and no activation is written into it or into IDEA.md.** A project that adopts one of these features activates it with a declaration in its `SPEC.md`.
 
-PARTS 34-36 ship marked `OPTIONAL - NON-NEGOTIABLE WHEN IMPLEMENTED`. A project that adopts the feature (Multi-user / Organizations / Custom Domains) MUST flip the marker to `REQUIRED - NON-NEGOTIABLE` and MUST do so consistently in both files.
+## When to Activate
 
-## When to Flip
-
-| Trigger | Flip |
+| Trigger | Part |
 |---------|------|
 | Project adds end-user accounts (registration, profiles, API tokens) | PART 34 |
-| Project adds team/group ownership of resources (requires PART 34 flipped first) | PART 35 |
+| Project adds team/group ownership of resources (requires PART 34 in the same list) | PART 35 |
 | Project lets users/orgs bring their own domain names | PART 36 |
 
-## How to Flip (TWO files, in this order)
+## How to Activate
 
-1. **IDEA.md `## Project variables`** — add the corresponding variable, lower_snake_case, value `true`:
+Add this section to the project's `SPEC.md` (create the file when it is missing) and list only the parts the project adopts:
 
-       # PART 34 flipped
-       multi_user:     true
-       # PART 35 flipped (requires multi_user: true)
-       organizations:  true
-       # PART 36 flipped
-       custom_domains: true
-
-2. **The per-project AI.md** (the file generated from TEMPLATE.md for THIS project — NOT TEMPLATE.md itself) — change the heading marker:
-
-       # PART 34: MULTI-USER (OPTIONAL - NON-NEGOTIABLE WHEN IMPLEMENTED)
-       →
-       # PART 34: MULTI-USER (REQUIRED - NON-NEGOTIABLE)
-
-   Apply the same substitution to PART 35 and PART 36 if those are also flipped.
+    ## Optional parts
+    - PART 34: REQUIRED
+    - PART 35: REQUIRED
+    - PART 36: REQUIRED
 
 ## Rules
 
-- TEMPLATE.md (the master) NEVER changes from `OPTIONAL`. Flips happen only in the project's AI.md after generation.
-- Both files (IDEA.md variable AND AI.md heading) MUST agree. A flip recorded in only one place is a bug.
-- Once flipped to REQUIRED, the entire PART becomes mandatory: every requirement, every table, every rule applies in full.
-- Flipping is one-way for the lifetime of the project. Once a project ships multi-user / orgs / custom domains, you cannot un-flip without a data migration.
+- The declaration makes the named PART fully mandatory, exactly as if its marker read `REQUIRED - NON-NEGOTIABLE`: every requirement, every table and every rule applies in full. The marker in AI.md stays `OPTIONAL` in every copy.
+- SPEC.md holds only this declaration for these parts. What the feature does in this product stays in IDEA.md as product description; no implementation detail is added to either file.
+- PART 35 requires PART 34 in the same list.
+- Without a declaration the PART is not implemented: none of its routes, tables or screens exist.
+- Activation is one-way for the lifetime of the project. Once a project ships multi-user, organizations or custom domains, it cannot be undone without a data migration.
+- SPEC.md wins over AI.md, so the declaration is the one place to read to know whether a PART is active.
 
 ---
 
@@ -69377,7 +69399,7 @@ make docker
 - [ ] No `docker rm $(docker ps -aq)`, `docker system prune`, `docker container prune`, `docker volume prune`, `docker network prune`
 - [ ] No `incus delete --force` of an instance not created by the current test
 - [ ] All cleanup targets the SPECIFIC container/instance/PID created by the current task
-- [ ] Every `docker run` in the Makefile, scripts and docs has `--rm` (a detached container kept for log inspection is the only exemption and is removed by name before the task ends) and `--name "{project_name}-XXXXXXXX"`; toolchain runs also have `--no-healthcheck`; no exited `{project_name}-*` container remains after a run
+- [ ] Every disposable `docker run` in the Makefile, scripts and docs (tests, builds, debug runs, quick-start try-outs) has `--rm` (a detached container kept for log inspection is the only exemption and is removed by name before the task ends) and `--name "{project_name}-XXXXXXXX"`; toolchain runs also have `--no-healthcheck`; no exited `{project_name}-*` container remains after a run. Deployment examples (`docker run -d`, Compose) are long-lived by design: they use `--name {project_name}` and no `--rm`, and this item does not apply to them
 - [ ] Every `tests/*.sh` registers `trap cleanup EXIT INT TERM` before it starts a container, sidecar, network or volume
 - [ ] One shared `multiarch-builder`; no per-project buildx builder
 
