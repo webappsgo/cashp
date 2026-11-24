@@ -26919,6 +26919,7 @@ self.addEventListener('activate', event => {
     caches.keys()
       .then(keys => Promise.all(
         keys
+          // Only the versioned page and asset caches are removed; the strings cache survives updates
           .filter(key => key.startsWith('{app_name}-cache-') && key !== CACHE_NAME)
           .map(key => caches.delete(key))
       ))
@@ -26975,7 +26976,7 @@ self.addEventListener('fetch', event => {
         .catch(async () =>
           (await caches.match(request))
             || (await caches.match('/offline.html'))
-            || offlineFallbackResponse()
+            || (await offlineFallbackResponse())
         )
     );
     return;
@@ -27009,19 +27010,42 @@ self.addEventListener('fetch', event => {
 });
 
 // GUARANTEED last-resort page - synthesized in the worker so it needs no
-// cache hit and can never itself miss
-function offlineFallbackResponse() {
+// cache hit and can never itself miss. The words come from the strings the
+// page stored in the separate strings cache (translated, resolved language
+// and direction); the English text below is used ONLY before any page has
+// stored them, and it is the one hardcoded string the worker may hold
+const STRINGS_CACHE = '{app_name}-offline-strings';
+const DEFAULT_STRINGS = {
+  lang: 'en', dir: 'ltr', title: 'Offline', heading: 'You are offline',
+  message: 'This page could not be loaded and no cached copy is available. Check your connection and try again.'
+};
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+async function offlineFallbackResponse() {
+  let s = DEFAULT_STRINGS;
+  try {
+    const stored = await (await caches.open(STRINGS_CACHE)).match('/offline-strings.json');
+    if (stored) s = Object.assign({}, DEFAULT_STRINGS, await stored.json());
+  } catch (e) {
+    s = DEFAULT_STRINGS;
+  }
   return new Response(
-    '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+    '<!doctype html><html lang="' + escapeHtml(s.lang) + '" dir="' + escapeHtml(s.dir) + '"><head><meta charset="utf-8">'
       + '<meta name="viewport" content="width=device-width,initial-scale=1">'
-      + '<title>Offline</title></head><body><main>'
-      + '<h1>You are offline</h1><p>This page could not be loaded and no '
-      + 'cached copy is available. Check your connection and try again.</p>'
+      + '<title>' + escapeHtml(s.title) + '</title></head><body><main>'
+      + '<h1>' + escapeHtml(s.heading) + '</h1><p>' + escapeHtml(s.message) + '</p>'
       + '</main></body></html>',
     { status: 503, statusText: 'Service Unavailable',
       headers: { 'Content-Type': 'text/html; charset=utf-8' } }
   );
 }
+
+// PAGE SIDE (app.js, on every load): store the strings for the worker. The values are
+// rendered by the server from the translation keys offline.title, offline.heading and
+// offline.message in the visitor's resolved language (lang and dir are the page's own)
+// caches.open('{app_name}-offline-strings').then(c => c.put('/offline-strings.json',
+//   new Response(JSON.stringify(window.OFFLINE_STRINGS), { headers: { 'Content-Type': 'application/json' } })))
 ```
 
 ### Cache Versioning & Updates
@@ -35246,7 +35270,7 @@ server:
 | `ssl_renewal_failed` | Certificate renewal failure | ✗ |
 | `scheduler_error` | Scheduled task failed | ✗ |
 | `disk_low` | Disk space low (PART 17 → "Disk Space Low") | ✗ |
-| `database_error` | Database connection problem | ✗ |
+| `database_error` | Database connection problem (PART 17 → "Database Connection Problem") | ✗ |
 | `startup` | Application started | ✗ |
 | `shutdown` | Application stopped | ✗ |
 | `update_available` | New eligible release detected (`update_check` task) | ✗ |
@@ -35970,7 +35994,7 @@ Do not reply to this email.
 | `{version}` | Running version |
 | `{mode}` | Application mode |
 | `{timestamp}` | When the event happened |
-| `{reason}` | Why the server stopped: `signal`, `service stop` or `update restart` (shutdown only) |
+| `{reason}` | Why the server stopped: `signal` (a SIGTERM or SIGINT, whoever sent it: an operator, `--service stop` or a service manager all deliver the same signal and the server cannot tell them apart) or `update restart` (the server's own restart after an update) (shutdown only) |
 
 ### disk_low
 | Variable | Description |
@@ -36033,6 +36057,48 @@ Do not reply to this email.
 | `{compliance_requirements}` | Applicable compliance standards and their requirements |
 | `{notify_deadline}` | Deadline for user notification (based on strictest standard) |
 | `{admin_url}` | Admin panel URL |
+
+### Database Connection Problem (notification trigger)
+
+| Aspect | Rule |
+|--------|------|
+| Measured | The same probe as `checks.database` in `/server/healthz` (PART 13): a trivial query on the write handle and on the read handle, each under a 5-second deadline |
+| Trigger | `server.notifications.database_error.failures` (default `3`) consecutive failed probes; `{since}` is the time of the FIRST failure of that run, `{error}` the last error with any credentials removed |
+| Cadence | Built-in scheduler task `database_check` every `server.notifications.database_error.check_interval` (default `1m`); no external cron |
+| Deduplication | One WARN and email when the trigger is first met; repeated at most once per `server.notifications.database_error.repeat` (default `24h`) while probes keep failing |
+| Recovery | The first successful probe logs INFO `Database connection recovered` (log only, no email) and resets the failure count and the deduplication state |
+| Remote database | A remote libSQL/Turso outage is a failed probe like any other; the cache fallback of PART 10 does not stop the probe from failing |
+
+```yaml
+server:
+  notifications:
+    database_error:
+      enabled: true
+      failures: 3
+      check_interval: 1m
+      repeat: 24h
+```
+
+### Disk Space Low (notification trigger)
+
+| Aspect | Rule |
+|--------|------|
+| Measured | The filesystem volumes holding `{data_dir}`, `{log_dir}` and `{backup_dir}`, deduplicated by volume so each volume notifies once; the `path` in the message is the first of those directories on the volume |
+| Value | Used percentage (the same value as `system_disk_usage_percent`, PART 20) plus free bytes |
+| Threshold | `server.notifications.disk_low.threshold_percent` (default `85`, matching the PART 20 Prometheus example). The stricter backup rule in PART 21 (skip backups above 90%) is a separate safeguard |
+| Cadence | Built-in scheduler task `disk_check` every `server.notifications.disk_low.check_interval` (default `5m`); no external cron |
+| Deduplication | One WARN and email per volume when the threshold is first crossed; repeated at most once per `server.notifications.disk_low.repeat` (default `24h`) while usage stays above it |
+| Recovery | When usage falls 5 percentage points below the threshold, log INFO `Disk space recovered` (log only) and reset the deduplication state |
+
+```yaml
+server:
+  notifications:
+    disk_low:
+      enabled: true
+      threshold_percent: 85
+      check_interval: 5m
+      repeat: 24h
+```
 
 ## Admin Panel (/server/{admin_path}/email/templates)
 
