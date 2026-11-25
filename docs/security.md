@@ -16,6 +16,11 @@ contains account/session logic and credential protections, but is not yet
 composed into the main HTTP application. Do not expose the development server
 to untrusted networks.
 
+Startup creates the `app_secrets` records for the installation, cookie-signing,
+and CSRF keys in the server database and preserves them across restarts. Their
+full use by shared authentication and the specified rotation flows is not yet
+integrated.
+
 ## Not yet implemented end to end
 
 The current server does not provide the full multi-tenant isolation and

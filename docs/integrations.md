@@ -23,6 +23,10 @@ installs and `/data/db/sqlite` in containers. `DATABASE_DIR` can override that
 directory. Admin accounts, preferences, invites, recovery codes, and API tokens
 are stored in `users.db`; admin sessions, settings, audit records, secrets, and
 cluster nodes are stored in `server.db`.
+The server initializes `app_secrets` with base64-encoded installation, cookie
+signing, and CSRF keys in one transaction; existing values are preserved on
+restart. Operator-managed encrypted secrets remain in the admin panel's
+separate `admin_secrets` table.
 
 The shared user, organization, and custom-domain auth service is not wired into
 the server yet. Remote database drivers share one connection and use

@@ -8,7 +8,7 @@ PART 0. AI.md itself is read-only; template defects belong only in
 ## P0 — Security, data integrity, and core correctness
 
 - [ ] Verify and complete core configuration, path security, runtime modes, startup validation, and binary behavior (PARTS 4–8, 12).
-- [ ] Verify and complete authentication, authorization, tenant isolation, credential handling, database access, cluster behavior, rate limiting, and error/logging controls (PARTS 9–11).
+- [ ] Verify and complete authentication, authorization, tenant isolation, credential handling, `app_secrets` consumption and rotation, database access, cluster behavior, rate limiting, and error/logging controls (PARTS 9–11).
 - [ ] Consolidate the incompatible `src/admin` and `src/auth` admin/session schemas and make both the admin panel and shared auth use the canonical account records (PARTS 10–11).
 - [ ] Verify and complete API route behavior, content negotiation, health/version endpoints, OpenAPI/GraphQL parity, and endpoint integration coverage (PARTS 13–14, 29).
 - [ ] Complete the running HTTP/TLS composition root by wiring shared auth, the complete API, and every configured service alongside the existing middleware, public pages, admin panel, health/readiness/version, metrics, Swagger, and GraphQL handlers (PARTS 8, 12–17).
