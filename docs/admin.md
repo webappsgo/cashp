@@ -47,6 +47,11 @@ builder removes that grouping. The routes above use the public canonical
 paths. A rendered settings page does not imply that its associated service is
 fully implemented; consult the integration and API guides for runtime status.
 
+The `/admins` page does not list other administrator accounts. An operator can
+invite an administrator, revoke a pending invitation, enable or disable a
+known username, or remove a non-primary administrator. Status changes require
+typing the username again; disabling an account revokes its active sessions.
+
 ## API availability
 
 The panel does not currently expose a matching REST API for every page. The

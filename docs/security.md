@@ -11,10 +11,12 @@ of what is actually running.
 
 The HTTP server uses bounded request timeouts, configured security headers,
 optional HTTPS/TLS handling, and request rate limiting. The admin panel has
-session-based access checks and CSRF protection for its forms. The auth package
-contains account/session logic and credential protections, but is not yet
-composed into the main HTTP application. Do not expose the development server
-to untrusted networks.
+session-based access checks and CSRF protection for its forms. Its admin
+session cookie is `HttpOnly`, uses `SameSite=Strict` and `Path=/`, and lasts
+30 days by default; the route enforces admin authorization. The auth package
+contains additional account/session logic and credential protections, but is
+not yet composed into the main HTTP application. Do not expose the development
+server to untrusted networks.
 
 Startup creates the `app_secrets` records for the installation, cookie-signing,
 and CSRF keys in the server database and preserves them across restarts. Their

@@ -707,7 +707,7 @@ if cacheSize > 1024*1024*1024 {
 | **Generated text is fully expanded** | Release notes, release names and descriptions, asset names and links, labels and any other text a workflow generates MUST contain real values, never a literal `${VAR}`, `${{ … }}` or a spec placeholder such as `{project_name}`. Shell: build a file with an unquoted heredoc or `printf` (a quoted heredoc is only for text that must stay literal). GitHub/Gitea/Forgejo YAML values use `${{ env.X }}`; shell `${X}` is not expanded there. GitLab keywords outside `script:` (`release:` name, description and assets, `artifacts:paths`) expand only `$VAR` / `${VAR}`, never `${VAR:0:7}` or `${VAR#v}`: compute the value in an upstream job and pass it with a dotenv report. Jenkins: Groovy `"…"` strings interpolate, `'…'` strings do not. Any workflow that builds its own notes or description file runs the guard step below before publishing |
 | **LDFLAGS** | `-s -w -X 'main.Version=...' -X 'main.CommitID=...' -X 'main.BuildEpoch=...' -X 'main.OfficialSite=...'` (BuildDate is NOT an ldflag — derived from BuildEpoch in `init()`) |
 | **Docker builds on EVERY push** | Any branch push triggers Docker image build |
-| **Docker tags** | Any push → `{commit_id}`; beta → adds `beta`; tag → `{version}`, `latest`, `{yymm}`, `{commit_id}` |
+| **Docker tags** | Any push to `main` → `{commit_id}`; a `*-beta` tag → adds `beta`; tag → `{version}`, `latest`, `{yymm}`, `{commit_id}` |
 | **Devel image is a job in docker.yml** | `:devel` is built from `docker/Dockerfile.dev` by the `build-devel` job inside the same `docker.yml` workflow (schedule + push to `main`/`master`, gated by `if:`) — never a separate file |
 | **Workflow permissions** | Default to read-only / least privilege; grant write only to the specific release/publish job that needs it |
 | **Third-party action pinning** | External actions MUST be pinned to a full commit SHA — never float on `@main`, `@master`, or broad tags; verify runtime and maintenance status on every SHA update |
@@ -1200,7 +1200,7 @@ Quick reference: Accept `yes/no`, `true/false`, `1/0`, `on/off`, `enable/disable
 | Store tokens/passwords in plaintext | Passwords: Argon2id; Tokens: SHA-256 hash |
 | Implement usage limits/quotas | Rate limits protect servers; usage limits extract money |
 | Create enterprise/premium tiers | All features free for all users, always |
-| Use plural directory names | Use singular: `handler/`, `model/`, not `handlers/` |
+| Use plural directory names | Use singular: `handler/`, `model/`, not `handlers/` (the one fixed exception is `src/paths/`: its singular `path` would collide with the standard library `path` package) |
 | Run Go locally | Use `make dev` / `make local` (containers only) |
 
 ## Files & Directories Master Rules
@@ -1211,7 +1211,7 @@ Quick reference: Accept `yes/no`, `true/false`, `1/0`, `on/off`, `enable/disable
 
 | Type | Pattern | Example | Avoid |
 |------|---------|---------|-------|
-| **Directories** | lowercase, singular | `handler/`, `model/` | `Handlers/`, `Models/` |
+| **Directories** | lowercase, singular (one fixed exception: `src/paths/`, because `path` collides with the standard library `path` package) | `handler/`, `model/` | `Handlers/`, `Models/` |
 | **Go files** | lowercase, snake_case | `user_service.go` | `UserService.go` |
 | **Config files** | lowercase, dot-extension | `server.yml`, `mkdocs.yml` | `SERVER.yml` |
 | **Documentation** | UPPERCASE.md | `README.md`, `LICENSE.md` | `readme.md` |
@@ -1250,7 +1250,7 @@ Quick reference: Accept `yes/no`, `true/false`, `1/0`, `on/off`, `enable/disable
 | `vendor/` | Use Go modules, not vendoring |
 | `node_modules/` | This is a Go project |
 | `lib/`, `libs/` | Use proper Go package structure |
-| `utils/`, `common/` | Use specific package names |
+| `utils/`, `common/` (a catch-all package or a repository-root directory of that name) | Use specific package names. The shared packages under `src/common/` (`theme`, `i18n`, `banner`, `terminal`, ...) are allowed: each has a specific name |
 
 **Note:** `src/data/` is ALLOWED for static JSON files embedded in binary. Only ROOT-level `data/` is forbidden.
 
@@ -2930,6 +2930,7 @@ resize_for_context() {
 | "Health check lives at `/health` and returns plain text" | HOW, and it contradicts AI.md (health routes and formats) | Remove; AI.md defines it |
 | "Skip the security headers, this is an internal tool" | A waiver of a mandatory requirement | Remove; mandatory parts are built exactly as AI.md defines them |
 | "Publishes a raw TCP paste port 9999" | WHAT (AI.md says such a port is documented in IDEA.md) | Keep |
+| The `### API routes` inventory of the project's own routes (`/api/{api_version}/pastes`) | WHAT, by explicit exception: PART 14 requires this inventory in IDEA.md as the build-time route contract, so it stays even though routes are otherwise HOW | Keep; it lists only routes the project defines, never the template's own (health, auth, docs, well-known) |
 
 **IDEA.md may declare only what AI.md explicitly lets it declare:** the product's features, data models, business rules and audience; the template's explicitly OPTIONAL capabilities the project uses (except PARTS 34-36, whose activation is declared in SPEC.md only); and the specific items AI.md names as "declared in IDEA.md" (for example a custom build image, a custom raw port, a data class or compliance profile). Everything else IDEA.md says about HOW is either a copy of AI.md (remove it: duplicated rules drift when AI.md changes) or a contradiction (fix it). IDEA.md refers to AI.md by PART number instead of restating a rule.
 
@@ -4558,7 +4559,7 @@ Every feature MUST work via:
 - Every public page has a corresponding public API
 - Project-specific features (IDEA.md) follow same pattern
 
-**Rule (the pairing rule):** every web page has a corresponding API endpoint, and every USER-FACING API endpoint (project features and public server pages) has a web page that shows the same data. **Exception, system-only endpoints:** an endpoint that only programs call, never a person in a browser (the token check `/api/{api_version}/server/auth/check`, the MCP endpoint, `/api/autodiscover`, and any route whose route-table row says "machine-only"), is API-only: it has no page, and that is never a defect. PART 14 → "Frontend-Backend Integration" and the FINAL checklist apply this rule; they neither widen nor narrow it.
+**Rule (the pairing rule):** every web page has a corresponding API endpoint, and every USER-FACING API endpoint (project features and public server pages) has a web page that shows the same data. **Exception, system-only endpoints:** an endpoint that only programs call, never a person in a browser (the token check `/api/{api_version}/server/auth/check`, the MCP endpoint, `/api/autodiscover`, and any route whose route-table row says "machine-only"), is API-only: it has no page, and that is never a defect. **Exception, privileged features:** a feature that needs operator or admin authority is paired with a page only where the template defines a browser credential for it (the admin session of SERVER and HYBRID projects). A project with no browser credential (an API project, whose operator credential is the Bearer `server.token`) exposes its privileged operations through the API and the CLI only and never builds a page or form for them; the pairing rule applies to non-privileged features. PART 14 → "Frontend-Backend Integration" and the FINAL checklist apply this rule; they neither widen nor narrow it.
 
 ---
 
@@ -6877,7 +6878,6 @@ require (
 | Purpose | Library | Notes |
 |---------|---------|-------|
 | **Embed** | `embed` (stdlib) | Embed static files |
-| **Scheduler** | `github.com/go-co-op/gocron/v2` | In-process job scheduler |
 | **Rate Limit** | `golang.org/x/time/rate` | Rate limiting |
 | **Validation** | `github.com/go-playground/validator/v10` | Input validation |
 
@@ -7120,7 +7120,6 @@ require (
 
 	// Utilities
 	// In-process job scheduler
-	github.com/go-co-op/gocron/v2 {version}
 	// Rate limiting
 	golang.org/x/time {version}
 	// Validation
@@ -8528,7 +8527,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | `SMTP_TLS` | TLS mode: `auto`, `starttls`, `tls`, `none` (default: `auto`) |
 
 **URL Variable Resolution (Reverse Proxy Preferred):**
-- `{fqdn}`: Reverse Proxy Headers → `DOMAIN` → `os.Hostname()` → `$HOSTNAME` → Global IP → `localhost`
+- `{fqdn}`: Reverse Proxy Headers → `DOMAIN` → `os.Hostname()` → `$HOSTNAME` → Global IP; when nothing resolves it stays EMPTY (one startup WARN), never `localhost`
 - `{proto}`: `X-Forwarded-Proto` → `X-Forwarded-Ssl` → `X-Url-Scheme` → TLS detection → `http`
 - `{port}`: `X-Forwarded-Port` → Host header → Server port → Proto default
 - `{baseurl}`: `X-Forwarded-Prefix` → `X-Forwarded-Path` → `X-Script-Name` → `server.baseurl` → `/`
@@ -8700,7 +8699,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | **Early read** | The early config read (PART 8 startup, step 8e) never opens `secrets.yml`: it needs only `server.port`, `server.address`, `server.daemonize` and `server.pidfile`, plus each raw-protocol listener's `{proto}.enabled`, `{proto}.address` and `{proto}.port` |
 | **Permissions** | Always `0600` (PART 8 → "Directory Validation Rules": private paths); a wrong mode is fixed at start |
 | **Reload** | The file watcher watches it with `server.yml`, `yaml.d/` and `assets/`; a change re-merges everything and an invalid result keeps the last good config |
-| **Backup** | Included in every backup whenever it exists (PART 22 → "Backup Contents"), so a restore brings back the same token and encryption key |
+| **Backup** | Included in every backup whenever it exists (PART 22 → "Backup Contents"), so a restore brings back the encryption key and every other secret. `server.token` is the one exception: it is left out of the backup copy (PART 11), and a restore keeps the target host's own token, or generates one (printed once) when it has none |
 | **Never exposed** | Secret values are never logged, never printed by `--config` (shown as `********`), and never returned by any API response (PART 11) |
 | **Cluster Mode** | `secrets.yml` is local to each node. Config sync (the remote `srv_config` table and the area files) never carries a secret key. A value the cluster shares reaches a node by the mechanism the spec names for it (the join payload carries the database password, the encryption key and every generated shared secret: `server.token`, `server.metrics.auth.tokens.*` and the webhook `_secret` values, PART 34), and the receiving node writes it to ITS OWN `secrets.yml` (atomic, `0600`), never to `server.yml` and never to `_cache` |
 ### Connection Strings (database and cache)
@@ -13065,7 +13064,8 @@ CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires ON admin_sessions(expires_
 
 -- ----------------------------------------------------------------------------
 -- Rate Limiting (sliding window counter: the current and the previous fixed window)
--- allowed while prev_count * (1 - elapsed / window) + count is below the limit, where elapsed is the seconds since window_start;
+-- the request is counted first, then allowed while prev_count * (1 - elapsed / window) + count (this request included) is AT MOST the limit,
+-- so a limit of 120 allows exactly 120 requests per window and the 121st gets 429; elapsed is the seconds since window_start;
 -- when now passes window_start + window, count becomes prev_count and a new window starts
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS rate_limits (
@@ -13259,15 +13259,10 @@ CREATE TABLE IF NOT EXISTS admin_preferences (
     -- 12h, 24h
     time_format     TEXT NOT NULL DEFAULT '24h',
 
-    -- Notification Settings (Email)
-    -- Security alerts (CANNOT be disabled)
-    email_security  INTEGER NOT NULL DEFAULT 1,
-    -- Server alerts (SSL, updates, disk space)
-    email_server    INTEGER NOT NULL DEFAULT 1,
-    -- Backup notifications
-    email_backups   INTEGER NOT NULL DEFAULT 1,
-    -- User activity (if multi-user)
-    email_users     INTEGER NOT NULL DEFAULT 1,
+    -- Notification Settings: ONE JSON document, the "Preference Schema" of PART 17 (notifications.webui.{event} and
+    -- notifications.email.{event}, one boolean per event and channel). An event with no key takes the default of the
+    -- Admin Notification Preferences table; Security events are always on and are never stored
+    notifications   TEXT NOT NULL DEFAULT '{}',
 
     -- Timestamps
     created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
@@ -16190,7 +16185,7 @@ When `DEBUG=true` is active and an error occurs, the canonical error body (PART 
 | Format | `adm_` prefix + 32 URL-safe random base62 chars: the operator token is an ADMIN token ("Token Catalogue") |
 | Generated | First start, when the key is absent or empty; written to `secrets.yml` (mode `0600`) and printed once in the startup banner |
 | Storage | Never stored in the database or in any API token table. Only `SHA-256(server.token)` is cached in memory at startup; inbound tokens are hashed and compared with a constant-time compare |
-| Logging | The raw value is never logged after the first-start banner, never returned by any API response, never included in a backup export or a support bundle |
+| Logging | The raw value is never logged after the first-start banner, never returned by any API response, never included in a backup export (the backup copy of `secrets.yml` has `server.token` blanked) or a support bundle |
 | Presented as | `Authorization: Bearer adm_...` |
 | Admin WebUI | Shown masked at `/server/{admin_path}/security` with a "Regenerate" action (sensitive operation per PART 5: re-prompt the admin password, log `security.operator_token_regenerated` to `audit.log`). The new value is displayed once on screen; the previous value stops working immediately |
 | Rotation | Regenerate in the admin WebUI, or blank `server.token` in `secrets.yml` and restart (a new value is generated and printed once). Cluster Mode: a rotated value reaches every node and each node writes it to its own `secrets.yml`, never to `server.yml` |
@@ -19435,7 +19430,7 @@ These are concrete cases of parity-principle point 2 — features that cannot wo
 | **Third-party clearnet embeds** — external CDNs, fonts, scripts, remote images, analytics | Loading a clearnet URL from a `.onion` page either fails or deanonymizes the user by forcing a non-Tor request. | Serve every asset same-origin from the onion; ship fonts/scripts/images locally; disable third-party analytics for Tor requests. |
 | **Third-party OAuth / SSO login** | Many providers reject `.onion` redirect URIs and will not federate to a hidden service. | Offer local or onion-native auth for Tor; if an external provider is required and unavailable, show a clear "not available over Tor" message — never redirect to a clearnet callback. |
 | **CAPTCHA (reCAPTCHA, hCaptcha) and other clearnet security services** | These are clearnet endpoints; calling them from a `.onion` leaks the request off Tor and usually fails. | Use a self-hosted / Tor-friendly challenge or a proof-of-work / rate-limit alternative. |
-| **Payment gateways, webhooks, outbound callbacks to clearnet** | The target is a clearnet URL; an onion-origin request to it defeats anonymity or is rejected. | Route through a Tor-aware integration if one exists; otherwise fail loudly and tell the user the action isn't available over Tor. |
+| **Payment gateways, webhooks, outbound callbacks to clearnet** | The target is a clearnet URL; an onion-origin request to it defeats anonymity or is rejected. | Route through a Tor-aware integration if one exists; otherwise fail loudly and tell the user the action isn't available over Tor. **Exception:** a notification webhook (the contact and security-report copy) is optional, never the action itself: over Tor or I2P it is skipped with one WARN log, and the submission is still accepted and stored, with the same response the caller would get otherwise. |
 | **Absolute / cross-network links and email links** | A link to the clearnet FQDN pushes the user off Tor and leaks the clearnet identity. | Build every absolute URL (canonical tags, redirects, reset/verification email links) from `tor.onion_address` for Tor requests. |
 
 ### Tor Request Logging & Identity
@@ -19600,7 +19595,7 @@ server:
 
 ## Contact Configuration (Server Notification Recipients)
 
-**One unified config tree for every "where do messages go" decision the server makes — admin notifications, security reports, abuse reports, contact-form submissions. Each role supports email AND any number of webhook transports (Telegram, Discord, Slack, generic). Empty role-specific email falls back to the admin address. There is one knob to set (`server.contact.admin.email`); everything else is optional.**
+**One unified config tree for every "where do messages go" decision the server makes — admin notifications, security reports, abuse reports, contact-form submissions. Each role supports email AND any number of webhook transports (Telegram, Discord, Slack, generic). An empty `abuse` or `general` email falls back (abuse to general, then admin) for INTERNAL delivery; an explicitly empty `security` email falls back to admin for internal delivery only and omits the public `mailto:`; the admin address is never published. There is one knob to set (`server.contact.admin.email`); everything else is optional.**
 
 ### Schema
 
@@ -19755,7 +19750,7 @@ if !subtle.ConstantTimeCompare([]byte(got), []byte(want)) {
 | `abuse` | Application-defined abuse events (user-flagged content, DMCA/takedown requests) and every `abuse` and `dmca` submission of the report form (`/server/contact`) | Sender name, sender email, subject, message body, and the reported resource URL when the application provides one. Spam-filtered before dispatch (PART 16 → "Contact antispam"). |
 | `general` | Fallback for `abuse`, `dmca` and `privacy` submissions of the report form (`/server/contact`) when the abuse or DPO address is empty | Sender name, sender email, subject, message body. Spam-filtered before dispatch (PART 16 → "Contact antispam"). |
 
-**Webhook payloads are always summaries.** A webhook is not encrypted end to end, so whichever role resolved, a security-role webhook included and a security -> admin fallback included, it carries only the summary (subject, severity, `tracking_id`, component and the command that reads the report, `{project_name} --maintenance security <action> {tracking_id}` (there is no admin UI and no operator report-view URL, so no link is sent)), never a report body or a contact. The full encrypted report goes by email only.
+**Webhook payloads are always summaries.** A webhook is not encrypted end to end, so whichever role resolved, a security-role webhook included and a security -> admin fallback included, it carries only the summary (subject, severity, `tracking_id`, component and how to read it: Security -> Reports in the admin panel or `{project_name} --maintenance security <action> {tracking_id}`; no URL is sent, because the admin path is never published), never a report body or a contact. The full encrypted report goes by email only.
 
 ### Privacy & Public Exposure
 
@@ -21721,7 +21716,7 @@ When not in cluster mode:
 | `status` | healthy, degraded, unhealthy, restart_required, maintenance, shutting_down (see Health Status Values & HTTP Codes) |
 | `pending_restart` | Present (`true`) only when a config change requires a restart |
 | `restart_reason` | Settings that changed (only with `pending_restart`) |
-| `version` | The version `--version` reports: SemVer for a release, `YYYYMMDDHHMMSS-beta` for a beta, the short commit id for a devel build; never the word `devel` ("Health Output Invariants") |
+| `version` | The version `--version` reports: SemVer for a release, `YYYYMMDDHHMMSS-beta` for a beta, the short commit id for a devel build (`devel` only for a local build outside git that has no release, beta or commit identity, "Health Output Invariants") |
 | `mode` | production, development, debug |
 | `uptime` | Compact uptime `{d}d {h}h {m}m` (zero leading units dropped, `45s` under a minute); the frontend shows `format.Duration()` |
 | `timestamp` | RFC 3339, UTC, whole seconds (`2026-11-20T17:21:53Z`) |
@@ -21791,7 +21786,7 @@ When not in cluster mode:
 |-----------|------|
 | **Key order** | JSON keys follow the struct order of this specification, written by a custom marshaller. Alphabetical or map order is a bug. A golden-order test covers JSON and both text formats |
 | **Always present** | `project`, `status`, `version`, `go_version`, `build`, `uptime`, `mode`, `timestamp`, `cluster`, `features`, `checks` and `stats` are in every response. In a single instance `cluster` is `{"enabled": false}` |
-| **`version`** | Exactly what `--version` prints as `{project_version}`: SemVer for a release, `YYYYMMDDHHMMSS-beta` for a beta, the short commit id for a devel build, `devel` only when the build has none of these. Never the word `devel` |
+| **`version`** | Exactly what `--version` prints as `{project_version}`: SemVer for a release, `YYYYMMDDHHMMSS-beta` for a beta, the short commit id for a devel build, `devel` only when the build has none of these (a local build outside git). A build with a commit identity never reports the word `devel` |
 | **`timestamp`, `build.date`** | RFC 3339, UTC, whole seconds, `Z` suffix (`2026-11-20T17:21:53Z`); never nanoseconds |
 | **`uptime` (JSON, API text)** | Compact `{d}d {h}h {m}m`: the leading zero units are dropped and seconds appear only under one minute. `45s`, `24m`, `2h 16m`, `1d 1h 4m`. Never `0h 10m 57s` |
 | **`uptime` (frontend)** | `format.Duration()`: `2 hours 16 minutes`, `1 day 1 hour` ("Frontend Human-Readable Rules") |
@@ -24735,7 +24730,7 @@ at the appropriate level — a healthy server prints nothing.
 
 | Directory | Check Frequency | Renewal Trigger |
 |-----------|-----------------|-----------------|
-| `{config_dir}/ssl/letsencrypt/{fqdn}/` | Daily (03:00) | 7 days before expiry |
+| `{config_dir}/ssl/letsencrypt/{fqdn}/` | Daily (03:00) | When 30 days or fewer remain (fixed) |
 | `{config_dir}/ssl/local/{fqdn}/` | Never | Manual only |
 | `/etc/letsencrypt/live/**` | Never | System (certbot) manages |
 
@@ -32046,16 +32041,14 @@ Language is detected automatically and changed in Preferences. It is never a hea
 | **Data Policies** | **`data.sold` toggle** (default: off), stored_on_server (read-only: true), sharing conditions |
 | **Consent Banner** | Message (not-sold), message_if_sold (sold), policy link, button labels, position |
 | **Cookie Descriptions** | Essential, Preferences, Analytics (base + suffix for both sold/not-sold) |
-| **Data Collection** | Markdown editor for data collection section |
-| **Data Usage** | Markdown editor for `data_usage` (not-sold), `data_usage_if_sold` (sold) |
-| **Data Security** | Markdown editor for data security section |
+| **Additional text** | One Markdown editor for `server.branding.content.privacy`, the operator's extension shown after the built-in sections. The built-in `data_collection`, `data_usage` and `data_security` sections are project data: they are shown in Preview and are never edited here |
 | **Data Retention** | Retention period text, export toggle, deletion toggle |
 | **Third Parties** | Add/edit/remove services (name, purpose, policy URL) |
 | **Preview** | Live preview of privacy page (toggle to see sold/not-sold versions) |
 
 **Important Admin UI Note:**
 - When `data.sold` is toggled ON, show a **warning** explaining CCPA implications
-- The `message_if_sold` and `data_usage_if_sold` fields are only editable when `data.sold = true`
+- The `message_if_sold` field is only editable when `data.sold = true`
 - Preview tab should allow toggling between "Data NOT Sold" and "Data Sold" views
 
 **Built-in content provided; the operator extends it with `server.branding.content.privacy` ("Page Content").**
@@ -32227,7 +32220,7 @@ CREATE INDEX IF NOT EXISTS idx_captcha_challenges_expires ON captcha_challenges(
 | Getting started | Quick start guide |
 | Features | How to use key features |
 | More help | The `More help` card links every registered help page (`/server/help/mcp` and the project's own pages), see "Preferences and Help Hubs" |
-| API Documentation | Links to Swagger (`/server/docs/swagger`) and GraphQL (`/server/docs/graphql`) — UIs fetch from the versioned `/api/{api_version}/server/swagger` and `/api/{api_version}/server/graphql` routes |
+| API Documentation | Links to Swagger (`/server/docs/swagger`) and GraphQL (`/server/docs/graphql`); the MCP help page is linked once, by the "More help" card (the registry rule), never repeated here — UIs fetch from the versioned `/api/{api_version}/server/swagger` and `/api/{api_version}/server/graphql` routes |
 | Tor Access | How to access via Tor (only shown if Tor enabled) |
 | I2P Access | How to access via I2P (only shown if I2P enabled and running) |
 | FAQ | Frequently asked questions |
@@ -32318,7 +32311,6 @@ curl -H "Accept: application/xml" https://jokes.example.com/api/v1/joke</code></
   <ul>
     <li><a href="/server/docs/swagger">Swagger UI</a> - Interactive REST API explorer</li>
     <li><a href="/server/docs/graphql">GraphiQL</a> - Interactive GraphQL explorer</li>
-    <li><a href="/server/help/mcp">MCP server</a> - Use this application from an AI assistant</li>
   </ul>
 </div>
 ```
@@ -32444,6 +32436,9 @@ curl -H "Accept: application/xml" https://jokes.example.com/api/v1/joke</code></
 | Liability | The service is provided as is, without warranty of any kind; to the extent the law allows, the operator is not liable for loss arising from its use |
 | Changes | The terms may change; the current text on this page applies from the moment it is published |
 | Governing law | The laws of the United States, without regard to conflict-of-law rules, unless the operator's own terms text names another |
+| Account terms | You are responsible for the activity under your account and for keeping its credentials secret; tell the operator about misuse of it |
+| Content | You keep the rights to what you submit and you give the operator the permission needed to store and show it as the service works; do not submit what you have no right to share |
+| Termination | The operator may suspend or end access that breaks these terms; you may stop using the service at any time |
 
 ### Configuration
 
@@ -33231,7 +33226,7 @@ On first run, a one-time setup token is generated and displayed in console. Admi
 | 3 | User enters setup token |
 | 4 | Redirect to `/server/{admin_path}/setup` (setup wizard) |
 
-**The setup page calls ONLY the API routes listed for it.** Its JavaScript verifies the token with `POST /api/{api_version}/server/{admin_path}/setup/verify` and uses no other path: a `404` on a route such as `/server/admin/verify-token` means the page and the router disagree on the route or on `{admin_path}`. A test loads the setup page and asserts that every request target it makes exists in the router.
+**The setup page works without JavaScript and calls ONLY the routes listed for it.** Each step is a plain server-rendered, CSRF-protected form that posts to a web route which calls the same service functions, token check, setup session and validation as the API step route of the same name, in the same order; JavaScript only enhances it. When it runs, its JavaScript verifies the token with `POST /api/{api_version}/server/{admin_path}/setup/verify` and uses no other path: a `404` on a route such as `/server/admin/verify-token` means the page and the router disagree on the route or on `{admin_path}`. A test loads the setup page and asserts that every request target it makes exists in the router.
 
 **Setup Wizard Steps (`/server/{admin_path}/setup`):**
 
@@ -34557,7 +34552,7 @@ Check for valid admin session
 | Aspect | Admin Session | User Session |
 |--------|---------------|--------------|
 | Cookie name | `admin_session` | `user_session` |
-| Valid routes | `/server/{admin_path}/**` only | `/**` except `/server/{admin_path}/**` |
+| Valid routes | `/server/{admin_path}/**` and the shared `/server/auth/*` routes (login and logout) only: never honored anywhere else | `/**` except `/server/{admin_path}/**` |
 | Stored in | `server.db` (admin_sessions) | `users.db` (user_sessions) |
 | Credentials | `admins` table | `users` table |
 | Default duration | 30 days | 7 days |
@@ -35399,7 +35394,7 @@ server:
 
 **Default Sender:**
 - From Name: `{app_name}` (defaults to binary name if not set)
-- From Address: `no-reply@{fqdn}` (defaults to `no-reply@localhost` if FQDN not set)
+- From Address: `no-reply@{fqdn}`; when `{fqdn}` is empty no email is sent and the startup WARN says so (there is no `no-reply@localhost`)
 - Reply-To: `{admin_email}` (if set, otherwise omitted)
 
 **Default Expiry Times:**
@@ -37143,7 +37138,7 @@ Shutdown complete
 
 ### Implementation Requirements
 
-1. **Use Go's time/ticker** - No external cron libraries required
+1. **Use Go's time/ticker** - No external cron libraries required, and none is in the dependency list (the scheduler is stdlib only)
 2. **Database-backed state** - All state in server.db, survives restarts
 3. **Graceful shutdown** - Complete running tasks, release locks
 4. **Cluster-safe** - Distributed locking for global tasks
@@ -38914,7 +38909,7 @@ groups:
 |---------|----------|-------|
 | `server.yml` | ✓ Always | Configuration file |
 | `{config_dir}/yaml.d/` | ✓ If exists | Drop-in config files |
-| `{config_dir}/secrets.yml` | ✓ If exists | Secrets (token, encryption key, credentials) |
+| `{config_dir}/secrets.yml` | ✓ If exists | Secrets (encryption key, credentials); `server.token` is blanked in the backup copy |
 | `{config_dir}/assets/` | If exists | Branding image files |
 | `server.db` | ✓ When the local file exists | The local SQLite main database (settings). A remote database is never part of a backup (see below) |
 | `users.db` | ✓ When the local file exists | The local SQLite user database (admins table holds admin credentials) |
@@ -41649,7 +41644,7 @@ func (ws *windowsService) Execute(args []string, r <-chan svc.ChangeRequest, s c
 
 # PART 26: MAKEFILE
 
-**Six core targets. DO NOT ADD MORE.** The only other permitted targets are `clean`, a housekeeping target that removes `binaries/` and `releases/` and builds nothing, and `release-check`, an internal helper that is the first prerequisite of `release`, validates the version and builds nothing (it is never the entry point of a workflow). There is no `all` target and none is required.
+**Seven core targets (`dev`, `local`, `build`, `test`, `release`, `beta`, `docker`). DO NOT ADD MORE.** The only other permitted targets are `clean`, a housekeeping target that removes `binaries/` and `releases/` and builds nothing, and `release-check`, an internal helper that is the first prerequisite of `release`, validates the version and builds nothing (it is never the entry point of a workflow). There is no `all` target and none is required.
 
 ## Targets
 
@@ -42455,7 +42450,7 @@ The **only** times binaries are copied are the CI/CD release process, the `make 
 |--------------|---------|-----------------|--------------|-------------|
 | **Stable** | `v1.2.3` or `1.2.3` | ✓ YES (numbers) | `v1.2.3` | `1.2.3` |
 | **Stable** | `v0.2.0` or `0.2.0` | ✓ YES (numbers) | `v0.2.0` | `0.2.0` |
-| **Beta** | (`beta-` tag push) | ✗ NO (timestamp) | `20251205-beta` | `20251205-beta` |
+| **Beta** | `20251205143022-beta` (tag push) | ✗ NO (timestamp) | `20251205143022-beta` | `20251205143022-beta` |
 | **Devel** | (branch push) | ✗ NO (commit id) | `devel` | `a1b2c3d` |
 | **Dev** | `dev` | ✗ NO (text) | `dev` | `dev` |
 
@@ -44187,7 +44182,7 @@ networks:
 
 **Tag release auto-cancel policy:** Tag-only release workflows like `release.yml` MUST also use workflow concurrency, but only per exact tag ref. A newer run for `refs/tags/v1.2.3` should cancel the older `refs/tags/v1.2.3` run. A run for `v1.2.4` must NOT cancel `v1.2.3`.
 
-**Pull requests and merges:** a pull request runs `ci.yml` only (build, test, lint, coverage, secret scan, workflow policy) — it never publishes an image or a release, and a fork PR receives no secrets. Merging into `main`/`master` is simply a push to that branch, so the merge triggers `ci.yml`, `devel.yml` (the rolling `devel` release) and `docker.yml` (the `{commit_id}` image and the `:devel` image). Merging into `beta` triggers `beta.yml`; a stable release is a tag push, never a merge. A PR and its target branch have different refs, so their concurrency groups never cancel each other.
+**Pull requests and merges:** a pull request runs `ci.yml` only (build, test, lint, coverage, secret scan, workflow policy) — it never publishes an image or a release, and a fork PR receives no secrets. Merging into `main`/`master` is simply a push to that branch, so the merge triggers `ci.yml`, `devel.yml` (the rolling `devel` release) and `docker.yml` (the `{commit_id}` image and the `:devel` image). A beta is a pushed tag `YYYYMMDDHHMMSS-beta` (`make beta`), a stable release is a pushed `v*` tag, and neither is ever a merge. A PR and its target branch have different refs, so their concurrency groups never cancel each other.
 
 ## Build Info Variables
 
@@ -44431,6 +44426,17 @@ jobs:
           LDFLAGS="-s -w -X 'main.Version=${{ env.VERSION }}' -X 'main.CommitID=${{ env.COMMIT_ID }}' -X 'main.BuildEpoch=${{ env.BUILD_EPOCH }}' -X 'main.OfficialSite=${{ env.OFFICIAL_SITE }}'"
           go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
 
+      # Optional GUI client: a separate, dynamically linked artifact for Linux, macOS and Windows only, never BSD (PART 32 "GUI build separation")
+      - name: Build GUI client
+        if: hashFiles('src/client/gui/**') != '' && matrix.goos != 'freebsd'
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          LDFLAGS="-s -w -X 'main.Version=${{ env.VERSION }}' -X 'main.CommitID=${{ env.COMMIT_ID }}' -X 'main.BuildEpoch=${{ env.BUILD_EPOCH }}' -X 'main.OfficialSite=${{ env.OFFICIAL_SITE }}'"
+          go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
+
       - name: Upload server artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
@@ -44443,6 +44449,13 @@ jobs:
         with:
           name: ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+
+      - name: Upload GUI client artifact
+        if: hashFiles('src/client/gui/**') != '' && matrix.goos != 'freebsd'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
       # Agent build - only if src/agent/ directory exists
       - name: Build Agent
@@ -44596,7 +44609,7 @@ jobs:
         id: v
         run: |
           # The pushed tag YYYYMMDDHHMMSS-beta carries the stamp; a manual run computes one
-          if [[ "${GITEA_REF_TYPE}" == "tag" ]]; then STAMP="${GITEA_REF_NAME%-beta}"; else STAMP="$(date -u +%Y%m%d%H%M%S)"; fi
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then STAMP="${GITHUB_REF_NAME%-beta}"; else STAMP="$(date -u +%Y%m%d%H%M%S)"; fi
           VERSION="${STAMP}-beta"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           # Release tag is always the timestamped beta form - the update channel matches the -beta suffix
@@ -44668,6 +44681,17 @@ jobs:
           LDFLAGS="-s -w -X 'main.Version=${{ env.VERSION }}' -X 'main.CommitID=${{ env.COMMIT_ID }}' -X 'main.BuildEpoch=${{ env.BUILD_EPOCH }}' -X 'main.OfficialSite=${{ env.OFFICIAL_SITE }}'"
           go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
 
+      # Optional GUI client: a separate, dynamically linked artifact for Linux, macOS and Windows only, never BSD (PART 32 "GUI build separation")
+      - name: Build GUI client
+        if: hashFiles('src/client/gui/**') != '' && matrix.goos != 'freebsd'
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          LDFLAGS="-s -w -X 'main.Version=${{ env.VERSION }}' -X 'main.CommitID=${{ env.COMMIT_ID }}' -X 'main.BuildEpoch=${{ env.BUILD_EPOCH }}' -X 'main.OfficialSite=${{ env.OFFICIAL_SITE }}'"
+          go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
+
       - name: Upload server artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
@@ -44680,6 +44704,13 @@ jobs:
         with:
           name: ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+
+      - name: Upload GUI client artifact
+        if: hashFiles('src/client/gui/**') != '' && matrix.goos != 'freebsd'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
       # Agent build - only if src/agent/ directory exists
       - name: Build Agent
@@ -44872,6 +44903,17 @@ jobs:
           LDFLAGS="-s -w -X 'main.Version=${{ env.VERSION }}' -X 'main.CommitID=${{ env.COMMIT_ID }}' -X 'main.BuildEpoch=${{ env.BUILD_EPOCH }}' -X 'main.OfficialSite=${{ env.OFFICIAL_SITE }}'"
           go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
 
+      # Optional GUI client: a separate, dynamically linked artifact for Linux, macOS and Windows only, never BSD (PART 32 "GUI build separation")
+      - name: Build GUI client
+        if: hashFiles('src/client/gui/**') != '' && matrix.goos != 'freebsd'
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          LDFLAGS="-s -w -X 'main.Version=${{ env.VERSION }}' -X 'main.CommitID=${{ env.COMMIT_ID }}' -X 'main.BuildEpoch=${{ env.BUILD_EPOCH }}' -X 'main.OfficialSite=${{ env.OFFICIAL_SITE }}'"
+          go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
+
       - name: Upload server artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
@@ -44884,6 +44926,13 @@ jobs:
         with:
           name: ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+
+      - name: Upload GUI client artifact
+        if: hashFiles('src/client/gui/**') != '' && matrix.goos != 'freebsd'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
       # Agent build - only if src/agent/ directory exists
       - name: Build Agent
@@ -45629,6 +45678,17 @@ jobs:
           LDFLAGS="-s -w -X 'main.Version=${{ env.VERSION }}' -X 'main.CommitID=${{ env.COMMIT_ID }}' -X 'main.BuildEpoch=${{ env.BUILD_EPOCH }}' -X 'main.OfficialSite=${{ env.OFFICIAL_SITE }}'"
           go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
 
+      # Optional GUI client: a separate, dynamically linked artifact for Linux, macOS and Windows only, never BSD (PART 32 "GUI build separation")
+      - name: Build GUI client
+        if: hashFiles('src/client/gui/**') != '' && matrix.goos != 'freebsd'
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          LDFLAGS="-s -w -X 'main.Version=${{ env.VERSION }}' -X 'main.CommitID=${{ env.COMMIT_ID }}' -X 'main.BuildEpoch=${{ env.BUILD_EPOCH }}' -X 'main.OfficialSite=${{ env.OFFICIAL_SITE }}'"
+          go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
+
       - name: Upload server artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
@@ -45641,6 +45701,13 @@ jobs:
         with:
           name: ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+
+      - name: Upload GUI client artifact
+        if: hashFiles('src/client/gui/**') != '' && matrix.goos != 'freebsd'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
       # Agent build - only if src/agent/ directory exists
       - name: Build Agent
@@ -45854,6 +45921,17 @@ jobs:
           LDFLAGS="-s -w -X 'main.Version=${{ env.VERSION }}' -X 'main.CommitID=${{ env.COMMIT_ID }}' -X 'main.BuildEpoch=${{ env.BUILD_EPOCH }}' -X 'main.OfficialSite=${{ env.OFFICIAL_SITE }}'"
           go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
 
+      # Optional GUI client: a separate, dynamically linked artifact for Linux, macOS and Windows only, never BSD (PART 32 "GUI build separation")
+      - name: Build GUI client
+        if: hashFiles('src/client/gui/**') != '' && matrix.goos != 'freebsd'
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          LDFLAGS="-s -w -X 'main.Version=${{ env.VERSION }}' -X 'main.CommitID=${{ env.COMMIT_ID }}' -X 'main.BuildEpoch=${{ env.BUILD_EPOCH }}' -X 'main.OfficialSite=${{ env.OFFICIAL_SITE }}'"
+          go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
+
       - name: Upload server artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
@@ -45866,6 +45944,13 @@ jobs:
         with:
           name: ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+
+      - name: Upload GUI client artifact
+        if: hashFiles('src/client/gui/**') != '' && matrix.goos != 'freebsd'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
       # Agent build - only if src/agent/ directory exists
       - name: Build Agent
@@ -46047,6 +46132,17 @@ jobs:
           LDFLAGS="-s -w -X 'main.Version=${{ env.VERSION }}' -X 'main.CommitID=${{ env.COMMIT_ID }}' -X 'main.BuildEpoch=${{ env.BUILD_EPOCH }}' -X 'main.OfficialSite=${{ env.OFFICIAL_SITE }}'"
           go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
 
+      # Optional GUI client: a separate, dynamically linked artifact for Linux, macOS and Windows only, never BSD (PART 32 "GUI build separation")
+      - name: Build GUI client
+        if: hashFiles('src/client/gui/**') != '' && matrix.goos != 'freebsd'
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          LDFLAGS="-s -w -X 'main.Version=${{ env.VERSION }}' -X 'main.CommitID=${{ env.COMMIT_ID }}' -X 'main.BuildEpoch=${{ env.BUILD_EPOCH }}' -X 'main.OfficialSite=${{ env.OFFICIAL_SITE }}'"
+          go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./src/client
+
       - name: Upload server artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
@@ -46059,6 +46155,13 @@ jobs:
         with:
           name: ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ env.PROJECT_NAME }}-cli-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
+
+      - name: Upload GUI client artifact
+        if: hashFiles('src/client/gui/**') != '' && matrix.goos != 'freebsd'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.PROJECT_NAME }}-cli-gui-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
       # Agent build - only if src/agent/ directory exists
       - name: Build Agent
@@ -46592,6 +46695,8 @@ All `$CI_*` variables are auto-populated by GitLab (works with self-hosted).
 
 ## GitLab CI Configuration
 
+**Image pinning:** the examples below show floating tags (`trufflehog:latest`, `docker:latest`, `docker:dind`, `release-cli:latest`, `trivy:latest`) only for readability. A project pins every third-party `image:` and `services:` entry in `.gitlab-ci.yml`, and every agent image in the `Jenkinsfile`, by digest (`name@sha256:{digest}`), resolved when the file is written and kept current by Renovate `pinDigests`. The one deliberate floating tag is the maintained `casjaysdev/go:latest` toolchain image.
+
 **File:** `.gitlab-ci.yml`
 
 ```yaml
@@ -47003,11 +47108,17 @@ build:beta:
     - GOOS=freebsd GOARCH=arm64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-freebsd-arm64 ./src
     # Build CLI if exists
     - if [ -d "src/client" ]; then GOOS=linux GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-linux-amd64 ./src/client; fi
+    - if [ -d "src/client/gui" ]; then GOOS=linux GOARCH=amd64 go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-gui-linux-amd64 ./src/client; fi
     - if [ -d "src/client" ]; then GOOS=linux GOARCH=arm64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-linux-arm64 ./src/client; fi
+    - if [ -d "src/client/gui" ]; then GOOS=linux GOARCH=arm64 go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-gui-linux-arm64 ./src/client; fi
     - if [ -d "src/client" ]; then GOOS=darwin GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-darwin-amd64 ./src/client; fi
+    - if [ -d "src/client/gui" ]; then GOOS=darwin GOARCH=amd64 go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-gui-darwin-amd64 ./src/client; fi
     - if [ -d "src/client" ]; then GOOS=darwin GOARCH=arm64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-darwin-arm64 ./src/client; fi
+    - if [ -d "src/client/gui" ]; then GOOS=darwin GOARCH=arm64 go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-gui-darwin-arm64 ./src/client; fi
     - if [ -d "src/client" ]; then GOOS=windows GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-windows-amd64.exe ./src/client; fi
+    - if [ -d "src/client/gui" ]; then GOOS=windows GOARCH=amd64 go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-gui-windows-amd64.exe ./src/client; fi
     - if [ -d "src/client" ]; then GOOS=windows GOARCH=arm64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-windows-arm64.exe ./src/client; fi
+    - if [ -d "src/client/gui" ]; then GOOS=windows GOARCH=arm64 go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-gui-windows-arm64.exe ./src/client; fi
     - if [ -d "src/client" ]; then GOOS=freebsd GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-freebsd-amd64 ./src/client; fi
     - if [ -d "src/client" ]; then GOOS=freebsd GOARCH=arm64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-freebsd-arm64 ./src/client; fi
     # Build Agent if exists
@@ -47138,11 +47249,17 @@ build:devel:
     - GOOS=freebsd GOARCH=arm64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-freebsd-arm64 ./src
     # Build CLI if exists
     - if [ -d "src/client" ]; then GOOS=linux GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-linux-amd64 ./src/client; fi
+    - if [ -d "src/client/gui" ]; then GOOS=linux GOARCH=amd64 go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-gui-linux-amd64 ./src/client; fi
     - if [ -d "src/client" ]; then GOOS=linux GOARCH=arm64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-linux-arm64 ./src/client; fi
+    - if [ -d "src/client/gui" ]; then GOOS=linux GOARCH=arm64 go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-gui-linux-arm64 ./src/client; fi
     - if [ -d "src/client" ]; then GOOS=darwin GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-darwin-amd64 ./src/client; fi
+    - if [ -d "src/client/gui" ]; then GOOS=darwin GOARCH=amd64 go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-gui-darwin-amd64 ./src/client; fi
     - if [ -d "src/client" ]; then GOOS=darwin GOARCH=arm64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-darwin-arm64 ./src/client; fi
+    - if [ -d "src/client/gui" ]; then GOOS=darwin GOARCH=arm64 go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-gui-darwin-arm64 ./src/client; fi
     - if [ -d "src/client" ]; then GOOS=windows GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-windows-amd64.exe ./src/client; fi
+    - if [ -d "src/client/gui" ]; then GOOS=windows GOARCH=amd64 go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-gui-windows-amd64.exe ./src/client; fi
     - if [ -d "src/client" ]; then GOOS=windows GOARCH=arm64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-windows-arm64.exe ./src/client; fi
+    - if [ -d "src/client/gui" ]; then GOOS=windows GOARCH=arm64 go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-gui-windows-arm64.exe ./src/client; fi
     - if [ -d "src/client" ]; then GOOS=freebsd GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-freebsd-amd64 ./src/client; fi
     - if [ -d "src/client" ]; then GOOS=freebsd GOARCH=arm64 go build -buildvcs=false -trimpath -ldflags "${LDFLAGS}" -o ${PROJECT_NAME}-cli-freebsd-arm64 ./src/client; fi
     # Build Agent if exists
@@ -48095,6 +48212,21 @@ pipeline {
                         '''
                     }
                 }
+            }
+        }
+
+        // Optional GUI client: separate dynamically linked artifact, Linux/macOS/Windows only, never BSD
+        stage('Build GUI client') {
+            when { expression { fileExists('src/client/gui') } }
+            agent { label 'amd64' }
+            steps {
+                sh '''
+                    for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+                        os=${t%/*}; arch=${t#*/}; ext=""; [ "$os" = windows ] && ext=".exe"
+                        docker run --rm -v ${WORKSPACE}:/app -v ${GO_CACHE}:/usr/local/share/go/pkg/mod -v ${GO_BUILD}:/usr/local/share/go/cache -w /app -e CGO_ENABLED=0 -e GOOS=$os -e GOARCH=$arch casjaysdev/go:latest \
+                            go build -buildvcs=false -trimpath -tags gui -ldflags "${LDFLAGS}" -o ${BINDIR}/${PROJECT_NAME}-cli-gui-${os}-${arch}${ext} ./src/client
+                    done
+                '''
             }
         }
 
@@ -51994,7 +52126,7 @@ make test
 | **Admin Panel** | All admin UI: dashboard, settings forms, labels, tooltips, wizard steps, notifications |
 | **API Responses** | Error messages, validation messages, status descriptions |
 | **Swagger/OpenAPI** | Endpoint descriptions, parameter descriptions, schema descriptions, error examples |
-| **GraphQL** | Type descriptions and field descriptions of the query-only schema (a project that ever exposes mutations adds their descriptions here) |
+| **GraphQL** | Type descriptions and field descriptions of the query-only schema (GraphQL is query-only and never has mutations: writes belong to REST and Swagger, PART 14) |
 | **Email Templates** | Subject lines, body text, headings, CTAs, regulatory/compliance notices |
 | **Server CLI Output** | Help text, status messages, error messages, startup banners |
 | **Client CLI Output** | Help text, command descriptions, error messages, TUI labels, admin output |
@@ -52011,7 +52143,7 @@ make test
 |-------------|-------------|
 | **Encoding** | UTF-8 everywhere - files, database, HTTP responses |
 | **Default language** | English (en) when no preference detected |
-| **Fallback chain** | `?lang= query param (sets cookie) → lang cookie → Accept-Language header → default (en)` |
+| **Fallback chain** | `?lang= query param (used for this response; it also writes the cookie only when the Preferences consent category is accepted) → lang cookie → Accept-Language header → default (en)` |
 | **100% coverage** | Every user-facing string uses a translation key - no hardcoded text |
 | **Missing key fallback** | If a key is missing in the active language, fall back to English (`en`) |
 | **Unsupported language fallback** | If `--lang` or `Accept-Language` specifies an unsupported language, silently fall back to English (`en`) — never error or crash |
@@ -52046,9 +52178,9 @@ make test
 
 ```
 GET /dashboard?lang=es
-  → Sets cookie: lang=es; Max-Age=31536000; Path=/; SameSite=Lax
   → Renders page in Spanish
-  → All subsequent requests use Spanish (cookie persists)
+  → With Preferences consent: sets cookie lang=es; Max-Age=31536000; Path=/; SameSite=Lax, and later requests use Spanish
+  → Without consent: no cookie is written, and only this response is Spanish
 
 GET /dashboard
   → Reads lang cookie → Spanish
@@ -52059,7 +52191,7 @@ GET /dashboard
 **Fallback chain (in order):**
 
 ```
-1. ?lang= query parameter (if present → set cookie + use immediately)
+1. ?lang= query parameter (if present → use immediately; also set the cookie only when the Preferences consent category is accepted)
 2. lang cookie (persistent, 1 year)
 3. Accept-Language HTTP header (browser preference)
 4. Default: en
@@ -52072,20 +52204,22 @@ func LanguageMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         lang := ""
 
-        // 1. Query parameter (highest priority, also sets cookie)
+        // 1. Query parameter (highest priority); the cookie is written only with Preferences consent
         if q := r.URL.Query().Get("lang"); q != "" && isSupported(q) {
             lang = q
-            http.SetCookie(w, &http.Cookie{
-                Name:     "lang",
-                Value:    lang,
-                Path:     "/",
-                // 1 year
-                MaxAge:   365 * 24 * 60 * 60,
-                SameSite: http.SameSiteLaxMode,
-                Secure:   r.TLS != nil,
-                // Not HttpOnly: preference cookies are read by JavaScript (PART 16, one visibility rule for theme, lang and the _pref_ cookies)
-                HttpOnly: false,
-            })
+            if CanSetPreferenceCookie(r) {
+                http.SetCookie(w, &http.Cookie{
+                    Name:     "lang",
+                    Value:    lang,
+                    Path:     "/",
+                    // 1 year
+                    MaxAge:   365 * 24 * 60 * 60,
+                    SameSite: http.SameSiteLaxMode,
+                    Secure:   r.TLS != nil,
+                    // Not HttpOnly: preference cookies are read by JavaScript (PART 16, one visibility rule for theme, lang and the _pref_ cookies)
+                    HttpOnly: false,
+                })
+            }
         }
 
         // 2. Cookie
@@ -64611,8 +64745,8 @@ Organizations - only for projects with multi-user collaboration.
 | `/api/{api_version}/server/auth/invite/user/{token}` | POST | Complete user invite (set username, password) |
 | `/api/{api_version}/server/auth/invite/server/{token}` | GET | Validate Server Admin invite token |
 | `/api/{api_version}/server/auth/invite/server/{token}` | POST | Complete admin invite (set username, password) |
-| `/api/{api_version}/server/auth/oidc/{provider}` | GET | Get OIDC authorization URL for user/admin login |
-| `/api/{api_version}/server/auth/oidc/{provider}/callback` | POST | Exchange OIDC code for session, then apply user/admin mapping rules |
+| `/api/{api_version}/server/auth/oidc/{provider}` | GET | Begin OIDC login: returns `{ redirect_url, request_id }` for the native client to open in a system browser (see "OIDC API-mode flow") |
+| `/api/{api_version}/server/auth/oidc/{provider}/callback` | POST | Exchange `request_id` (+ one-time `code`) for a session token once the browser callback has completed, mapping rules already applied; returns `202 pending` until then |
 | `/api/{api_version}/server/auth/ldap` | GET | List enabled LDAP providers and their display names for login UI/client selection |
 | `/api/{api_version}/server/auth/ldap/{provider}` | POST | LDAP authentication for the selected provider, then apply user/admin mapping rules |
 | `/api/{api_version}/server/auth/saml` | GET | List enabled SAML providers and their display names for login UI/client selection |
@@ -64621,6 +64755,14 @@ Organizations - only for projects with multi-user collaboration.
 | `/api/{api_version}/server/auth/saml/{provider}/exchange` | POST | Exchange `request_id` (+ one-time `code`) for a session token once the browser ACS callback has completed; returns `202 pending` until then |
 | `/api/{api_version}/server/auth/saml/{provider}/slo` | POST | Initiate SP-initiated Single Logout for the current session; returns `{ redirect_url }` to open in the browser |
 | `/api/{api_version}/server/auth/external/username` | POST | Complete external user/admin account creation after the first-login username confirmation step |
+
+**OIDC API-mode (native/JSON client) flow:** the OIDC redirect lands in a browser, so the native client never holds the OAuth state or the PKCE verifier; the server does, in a short-lived transaction.
+
+1. Client calls `GET /api/{api_version}/server/auth/oidc/{provider}` and receives `{ redirect_url, request_id }`. The server creates the transaction `request_id` holding `state`, `nonce` and the PKCE `code_verifier` (S256 challenge in the URL), and sets the provider `redirect_uri` to the browser callback `/server/auth/oidc/{provider}/callback`.
+2. Client opens `redirect_url` in the system browser; the user authenticates at the provider.
+3. The provider redirects the browser to `/server/auth/oidc/{provider}/callback`. The server matches `state` to the transaction, exchanges the authorization code with the held `code_verifier`, validates the ID token (`nonce`, issuer, audience), resolves the identity and applies the mapping rules. If a first-login username confirmation is required, the browser completes `/server/auth/external/username` first. Only once the account exists does the server mint a one-time `code` stored on the transaction. The browser shows a "you may return to the app" page (and, where supported, a deep link carrying the `code`).
+4. Client calls `POST /api/{api_version}/server/auth/oidc/{provider}/callback` with `{ request_id }` (and the `code` if it captured the deep link). It returns `202 pending` until step 3 has completed, then `200` with the session token (or the 2FA challenge, matching the login response shape).
+5. The transaction, `state` and `code` are single-use, bound to the originating client and expire after 5 minutes by default; a replayed or mismatched `request_id`, `state` or `code` returns `400 INVALID_REQUEST` and ends the transaction.
 
 **SAML API-mode (native/JSON client) flow:** SAML is inherently a browser redirect + POST-binding protocol, so a native client cannot receive the assertion directly. The API flow bridges this the same way it does for OIDC (get URL → exchange), but the exchange is decoupled because the assertion lands in the browser, not the client:
 
