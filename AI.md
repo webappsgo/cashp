@@ -2187,11 +2187,11 @@ See the single authoritative table earlier in this file (search: `### Allowed Ro
 | Placeholder | Linux/BSD Default | macOS Default | Windows Default |
 |-------------|-------------------|---------------|-----------------|
 | `{config_dir}` | `/etc/{internal_org}/{internal_name}` | `/Library/Application Support/{internal_org}/{internal_name}` | `%PROGRAMDATA%\{internal_org}\{internal_name}` |
-| `{data_dir}` | `/var/lib/{internal_org}/{internal_name}` | `/Library/Application Support/{internal_org}/{internal_name}` | `%PROGRAMDATA%\{internal_org}\{internal_name}` |
+| `{data_dir}` | `/var/lib/{internal_org}/{internal_name}` | `/Library/Application Support/{internal_org}/{internal_name}/data` | `%PROGRAMDATA%\{internal_org}\{internal_name}` |
 | `{db_dir}` | `{data_dir}/db/` | `{data_dir}/db/` | `{data_dir}\db\` |
 | `{log_dir}` | `/var/log/{internal_org}/{internal_name}` | `/Library/Logs/{internal_org}/{internal_name}` | `%PROGRAMDATA%\{internal_org}\{internal_name}\logs` |
 | `{cache_dir}` | `/var/cache/{internal_org}/{internal_name}` | `/Library/Caches/{internal_org}/{internal_name}` | `%PROGRAMDATA%\{internal_org}\{internal_name}\cache` |
-| `{backup_dir}` | `/mnt/Backups/{internal_org}/{internal_name}` | `/Library/Application Support/{internal_org}/{internal_name}/backups` | `%PROGRAMDATA%\{internal_org}\{internal_name}\backups` |
+| `{backup_dir}` | `/mnt/Backups/{internal_org}/{internal_name}` | `/Library/Backups/{internal_org}/{internal_name}` | `%PROGRAMDATA%\{internal_org}\{internal_name}\backups` |
 | `{pid_file}` | `/var/run/{internal_org}/{internal_name}/{internal_name}.pid` | `/var/run/{internal_org}/{internal_name}/{internal_name}.pid` | N/A (Windows uses SCM) |
 
 **Note:** In Docker containers, `{db_dir}` is `/data/db/sqlite` (see Docker paths section).
@@ -3540,7 +3540,7 @@ Spec version: {line count or hash}
 |--------|--------|
 | **Modifying PARTS 0-36** | **Implementation patterns are fixed - NEVER modify** |
 | Plain `git commit` (any flag form) | Bypasses signing wrapper. Use `gitcommit <command>` instead |
-| Plain `git push` | gitcommit already pushes. Plain `git push` bypasses the wrapper entirely |
+| Plain `git push` | gitcommit already pushes. Plain `git push` bypasses the wrapper entirely. Scope: AI sessions and day-to-day repository updates. The release targets (`make release`, run by the human maintainer, and the CI workflows) delete and recreate the rolling `devel` and release tags with `git tag`, `git push origin refs/tags/...` and `gh release`, because a tag is not a commit and `gitcommit` has no tag operation |
 | `gitcommit <command>` without first writing AND re-reading `.git/COMMIT_MESS` | The script reads the message from the file and pushes immediately. Wrong file = wrong commit on the remote |
 | `gitcommit -m "..."` / `gitcommit --message "..."` | Defeats the point. The message belongs in `.git/COMMIT_MESS` so it can be verified before committing |
 | Running `gitcommit <command>` mid-task with files in an inconsistent state | Every commit is pushed — half-finished work goes public. Finish the unit of work first |
@@ -5299,13 +5299,13 @@ If `{official_site}` is defined, ALL documentation examples MUST use the full UR
 ```markdown
 # ❌ WRONG - Relative paths when officialsite exists
 GET /server/healthz
-GET /api/v1/users
+GET /api/v1/items
 GET /api/autoconfig
 curl http://localhost:8080/api/v1/data
 
 # ✅ CORRECT - Full URLs using officialsite
 GET https://api.example.com/server/healthz
-GET https://api.example.com/api/v1/users
+GET https://api.example.com/api/v1/items
 GET https://api.example.com/api/autoconfig
 curl -q -LSsf https://api.example.com/api/v1/data
 ```
@@ -5314,7 +5314,7 @@ curl -q -LSsf https://api.example.com/api/v1/data
 1. **API examples**: Always use `{official_site}` as base URL
 2. **curl commands**: Use `{official_site}`, not `localhost` or relative paths
 3. **Client examples**: Show connecting to `{official_site}` by default
-4. **Endpoint tables**: Show full URLs: `GET {official_site}/api/v1/users`
+4. **Endpoint tables**: Show full URLs: `GET {official_site}/api/v1/items`
 5. **Docker examples**: OK to use localhost for local deployment instructions
 6. **Development section**: OK to use localhost (it's for local dev)
 
@@ -5325,8 +5325,8 @@ curl -q -LSsf https://api.example.com/api/v1/data
 | Endpoint | Description |
 |----------|-------------|
 | `GET {official_site}/server/healthz` | Health check |
-| `GET {official_site}/api/v1/users` | List users |
-| `POST {official_site}/api/v1/users` | Create user |
+| `GET {official_site}/api/v1/items` | List items |
+| `POST {official_site}/api/v1/items` | Create item |
 | `GET {official_site}/api/autoconfig` | Auto-configuration |
 
 ### Examples
@@ -5336,7 +5336,7 @@ curl -q -LSsf https://api.example.com/api/v1/data
 curl -q -LSsf {official_site}/server/healthz
 
 # List all users (requires auth)
-curl -q -LSsf -H "Authorization: Bearer TOKEN" {official_site}/api/v1/users
+curl -q -LSsf -H "Authorization: Bearer TOKEN" {official_site}/api/v1/items
 
 # Auto-config for clients
 curl -q -LSsf {official_site}/api/autoconfig
@@ -5344,7 +5344,7 @@ curl -q -LSsf {official_site}/api/autoconfig
 ```
 
 **If {official_site} is not defined:**
-- Use relative paths: `GET /server/healthz`, `GET /api/v1/users`
+- Use relative paths: `GET /server/healthz`, `GET /api/v1/items`
 - Use placeholder in curl: `curl -q -LSsf http://YOUR_SERVER/server/healthz`
 - Document that user must specify their server URL
 
@@ -5431,7 +5431,7 @@ if cfg.Server.Healthz.Root.Enabled {
 | Location | Format | Example |
 |----------|--------|---------|
 | README.md | `{official_site}/path` | `GET https://api.example.com/server/healthz` |
-| docs/*.md | `{official_site}/path` | `curl -q -LSsf https://api.example.com/api/v1/users` |
+| docs/*.md | `{official_site}/path` | `curl -q -LSsf https://api.example.com/api/v1/items` |
 | Go code | `{fqdn}/path` | `BuildURL(r, "/path")` |
 | JS code | `origin/path` | `${window.location.origin}/path` |
 | Email templates | `{fqdn}/path` (PART 18: `{variable}` syntax, not Go templates) | `https://{fqdn}/verify?token={token}` |
@@ -6228,7 +6228,9 @@ package main
 **Recommended path structure:** `~/Projects/{gitprovider}/{project_org}/{internal_name}` (but works with any location)
 
 ```bash
-# Method 1: Infer from git remote (PREFERRED - works regardless of directory location)
+# Resolution order for EVERY method below: IDEA.md `## Project variables` first; only when it has no value yet (before setup)
+# does a method below apply.
+# Method 1: Infer from git remote (first fallback - works regardless of directory location)
 # github.com/cloudops/echoip.git → PROJECT_ORG=cloudops, PROJECT_NAME=echoip
 PROJECT_NAME=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)$|\1|; s|\.git$||')
 PROJECT_ORG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+(\.git)?$|\1|')
@@ -6849,7 +6851,7 @@ require (
 |---------|---------|-------|
 | **TOTP** | `github.com/pquerna/otp` | Time-based 2FA codes |
 | **Passkeys/WebAuthn** | `github.com/go-webauthn/webauthn` | FIDO2/WebAuthn passwordless |
-| **JWT** | `github.com/golang-jwt/jwt/v5` | API token authentication |
+| **JWT** | `github.com/golang-jwt/jwt/v5` | Verifying signed tokens issued by an external identity provider (OIDC and OAuth2 ID tokens). API tokens are NOT JWTs: they are the opaque `adm_`, `usr_`, `org_` and `own_` values of PART 11 |
 | **OIDC** | `github.com/coreos/go-oidc/v3` | OpenID Connect client |
 | **OAuth2** | `golang.org/x/oauth2` | OAuth2 flows |
 | **LDAP** | `github.com/go-ldap/ldap/v3` | LDAP/Active Directory |
@@ -7095,7 +7097,7 @@ require (
 	github.com/pquerna/otp {version}
 	// Passkeys/WebAuthn
 	github.com/go-webauthn/webauthn {version}
-	// JWT tokens
+	// JWT verification for external identity-provider tokens (never API tokens)
 	github.com/golang-jwt/jwt/v5 {version}
 	// OIDC client
 	github.com/coreos/go-oidc/v3 {version}
@@ -8515,6 +8517,8 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | `NO_COLOR` | Disable ANSI color output when set and non-empty (see PART 8) |
 | `TERM` | Terminal type; `TERM=dumb` disables ALL ANSI escapes and forces CLI mode (see PART 7); only an explicit `--color=yes` re-enables color sequences |
 | `DOMAIN` | FQDN override (highest priority for hostname resolution) |
+| `PORT` | Listen port, read at EVERY startup (same format as `--port`): precedence is the `--port` flag, then `PORT`, then the early config peek of `server.port`, then the context default. In a container this is the one listener override |
+| `LISTEN` | Listen address, read at EVERY startup: precedence is the `--address` flag, then `LISTEN`, then the early config peek of `server.address`, then `[::]` |
 | `MODE` | `production` (default; shortcut `prod`) · `development` (shortcuts `dev`, `devel`) · `debug` (explicit opt-in only) |
 | `DEBUG` | Truthy value turns the debug flag on (`--debug` wins; precedence and the `/debug/*` endpoints are defined in PART 6 → Debug Flag). Independent of `MODE`: `MODE=debug` only defaults the flag on |
 | `SMTP_HOST` | SMTP server hostname (if set, skips autodetect) |
@@ -8549,8 +8553,6 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 
 | Variable | Description |
 |----------|-------------|
-| `PORT` | Server port |
-| `LISTEN` | Listen address |
 | `APPLICATION_NAME` | Application title |
 | `APPLICATION_TAGLINE` | Application description. Like `APPLICATION_NAME`, it is written ONCE, on the first run and only when set, to `yaml.d/branding.yml` (`server.branding`). The first-run init variables are one of the named workflows that may create an area file, so a fresh install without them still writes only `server.yml` |
 | `DATABASE_DRIVER` | First run: the database driver when `DATABASE_URL` is not set (`sqlite` (+ `sqlite2`, `sqlite3`), `libsql` (+ `turso`), `postgres` (+ `pgsql`, `postgresql`), `mysql` (+ `mariadb`), `mssql`, `mongodb` (+ `mongo`)) |
@@ -8673,7 +8675,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | `web.favicon_url`, `web.ui.favicon`, `web.ui.logo` | `server.branding.favicon`, `server.branding.favicon`, `server.branding.logo` |
 | `web.footer.custom_html` | `server.branding.content.footer` (format `html`, body: the old value) |
 | `server.pages.about.content`, `.privacy.content`, `.terms.content` | `server.branding.content.about`, `.privacy`, `.terms` (format `md`, body: the old value) |
-| `server.admin.email`, `server.admin.path` | `server.contact.admin.email`, `server.admin_path` |
+| `server.admin.email`, `server.admin.path` (legacy keys; `server.admin_path` is the only canonical key) | `server.contact.admin.email`, `server.admin_path` |
 | `server.admin.password`, `.token`, `.username`, `.two_factor.*` | removed (the operator token is `server.token`; there are no admin passwords) |
 | `server.https_port` | when `server.port` is a single number and `https_port` is greater than 0, folded into `server.port` as the quoted string `"{port},{https_port}"` ("Dual Port Support"); otherwise removed. An already-dual `server.port` is kept as written, and `server.ssl.enabled` is never changed by the migration |
 | `server.ssl.dns01.*`, `server.ssl.letsencrypt.provider`, `.credentials_encrypted` | `server.ssl.letsencrypt.dns_provider`, `server.ssl.letsencrypt.dns_credentials` (`validated_at`, `domain` and `domains` are removed) |
@@ -9745,7 +9747,7 @@ Before proceeding, confirm you understand:
 | Rate limiting | Relaxed/disabled |
 | Security headers | Relaxed (CORS permissive) |
 | Sensitive data | Sanitized — output/log sanitization fully enforced |
-| Request logging | Verbose (headers, body preview) |
+| Request logging | Standard (method, path, status, duration); headers and body previews only with the explicit debug flag |
 
 ## Debug Mode (`MODE=debug`)
 
@@ -9800,7 +9802,7 @@ Before proceeding, confirm you understand:
 
 | Endpoint | Purpose |
 |----------|---------|
-| `/debug/pprof/` | Index page with all profiles |
+| `/debug/pprof` | Index page with all profiles (no trailing slash, like every route; `pprof.Index` renders the index for the slash-free path and the URL normalizer rewrites `/debug/pprof/` to it) |
 | `/debug/pprof/heap` | Heap memory profile |
 | `/debug/pprof/goroutine` | Goroutine stack traces |
 | `/debug/pprof/allocs` | Memory allocation profile |
@@ -11092,7 +11094,7 @@ Default config: /etc/apimgr/jokes/  # Hardcoded project name
 ```go
 func main() {
     fs := flag.NewFlagSet(filepath.Base(os.Args[0]), flag.ExitOnError)
-    configPath := fs.String("config", "", "Path to config file")
+    configDir := fs.String("config", "", "Configuration directory")
     dataDir := fs.String("data", "", "Data directory")
     port := fs.Int("port", 0, "Listen port")
     mode := fs.String("mode", "", "Application mode")
@@ -11795,7 +11797,7 @@ PHASE 5: Server startup (actual server start)
     ├─ Look for {config_dir}/server.yml
     ├─ Determine port (if not already bound in step 8f):
     │   ├─ --port CLI flag → use specified
-    │   ├─ {PROJECT_NAME}_PORT env var → use specified
+    │   ├─ PORT env var → use specified
     │   ├─ Config file server.port → use specified
     │   └─ Default → the context default of step 8e (80 in an application container, otherwise random 64000-64999)
     ├─ If MISSING (first run):
@@ -11807,7 +11809,7 @@ PHASE 5: Server startup (actual server start)
     ├─ If EXISTS:
     │   ├─ Parse YAML configuration
     │   └─ Validate all values (invalid → log WARN, use default)
-    └─ Apply remaining environment variable overrides ({PROJECT_NAME}_*)
+    └─ Apply the runtime environment variables of PART 5 (never a generic {PROJECT_NAME}_* override)
 
 14. Reconfigure logging from config:
     ├─ Set log level from server.logs.level when set, else from the mode (production info, development and debug debug)
@@ -11815,9 +11817,9 @@ PHASE 5: Server startup (actual server start)
     └─ Configure rotation (per-log rotate/keep policies)
 
 15. Initialize database:
-    ├─ Connect to database (SQLite: {data_dir}/db/server.db)
-    ├─ Create database file if missing
-    ├─ Run CREATE TABLE IF NOT EXISTS for all tables
+    ├─ Connect to the databases (SQLite: {data_dir}/db/server.db for server state, and {data_dir}/db/users.db for admins, users and tokens, PART 10)
+    ├─ Create each database file if missing
+    ├─ Run CREATE TABLE IF NOT EXISTS for all tables of each database
     ├─ Run schema migrations if needed
     └─ Verify database integrity
 
@@ -13968,7 +13970,7 @@ $ kill -TERM $(cat /var/run/myorg/myapp/myapp.pid)
 | `--data` | `DATA_DIR` | Data directory |
 | `--log` | `LOG_DIR` | Log directory |
 | `--pid` | `PID_FILE` | PID file path |
-| `--port` | `{PROJECT_NAME}_PORT` | Listen port |
+| `--port` | `PORT` | Listen port |
 | `--address` | `LISTEN` | Listen address |
 | `--mode` | `MODE` | Application mode (production/development/debug) |
 | `--i2p` | `I2P_ENABLED` | Enable the I2P eepsite (config key: `server.i2p.enabled`); built-in default `true` in a container and `false` elsewhere (no image variable sets it) |
@@ -14277,7 +14279,7 @@ All templates, Swagger/OpenAPI, GraphQL, email links, etc. MUST use these resolv
 | 4 | **$HOSTNAME env var** | Shell fallback |
 | 5 | **Public IPv6** | First public IPv6 (excludes private/link-local) |
 | 6 | **Public IPv4** | First public IPv4 (excludes 10/8, 172.16/12, 192.168/16) |
-| 7 | **localhost** | Last resort |
+| 7 | **Unresolved** | Nothing resolved (no network, no host name): `{fqdn}` stays EMPTY, startup logs one WARN, and no URL is built from a guess. `localhost` is never a value of `{fqdn}`; it appears only in loopback self-checks such as `--status`, never in output, links, emails or docs |
 
 **`server.fqdn` is not a source.** The key records the host name detected at first run, for the operator's reference only; it never feeds `{fqdn}` and has no place in this order. To fix the public host name, set `DOMAIN`.
 
@@ -16277,8 +16279,10 @@ Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
 **On logout / account-delete / password-change responses (and on any response that revokes a session), also include:**
 
 ```
-Clear-Site-Data: "cache", "cookies", "storage"
+Clear-Site-Data: "cache", "storage"
 ```
+
+The `"cookies"` directive is never used: it would erase the theme, language and consent cookies, which a token revocation keeps. The owner cookie itself is removed with an explicit `Set-Cookie` of the same name and attributes with `Max-Age=0`.
 
 **On consent-withdrawal responses (a decline, or a save that removes a category) include `Clear-Site-Data: "cache", "storage"` and never `"cookies"`:** the response itself stores the new `cookie_consent` value, and clearing cookies would erase that choice (the banner would come back) and the session cookie. The server expires the cookies of the withdrawn categories with their own `Set-Cookie` headers instead.
 
@@ -16948,7 +16952,7 @@ func extractContextFromPath(path string) (*Context, error) {
 |-------|--------|---------|
 | `/server/auth/login` | GET | Login form (handles both admin and user) |
 | `/server/auth/login` | POST | Process login, redirect based on account type |
-| `/server/auth/logout` | GET/POST | End session |
+| `/server/auth/logout` | POST | End session (CSRF-protected form; there is no GET: a GET answers `405`) |
 | `/server/auth/password/forgot` | GET/POST | Request password reset — sends email (if SMTP) |
 | `/server/auth/password/reset` | GET/POST | Set new password with emailed token (if SMTP) |
 | `/server/auth/invite/server/{code}` | GET | Admin invite acceptance |
@@ -17310,7 +17314,7 @@ web:
 
 | Rule | Detail |
 |------|--------|
-| Credential | The existing `Authorization: Bearer ...` header, exactly as for every other API route. **There is no MCP token, no MCP scope, and no MCP-specific setting that grants access** |
+| Credential | The existing `Authorization: Bearer ...` header, exactly as for every other API route. **There is no MCP token, no MCP-specific scope and no MCP-specific setting that grants access; the Bearer token's own `read`, `read-write` or `global` scope still filters which tools it may call** |
 | Validation | Run through the SAME token validation function and middleware as the API — one code path, not a copy |
 | Cookies | Ignored. Like every `/api/...` route, the MCP endpoint accepts the `Authorization` header only — no ambient authority |
 | No token | **Rejected.** Every MCP request carries `Authorization: Bearer ...`; without a valid token the endpoint answers `401` (with `WWW-Authenticate: Bearer`, PART 8 → "Auth Token Presentation") and a JSON-RPC error, and `tools/list` is never served. The REST API is different: it works without a token, and a token only links what the caller creates to its owner and unlocks MCP |
@@ -17872,7 +17876,7 @@ server:
 | **Export** | JSON, CSV, or PDF export for auditors (`/orgs/{slug}/security/audit/export`) |
 | **Filtering** | Filter by date range, event type, actor, target |
 | **Search** | Full-text search on audit entries |
-| **Access control** | Only org admins with `audit:read` permission |
+| **Access control** | Only the org roles `owner` and `admin` (PART 35); the `audit:read` permission is held by exactly those two roles and by no other, and an org defines no further permission model |
 | **Server admin access** | Server admins can view for moderation (logged as `admin.org_audit_viewed`) |
 
 **Compliance Export Format:**
@@ -19691,7 +19695,7 @@ server:
 | Role | Resolution |
 |------|------------|
 | `admin` | Required. Empty → startup warning. The very first server admin's profile email is auto-populated here on first install if unset. |
-| `security` | `server.contact.security.email` (default `security@{fqdn}` per RFC 2142). If explicitly set to `""`, falls back to `server.contact.admin.email`. Same fallback for each webhook transport (security.webhooks.telegram → admin.webhooks.telegram). |
+| `security` | `server.contact.security.email` (default `security@{fqdn}` per RFC 2142). If explicitly set to `""`, INTERNAL delivery (notifications, webhooks) falls back to `server.contact.admin.email`; security.txt and every public page then omit the `mailto:` line, so the admin address is never published. Same fallback for each webhook transport (security.webhooks.telegram → admin.webhooks.telegram). |
 | `abuse` | `server.contact.abuse.email` if set → else `server.contact.general.email` if set → else `server.contact.admin.email`. Same fallback chain for webhooks. Never defaults to `abuse@{fqdn}` automatically — RFC 2142 recommends that address, but the operator must opt in (an unprovisioned mailbox would bounce reports). |
 | `general` | `server.contact.general.email` if set → else `server.contact.admin.email`. Same fallback for webhooks. |
 
@@ -21789,7 +21793,7 @@ When not in cluster mode:
 |-----------|------|
 | **Key order** | JSON keys follow the struct order of this specification, written by a custom marshaller. Alphabetical or map order is a bug. A golden-order test covers JSON and both text formats |
 | **Always present** | `project`, `status`, `version`, `go_version`, `build`, `uptime`, `mode`, `timestamp`, `cluster`, `features`, `checks` and `stats` are in every response. In a single instance `cluster` is `{"enabled": false}` |
-| **`version`** | Exactly what `--version` prints as `{project_version}`: SemVer for a release, `YYYYMMDDHHMMSS-beta` for a beta, the short commit id for a devel build, `dev` only when the build has none of these. Never the word `devel` |
+| **`version`** | Exactly what `--version` prints as `{project_version}`: SemVer for a release, `YYYYMMDDHHMMSS-beta` for a beta, the short commit id for a devel build, `devel` only when the build has none of these. Never the word `devel` |
 | **`timestamp`, `build.date`** | RFC 3339, UTC, whole seconds, `Z` suffix (`2026-11-20T17:21:53Z`); never nanoseconds |
 | **`uptime` (JSON, API text)** | Compact `{d}d {h}h {m}m`: the leading zero units are dropped and seconds appear only under one minute. `45s`, `24m`, `2h 16m`, `1d 1h 4m`. Never `0h 10m 57s` |
 | **`uptime` (frontend)** | `format.Duration()`: `2 hours 16 minutes`, `1 day 1 hour` ("Frontend Human-Readable Rules") |
@@ -23006,7 +23010,7 @@ func renderNoJSHTML(w http.ResponseWriter, data interface{}) {
 | Rule | Description |
 |------|-------------|
 | **Sync with project** | Both MUST reflect current project API at all times |
-| **Sync with each other** | Both describe the same API: GraphQL is query-only (reads, per the route contract), so every read operation appears in both, while write operations (POST, PUT, PATCH, DELETE) exist in REST and Swagger only |
+| **Sync with each other** | Both describe the same API: GraphQL is query-only (reads, per the route contract), so every read operation a client may call appears in both, while write operations (POST, PUT, PATCH, DELETE) exist in REST and Swagger only. Not every read is a GraphQL field: a route declared `Binary` (an image or a file, which a GraphQL response cannot carry) appears as its metadata and URL only, and the `service`-auth and INTERNAL-ONLY routes (metrics, debug) are in neither GraphQL nor MCP |
 | **Auto-generated** | Both specs generated from code (annotations, comments, or schema) |
 | **Never manual** | NEVER manually edit OpenAPI JSON or GraphQL schema |
 | **Build-time generation** | Specs regenerated on every build |
@@ -23076,6 +23080,7 @@ See the **"Themes (NON-NEGOTIABLE - PROJECT-WIDE)"** section for the complete th
 - Theme switching is synchronized across all components (no page reload)
 - BOTH light AND dark themes MUST be easy to read with no color conflicts
 - File locations: `src/swagger/theme.go` and `src/graphql/theme.go`
+- Every color below is the value of a `ThemePalette` role ("Unified Color Palette"): these swatches are the palette, never a second one, and the theme files read `theme.ThemePaletteDark` and `theme.ThemePaletteLight` instead of defining their own hex values
 
 ---
 
@@ -23085,10 +23090,10 @@ See the **"Themes (NON-NEGOTIABLE - PROJECT-WIDE)"** section for the complete th
 ```css
 /* Dark Theme Colors */
 --dark-bg: #282a36;           /* Background */
---dark-bg-alt: #1e1f29;       /* Alternate background (topbar, etc.) */
+--dark-bg-alt: #21222c;       /* Alternate background (topbar, etc.) */
 --dark-bg-elevated: #44475a;  /* Elevated elements (inputs, buttons) */
 --dark-text: #f8f8f2;         /* Primary text */
---dark-text-muted: #6272a4;   /* Muted text, borders */
+--dark-text-muted: #939fcc;   /* Muted text, borders */
 --dark-accent-cyan: #8be9fd;  /* Links, GET methods */
 --dark-accent-green: #50fa7b; /* Success, POST methods */
 --dark-accent-orange: #ffb86c; /* Warning, PUT methods */
@@ -23117,7 +23122,7 @@ See the **"Themes (NON-NEGOTIABLE - PROJECT-WIDE)"** section for the complete th
 }
 
 .swagger-ui.theme-dark .topbar {
-  background: #1e1f29;
+  background: #21222c;
 }
 
 .swagger-ui.theme-dark .info .title,
@@ -23174,7 +23179,7 @@ See the **"Themes (NON-NEGOTIABLE - PROJECT-WIDE)"** section for the complete th
 }
 
 .graphiql-container.theme-dark .CodeMirror-gutters {
-  background: #1e1f29;
+  background: #21222c;
   border-right: 1px solid #44475a;
 }
 
@@ -23205,8 +23210,8 @@ See the **"Themes (NON-NEGOTIABLE - PROJECT-WIDE)"** section for the complete th
 --light-bg-elevated: #e0e0e0;  /* Elevated elements, borders */
 --light-text: #1a1a1a;         /* Primary text */
 --light-text-muted: #666666;   /* Muted text */
---light-accent-blue: #0066cc;  /* Links, GET methods */
---light-accent-green: #008000; /* Success, POST methods */
+--light-accent-blue: #0969da;  /* Links, GET methods */
+--light-accent-green: #1a7f37; /* Success, POST methods */
 --light-accent-orange: #ff8c00; /* Warning, PUT methods */
 --light-accent-red: #cc0000;   /* Error, DELETE methods */
 --light-accent-purple: #6600cc; /* Primary accent */
@@ -23217,7 +23222,7 @@ See the **"Themes (NON-NEGOTIABLE - PROJECT-WIDE)"** section for the complete th
 |---------|-------|
 | Background | `#ffffff` (--light-bg) |
 | Text | `#1a1a1a` (--light-text) |
-| Links/Accents | Blue `#0066cc`, Green `#008000`, Purple `#6600cc` |
+| Links/Accents | Blue `#0969da`, Green `#1a7f37`, Purple `#6600cc` |
 | Code blocks | Syntax highlighted with light theme colors |
 | Inputs | White background, dark text, visible borders `#cccccc` |
 | Buttons | Accent colors with sufficient contrast (4.5:1 minimum) |
@@ -23243,12 +23248,12 @@ See the **"Themes (NON-NEGOTIABLE - PROJECT-WIDE)"** section for the complete th
 
 .swagger-ui.theme-light .opblock.opblock-get {
   background: rgba(0, 102, 204, 0.05);
-  border-color: #0066cc;
+  border-color: #0969da;
 }
 
 .swagger-ui.theme-light .opblock.opblock-post {
   background: rgba(0, 128, 0, 0.05);
-  border-color: #008000;
+  border-color: #1a7f37;
 }
 
 .swagger-ui.theme-light .opblock.opblock-put {
@@ -23270,7 +23275,7 @@ See the **"Themes (NON-NEGOTIABLE - PROJECT-WIDE)"** section for the complete th
 }
 
 .swagger-ui.theme-light .btn {
-  background: #0066cc;
+  background: #0969da;
   color: #ffffff;
 }
 ```
@@ -23299,7 +23304,7 @@ See the **"Themes (NON-NEGOTIABLE - PROJECT-WIDE)"** section for the complete th
 }
 
 .graphiql-container.theme-light .execute-button {
-  background: #008000;
+  background: #1a7f37;
   color: #ffffff;
 }
 
@@ -23548,7 +23553,7 @@ Need additional compatible endpoints?"
 | `/server/{admin_path}/*` | ALL | Session | Admin panel pages |
 | `/api/autodiscover` | GET | None | Server settings, config schema, and options for CLI/agent (non-versioned) |
 | `/api/swagger` | GET | None | OpenAPI JSON spec — direct alias for current `{api_version}` |
-| `/api/graphql` | POST | None | GraphQL queries — direct alias for current `{api_version}` |
+| `/api/graphql` | POST, GET | None | GraphQL queries — direct alias for current `{api_version}` (POST, and GET with `query` for queries only, exactly like the versioned route) |
 | `/api/mcp` | POST | Bearer (required) | MCP endpoint — direct alias for current `{api_version}`; same auth as the API |
 | `/mcp` | POST | Bearer (required) | MCP endpoint — root alias for current `{api_version}`; same handler, never a redirect |
 | `/api/healthz` | GET | None | Health check JSON — direct alias for current `{api_version}` |
@@ -23591,7 +23596,7 @@ Need additional compatible endpoints?"
 | **Compatibility** | Many CLI tools, language SDKs, and minimal HTTP clients do not follow redirects by default. A direct response works for everyone. |
 | **Latency** | Saves an extra round-trip on every cold call — matters most for `/api/swagger` (fetched on every SDK regen), `/api/graphql` (every introspection), and `/api/healthz` (frequent health probes). |
 | **Caching** | Caches and CDNs cache the alias body directly. A 301 forces clients to cache *both* the redirect and the target, doubling cache entries. |
-| **POST safety** | `/api/graphql` is POST. A 301/302 from POST may convert to GET on some clients (RFC ambiguity). Direct serving avoids this. |
+| **POST safety** | `/api/graphql` accepts POST (and GET for queries). A 301/302 from POST may convert to GET on some clients (RFC ambiguity). Direct serving avoids this. |
 | **Consistency** | The unversioned alias and versioned URL share one handler tree mounted at both paths — no duplicate code. |
 
 **What "no redirect" does NOT mean:**
@@ -24723,7 +24728,7 @@ at the appropriate level — a healthy server prints nothing.
 | Location | Manager | Renewal |
 |----------|---------|---------|
 | `/etc/letsencrypt/live/**` | **System** (certbot) | App does NOT renew |
-| `{config_dir}/ssl/letsencrypt/{fqdn}/` | **App** | Auto-renew 7 days before expiry |
+| `{config_dir}/ssl/letsencrypt/{fqdn}/` | **App** | Auto-renew when 30 days or fewer remain |
 | `{config_dir}/ssl/local/{fqdn}/` | **User** | No auto-renewal (manual) |
 
 **Rule: If cert is in `{config_dir}/ssl/**`, app manages. Subdirectory determines HOW.**
@@ -24759,7 +24764,7 @@ Startup (for configured FQDN)
 
 **Important:**
 - `/etc/letsencrypt/` → app uses but does NOT manage renewal
-- `{config_dir}/ssl/letsencrypt/{fqdn}/` → app manages, auto-renews 7 days before expiry
+- `{config_dir}/ssl/letsencrypt/{fqdn}/` → app manages, auto-renews when 30 days or fewer remain
 - `{config_dir}/ssl/local/{fqdn}/` → app uses but does NOT auto-renew (user manages)
 
 ---
@@ -27832,9 +27837,9 @@ function hideOfflineIndicator() {
   ],
   "shortcuts": [
     {
-      "name": "Dashboard",
-      "url": "/dashboard?source=shortcut",
-      "icons": [{ "src": "/static/icons/shortcut-dashboard.png", "sizes": "96x96" }]
+      "name": "Preferences",
+      "url": "/server/preferences?source=shortcut",
+      "icons": [{ "src": "/static/icons/shortcut-preferences.png", "sizes": "96x96" }]
     }
   ],
   "screenshots": [
@@ -28361,9 +28366,11 @@ type Route struct {
     OperationID string
     // One line; feeds Swagger and llms.txt
     Summary string
-    // none, owner or operator
+    // none, owner, operator, token (any valid Bearer token, owner or linked: the MCP endpoint) or service (a per-service metrics token)
     Auth string
-    // Listed in llms.txt and Swagger (public and authenticated routes; never operator-only ones)
+    // Listed in llms.txt and Swagger (public and authenticated routes; never operator-only or service ones). Listed does NOT limit MCP:
+    // the MCP tool list is generated from the registry for every route the caller's token may call, and the operator token also sees
+    // the operator-only tools (never the service and INTERNAL-ONLY routes)
     Listed bool
     // Request and response models; the response struct's declared field order is the text output order
     Request, Response any
@@ -29246,7 +29253,10 @@ Mobile:
           <a href="/users">Profile</a>
           <a href="/users/settings">Settings</a>
           <hr />
-          <a href="/server/auth/logout">Logout</a>
+          <form action="/server/auth/logout" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}">
+            <button type="submit" class="dropdown-item" role="menuitem">Logout</button>
+          </form>
         </div>
       </div>
     {{ else }}
@@ -29774,7 +29784,7 @@ var ThemePaletteDark = ThemePalette{
     Background: "#282a36", Foreground: "#f8f8f2",
     Primary: "#bd93f9", Secondary: "#50fa7b", Accent: "#ff79c6",
     Success: "#50fa7b", Warning: "#ffb86c", Error: "#ff5555", Info: "#8be9fd",
-    Surface: "#2b2d3a", SurfaceAlt: "#21222c", Border: "#44475a", Muted: "#6272a4",
+    Surface: "#2b2d3a", SurfaceAlt: "#21222c", Border: "#44475a", Muted: "#939fcc",
 }
 
 var ThemePaletteLight = ThemePalette{
@@ -30387,7 +30397,7 @@ server:
 - The 1200x630 OG variant is exactly that size: the source is scaled to cover it and center-cropped (the one exception to preserving the ratio, because social platforms require it)
 - Generate multiple sizes on upload/fetch
 - Cache scaled versions locally
-- Re-fetch remote URLs periodically (configurable, default: daily)
+- Re-fetch remote URLs every 24 hours (fixed, not configurable: the branding file accepts only the keys in its table)
 - Fallback to embedded default if remote URL fails
 
 ### Remote URL Fetching
@@ -30747,7 +30757,7 @@ Credentials (`Access-Control-Allow-Credentials: true`) are sent only when the re
 | Request targets the backend: any `/api/**` route, or any compatibility-layer route (unless that layer's protocol expects CSRF — see "Scope") | CSRF is frontend-only; backend clients (CLI, agents, SDKs, webhooks, compat clients) never carry or need a token |
 | `Authorization: Bearer …` header present | Bearer auth — caller proves possession of a credential the browser cannot auto-attach. CSRF protects against forgery of *cookie* auth; this is a different auth model. |
 | Endpoint is public (no auth required) | Nothing to forge — the endpoint is open to anyone with no session to abuse. |
-| Method is `GET`, `HEAD`, or `OPTIONS` | Safe per RFC 9110. Must remain side-effect-free; if a `GET` mutates, that is a separate spec violation, not a CSRF problem. |
+| Method is `GET`, `HEAD`, or `OPTIONS` | Safe per RFC 9110. Must remain side-effect-free; if a `GET` mutates, that is a separate spec violation, not a CSRF problem. The ONLY sanctioned exceptions write the visitor's own preference cookies (theme, lang, `_pref_`) and nothing else: `GET /server/preferences/sync/import` with its API mirror, and a `?lang=` link. Both are idempotent, consent-gated (rule 18 of the preferences contract) and carry no credential or resource, because they must work as shareable links. |
 | `Origin` matches the app's own host AND session cookie is `SameSite=Strict` | The browser already blocked cross-site cookie attachment; the token is redundant. (Same-origin + Lax SameSite cookie still gets the token check on cross-site POST forms.) |
 | WebSocket upgrade request (`Upgrade: websocket`) | Auth happens at the connection level, then per-message; CSRF tokens don't fit the WS lifecycle. |
 | Endpoint is in the explicit `web.csrf.exempt_paths` allow-list | Operator-declared exception for FRONTEND endpoints only (e.g. a cross-site POST to a frontend callback). Backend routes are never subject to CSRF and need no entry. |
@@ -31628,7 +31638,7 @@ Language is detected automatically and changed in Preferences. It is never a hea
 |------|--------|
 | **Detection** | `?lang=` (a one-shot link that also pins the choice) → the `lang` cookie → the best match of `Accept-Language` against the supported set (quality values honored, a regional tag falls back to its base language, `fr-CA` → `fr`) → `en`. Detection never shows a banner, prompt or redirect |
 | **Change** | Only on `/server/preferences`, Language section: ONE `<select name="lang">` listing the supported languages by native name (each `<option lang="…">`), whose first option is **Automatic** and shows what detection picked (`Automatic (Français)`). Choosing Automatic deletes the cookie so detection applies again; choosing a language sets the cookie |
-| **Cookie** | `lang` is written only when the visitor picks a language (the Preferences select or a `?lang=` link) or applies a sync import. An autodetected language never writes a cookie |
+| **Cookie** | `lang` is written only when the visitor picks a language (the Preferences select or a `?lang=` link) or applies a sync import, AND the Preferences consent category is accepted (rule 18). Without consent a `?lang=` link still sets the language for that response but writes no cookie. An autodetected language never writes a cookie |
 | **Discoverability** | The footer shows the active language name as a plain link to `/server/preferences#language`. There is no language selector in the header or on any other page, and no flags |
 | **Document** | `<html lang="…" dir="…">` always reflects the resolved language; right-to-left languages set `dir="rtl"` |
 | **Why this UX** | Automatic detection is right for almost every visitor and needs no interaction. The explicit override covers the wrong guess (a shared computer, a multilingual visitor) and the footer link keeps it one click away without crowding the header |
@@ -33993,7 +34003,7 @@ Admin Panel Header:
 | `update.auto_install` | Toggle | Off | No | Run the full `--update yes` flow from the `update_check` task for eligible releases. Off = notify only; never touches the binary |
 | `update.defer_days` | Number | `0` | No | 0-365. A release is eligible for the scheduled task only once it is this many days old; manual `--update check` / `--update yes` ignore it. See Defer Semantics for per-channel behavior |
 | `server.update.cli_min_version` | Text | (empty) | No | Minimum CLI version the server accepts. Returned verbatim as `cli_min_version` by `/api/autodiscover`; empty means no minimum is enforced. Never derived from the server version |
-| `update.agent_min_version` | Text | (empty) | No | Minimum agent version the server accepts. Returned verbatim as `agent_min_version` by `/api/autodiscover`; empty means no minimum is enforced. Never derived from the server version |
+| `server.update.agent_min_version` | Text | (empty) | No | Minimum agent version the server accepts. Returned verbatim as `agent_min_version` by `/api/autodiscover`; empty means no minimum is enforced. Never derived from the server version |
 
 #### Email/SMTP Section (`/server/{admin_path}/email`)
 
@@ -35397,7 +35407,7 @@ server:
 **Default Expiry Times:**
 | Link Type | Default Expiry | Configurable? |
 |-----------|----------------|---------------|
-| Password reset | 24 hours | Yes |
+| Password reset | 1 hour (`auth.password_reset_ttl`, default `1h`) | Yes |
 | Email verification | 48 hours | Yes |
 | Account recovery | 1 hour | Yes |
 | Setup token | 24 hours | No (security) |
@@ -36717,7 +36727,7 @@ Every project MUST include these scheduled tasks:
 
 | Task | Default Schedule | Purpose | Skippable |
 |------|-----------------|---------|-----------|
-| `ssl_renewal` | Daily at 03:00 | Renew `{config_dir}/ssl/letsencrypt/{fqdn}/` certs 7 days before expiry | No |
+| `ssl_renewal` | Daily at 03:00 | Renew `{config_dir}/ssl/letsencrypt/{fqdn}/` certs when 30 days or fewer remain (fixed, not configurable) | No |
 | `geoip_update` | Weekly (Sunday 03:00) | Download/update ip-location-db GeoIP databases | Yes |
 | `blocklist_update` | Daily at 04:00 | Download/update IP/domain blocklists | Yes |
 | `security_cleanup` | Daily at 03:30 | Delete closed security reports `server.security.reports.retention_days` (default `365`) after `closed_at`, and delete the retired PGP private key (`pgp.priv.old.asc.enc`) 30 days after a rotation | No |
@@ -37660,7 +37670,7 @@ server:
 | `tor_circuit_established` | Gauge | - | 1 if circuit established, 0 otherwise |
 | `tor_requests_total` | Counter | - | Total requests via Tor hidden service |
 
-### Rate Limiting Metrics (if rate limiting enabled)
+### Rate Limiting Metrics (always: rate limiting is always on)
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
@@ -37695,23 +37705,23 @@ server:
 
 # HELP {project_name}_http_requests_total Total number of HTTP requests
 # TYPE {project_name}_http_requests_total counter
-{project_name}_http_requests_total{method="GET",path="/api/v1/users",status="200"} 1523
-{project_name}_http_requests_total{method="GET",path="/api/v1/users/:id",status="200"} 892
-{project_name}_http_requests_total{method="GET",path="/api/v1/users/:id",status="404"} 23
-{project_name}_http_requests_total{method="POST",path="/api/v1/users",status="201"} 42
+{project_name}_http_requests_total{method="GET",path="/api/v1/items",status="200"} 1523
+{project_name}_http_requests_total{method="GET",path="/api/v1/items/:id",status="200"} 892
+{project_name}_http_requests_total{method="GET",path="/api/v1/items/:id",status="404"} 23
+{project_name}_http_requests_total{method="POST",path="/api/v1/items",status="201"} 42
 {project_name}_http_requests_total{method="GET",path="/server/healthz",status="200"} 8640
 
 # HELP {project_name}_http_request_duration_seconds HTTP request duration in seconds
 # TYPE {project_name}_http_request_duration_seconds histogram
-{project_name}_http_request_duration_seconds_bucket{method="GET",path="/api/v1/users",le="0.001"} 120
-{project_name}_http_request_duration_seconds_bucket{method="GET",path="/api/v1/users",le="0.005"} 890
-{project_name}_http_request_duration_seconds_bucket{method="GET",path="/api/v1/users",le="0.01"} 1400
-{project_name}_http_request_duration_seconds_bucket{method="GET",path="/api/v1/users",le="0.025"} 1500
-{project_name}_http_request_duration_seconds_bucket{method="GET",path="/api/v1/users",le="0.05"} 1510
-{project_name}_http_request_duration_seconds_bucket{method="GET",path="/api/v1/users",le="0.1"} 1520
-{project_name}_http_request_duration_seconds_bucket{method="GET",path="/api/v1/users",le="+Inf"} 1523
-{project_name}_http_request_duration_seconds_sum{method="GET",path="/api/v1/users"} 12.456
-{project_name}_http_request_duration_seconds_count{method="GET",path="/api/v1/users"} 1523
+{project_name}_http_request_duration_seconds_bucket{method="GET",path="/api/v1/items",le="0.001"} 120
+{project_name}_http_request_duration_seconds_bucket{method="GET",path="/api/v1/items",le="0.005"} 890
+{project_name}_http_request_duration_seconds_bucket{method="GET",path="/api/v1/items",le="0.01"} 1400
+{project_name}_http_request_duration_seconds_bucket{method="GET",path="/api/v1/items",le="0.025"} 1500
+{project_name}_http_request_duration_seconds_bucket{method="GET",path="/api/v1/items",le="0.05"} 1510
+{project_name}_http_request_duration_seconds_bucket{method="GET",path="/api/v1/items",le="0.1"} 1520
+{project_name}_http_request_duration_seconds_bucket{method="GET",path="/api/v1/items",le="+Inf"} 1523
+{project_name}_http_request_duration_seconds_sum{method="GET",path="/api/v1/items"} 12.456
+{project_name}_http_request_duration_seconds_count{method="GET",path="/api/v1/items"} 1523
 
 # HELP {project_name}_http_active_requests Number of active HTTP requests
 # TYPE {project_name}_http_active_requests gauge
@@ -38975,7 +38985,7 @@ groups:
 |--------|---------|
 | Algorithm | AES-256-GCM |
 | Key Derivation | Argon2id (password → encryption key) |
-| Encrypted archive format | A cleartext header, then the AES-256-GCM ciphertext. Header: magic `BKUP1`, `salt` (16 random bytes, new for every archive), the Argon2id parameters (`m`, `t`, `p`), the 12-byte `nonce` and `key_id`. The whole header is bound to the ciphertext as AES-GCM additional data, so any change to it fails decryption. It holds no password and no key material |
+| Encrypted archive format | A cleartext header, then the AES-256-GCM ciphertext. Header: magic `BKUP1`, `salt` (16 random bytes, new for every archive), the Argon2id parameters (`m`, `t`, `p`), the 12-byte `nonce`, `key_id` and, for an incremental, `base_backup` (the base file's name). Retention and base protection use only this header and the file names, never a password. The whole header is bound to the ciphertext as AES-GCM additional data, so any change to it fails decryption. It holds no password and no key material |
 | `key_id` | The first 8 hex characters of `HMAC-SHA256(derived_key, "key-id")`, where `derived_key` is Argon2id over the password with THAT archive's own salt and parameters. The same password gives the same `key_id` only when derived with the same salt, so comparing against another archive means re-deriving with that archive's salt and parameters |
 | File Extension | `.tar.gz` (unencrypted) or `.tar.gz.enc` (encrypted) |
 | Password Storage | Kept only so scheduled backups can run unattended: encrypted at rest with `server.security.encryption_key` (AES-256-GCM), never hashed (it is key material, not a login verifier), never written to a log, manifest or archive, and never returned by any API. Restore never reads it: the admin supplies the password |
@@ -39392,13 +39402,13 @@ on a Sunday counts as daily + weekly + monthly + yearly — uses highest priorit
 | **Base** | The most recent full on disk before this run. Hourly incremental: the newest full (including today's) |
 | **Cumulative** | An incremental holds EVERY change since its base's `snapshot_at`, not since the previous incremental; each new run replaces the old one |
 | **Manifest fields** | `manifest.json` of every archive: `type` (`full`/`incremental`), `snapshot_at` (UTC ISO 8601), `sha256`; incrementals add `base_backup` (file name), `base_sha256`, `deleted` (list of paths removed since the base) |
-| **Changed-file detection** | Compare each file's size + mtime + SHA-256 against the base manifest's file list (the full's manifest lists `path`, `size`, `sha256` for every file). Changed or new files go in the archive, removed ones in `deleted` |
+| **Changed-file detection** | Compare each file's size + mtime + SHA-256 against the base manifest's file list (the full's manifest lists `path`, `size`, `mtime` (Unix seconds) and `sha256` for every file). Changed or new files go in the archive, removed ones in `deleted` |
 | **Database** | A SQLite database that changed is stored whole in the incremental (no page-level delta) |
 | **Archive format** | Same `tar.gz[.enc]` and encryption as a full; contains only changed/new files plus `manifest.json` |
 | **Base protection** | Retention never deletes a full that is the `base_backup` of a retained incremental |
 | **Verification** | An incremental is verified like a full, plus: base file exists and its SHA-256 equals `base_sha256` |
 | **First run** | No previous full: skip the daily incremental |
-| **Password change** | The base full's `key_id` is read from its cleartext header ("Encrypted archive format", PART 21), never from the encrypted manifest, so it is readable whatever password is configured. The run re-derives a key from the CURRENT password with the base's own salt and Argon2id parameters, computes `key_id` and compares: equal = same password, different = the password changed. A header that does not parse (bad magic or parameters) is a corrupt base, not a change. Either way the run skips the daily incremental (as on the first run), creates a new full under the current password and logs it (INFO for a change, WARN for a corrupt base); the integrity of the old base is the job of `--maintenance backup test`. A restorable pair is one full plus the incremental based on it, and a pair always shares ONE password. After a change there are two pairs: the old full with its old incremental (old password) until the old full ages out of retention, and the new full (new password) alone until the next run writes an incremental based on it, which then replaces the old incremental |
+| **Password change** | The base full's `key_id` is read from its cleartext header ("Encrypted archive format", PART 21), never from the encrypted manifest, so it is readable whatever password is configured. The run re-derives a key from the CURRENT password with the base's own salt and Argon2id parameters, computes `key_id` and compares: equal = same password, different = the password changed. A header that does not parse (bad magic or parameters) is a corrupt base, not a change. Either way the run skips the daily incremental (as on the first run), creates a new full under the current password and logs it (INFO for a change, WARN for a corrupt base); the integrity of the old base is the job of `--maintenance backup test`. A restorable pair is one full plus the incremental based on it, and a pair always shares ONE password. The server stores only the CURRENT password, so verifying (`--maintenance backup test`) or restoring an archive made under an older password needs the operator to supply that password. After a change there are two pairs: the old full with its old incremental (old password) until the old full ages out of retention, and the new full (new password) alone until the next run writes an incremental based on it, which then replaces the old incremental |
 
 **Restore (`--maintenance restore <file>`):**
 
@@ -39588,7 +39598,7 @@ POST /api/{api_version}/server/{admin_path}/backup/restore
 | **User passwords** | No user credentials are modified |
 | **User data** | All user data is preserved |
 | **Configuration** | All settings except admin credentials |
-| **Database** | No data is deleted or modified |
+| **Database** | Nothing is deleted; the ONLY rows changed are the admin's own credential fields (password and API token) in `users.db`, exactly as "What It Does" lists |
 | **SSL certificates** | Certificates remain valid |
 
 ### Usage
@@ -41681,7 +41691,7 @@ func (ws *windowsService) Execute(args []string, r <-chan svc.ChangeRequest, s c
   4. Empty (self-hosted projects)
 - **Unset means unset:** when the user has not given an official site, `official_site` is absent from IDEA.md, there is no `site.txt`, `OFFICIAL_SITE` is empty in the Makefile, Docker build args and CI, the embedded `OfficialSite` is the empty string, and the CLI requires `--server`. Never fill it from the project name, the organization, `server.fqdn`, a git remote, or an `example.com` / `example.org` domain, and never use a placeholder host such as `xxx.example.com`; the Official Site README section is omitted and every `{official_site}` example uses its not-defined form. Reserved example domains appear only inside this specification's illustrations, never in a project file or variable.
 
-**Illustration only** (`example.com` is a reserved documentation domain; never write it into a project):
+**Illustration only** (`example.com` is a reserved documentation domain; never write it into a project as a value. The one exception is a reserved-name BLOCKLIST, such as the custom-domain `reserved:` list with `*.example`, `*.test`, `*.invalid`, which contains these names precisely to refuse them):
 ```
 https://api.example.com
 ```
@@ -43307,8 +43317,9 @@ RUN mkdir -p /data/db/postgres /data/db/valkey \
              /run/postgresql /run/valkey \
     && chown -R postgres:postgres /data/db/postgres /data/log/postgres /run/postgresql
 
-# Copy configs and entrypoint
+# Copy the shared overlay, then the AIO overlay: its entrypoint.sh replaces the standard one
 COPY docker/rootfs/ /
+COPY docker/rootfs-aio/ /
 
 # Copy application binary from builder
 COPY --from=builder /app/{project_name} /usr/local/bin/
@@ -43337,7 +43348,7 @@ HEALTHCHECK --start-period=10m --interval=5m --timeout=15s --retries=3 \
 ENTRYPOINT [ "tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh" ]
 ```
 
-**All-in-One supervisor config (`docker/rootfs/etc/supervisor/conf.d/services.conf`):**
+**All-in-One supervisor config (`docker/rootfs-aio/etc/supervisor/conf.d/services.conf`):**
 
 ```ini
 [supervisord]
@@ -43371,7 +43382,7 @@ stdout_logfile=/data/log/app.log
 stderr_logfile=/data/log/app.log
 ```
 
-**All-in-One PostgreSQL config (`docker/rootfs/usr/share/{project_name}/postgres/postgresql.conf`):**
+**All-in-One PostgreSQL config (`docker/rootfs-aio/usr/share/{project_name}/postgres/postgresql.conf`):**
 
 ```ini
 # PostgreSQL configuration optimized for AIO containers
@@ -43412,7 +43423,7 @@ autovacuum_naptime = 60s
 ssl = off
 ```
 
-**All-in-One Valkey config (`docker/rootfs/usr/share/{project_name}/valkey/valkey.conf`):**
+**All-in-One Valkey config (`docker/rootfs-aio/usr/share/{project_name}/valkey/valkey.conf`):**
 
 ```ini
 # Valkey configuration optimized for AIO containers
@@ -43449,7 +43460,7 @@ logfile ""
 protected-mode no
 ```
 
-**All-in-One entrypoint.sh (`docker/rootfs/usr/local/bin/entrypoint.sh`):**
+**All-in-One entrypoint.sh (`docker/rootfs-aio/usr/local/bin/entrypoint.sh`; the standard image's own entrypoint is `docker/rootfs/usr/local/bin/entrypoint.sh`):**
 
 ```bash
 #!/bin/bash
@@ -44131,7 +44142,7 @@ networks:
 - Use explicit `go build` commands with all flags visible
 - Use CI-native caching (NOT local host paths)
 - Set VERSION, COMMIT_ID, BUILD_EPOCH explicitly (BUILD_DATE is derived from BUILD_EPOCH for Docker OCI labels only — it is not an ldflag)
-- Build all platforms in matrix
+- Build all platforms in matrix: the Release, Beta and Devel workflows build every target; the CI workflow's `build` job is a compile gate for the container's own platform
 - Auto-cancel older in-progress runs for the same ref on push workflows targeting `main`, `master`, or `beta`
 
 **CI/CD workflows MUST NOT:**
@@ -48070,6 +48081,21 @@ pipeline {
             }
         }
 
+        stage('Lint') {
+            agent { label 'amd64' }
+            steps {
+                sh '''
+                    docker run --rm \
+                        -v ${WORKSPACE}:/app \
+                        -v ${GO_CACHE}:/usr/local/share/go/pkg/mod \
+                        -v ${GO_BUILD}:/usr/local/share/go/cache \
+                        -w /app \
+                        casjaysdev/go:latest \
+                        sh -c 'go vet ./... && staticcheck ./...'
+                '''
+            }
+        }
+
         stage('Test') {
             agent { label 'amd64' }
             steps {
@@ -48082,6 +48108,15 @@ pipeline {
                         -w /app \
                         casjaysdev/go:latest \
                         go test -v -cover ./...
+                '''
+                // Coverage gate, the same 60% as the other providers: the profile goes to a temp dir, never into the workspace
+                sh '''
+                    mkdir -p "/tmp/${PROJECT_ORG}"
+                    COVDIR=$(mktemp -d "/tmp/${PROJECT_ORG}/${PROJECT_NAME}-XXXXXX")
+                    docker run --rm -v ${WORKSPACE}:/app -v ${COVDIR}:/cov -v ${GO_CACHE}:/usr/local/share/go/pkg/mod -v ${GO_BUILD}:/usr/local/share/go/cache -w /app casjaysdev/go:latest go test -coverprofile=/cov/coverage.out ./...
+                    PCT=$(docker run --rm -v ${WORKSPACE}:/app -v ${COVDIR}:/cov -w /app casjaysdev/go:latest go tool cover -func=/cov/coverage.out | awk '/^total:/ {gsub("%","",$3); print int($3)}')
+                    rm -rf "$COVDIR"
+                    [ "$PCT" -ge 60 ] || { echo "coverage ${PCT}% < 60%"; exit 1; }
                 '''
             }
         }
@@ -48903,7 +48938,7 @@ rm -rf "$TEST_DIR"
 | Phase | Files | Run With | Tests |
 |-------|-------|----------|-------|
 | **Phase 1 — Toolchain Gate** | `*_test.go` | `make test` | Source-code logic via `go test`; pre-commit gate |
-| **Phase 2 — Binary Validation** | `./tests/*.sh` | `./tests/run_tests.sh` | Compiled binary behavior — routes, auth, debugging — **manual, developer-initiated** |
+| **Phase 2 — Binary Validation** | `./tests/*.sh` | `./tests/run_tests.sh` (basic tier); the other scripts are run explicitly | Compiled binary behavior — routes, auth, debugging — **manual, developer-initiated** |
 
 **Phase 1 — Toolchain Gate (`*_test.go`):**
 - Tests individual functions and packages via `go test` inside Docker
@@ -48917,7 +48952,7 @@ rm -rf "$TEST_DIR"
 - Tests API endpoints, .txt extension, Accept headers
 - Tests authentication, admin routes
 - Tests project-specific functionality (from IDEA.md)
-- Run with `./tests/run_tests.sh`
+- Run the basic tier with `./tests/run_tests.sh` (it runs `docker.sh` only); `incus.sh`, `virt.sh` and `e2e.sh` are separate, explicit runs by the developer
 - `./tests/*` means executable shell scripts in the repository-root `tests/` directory
 - Minimum required scripts: `./tests/run_tests.sh`, `./tests/docker.sh`, `./tests/incus.sh`, `./tests/e2e.sh` (browser E2E — see "Browser E2E Testing" below; standalone entry point, not invoked by `./tests/run_tests.sh`). `./tests/virt.sh` is OPTIONAL (a project adds it only when a clean OS in a real VM is needed) and is also standalone
 - Additional helper scripts are allowed (for example `./tests/test_content_negotiation.sh`)
@@ -49006,7 +49041,7 @@ curl -q -LSsf /api/v1/jokes/random.txt
 
 # ALL API endpoints that support .txt MUST be tested with .txt
 # User profile as text
-curl -q -LSsf /api/v1/users/john.txt
+curl -q -LSsf /api/v1/items/john.txt
 # Weather as text
 curl -q -LSsf /api/v1/weather/Chicago.txt
 ```
@@ -49682,7 +49717,7 @@ docker run --rm \
         SESSION=\$(curl -q -LSsf -X POST \\
             -H \"Content-Type: application/json\" \\
             -d '{\"username\":\"testadmin\",\"password\":\"TestPass123!\"}' \\
-            http://localhost:64580/api/{api_version}/server/auth/login | grep -oP '\"session_token\":\\s*\"\\K[^\"]+' || echo '')
+            http://localhost:64580/api/{api_version}/server/auth/login | grep -oP '\"token\":\\s*\"\\K[^\"]+' || echo '')
 
         if [ -n \"\$SESSION\" ]; then
             echo '✓ Admin login successful'
@@ -50576,7 +50611,7 @@ echo "Testing admin login..."
 SESSION=$(curl -q -LSsf -X POST \
     -H "Content-Type: application/json" \
     -d '{"username":"testadmin","password":"TestPass123!"}' \
-    http://localhost:64580/api/{api_version}/server/auth/login | jq -r '.session_token')
+    http://localhost:64580/api/{api_version}/server/auth/login | jq -r '.data.token')
 
 if [ -z "$SESSION" ] || [ "$SESSION" = "null" ]; then
     echo "✗ FAILED: Admin login failed"
@@ -51346,7 +51381,7 @@ pymdown-extensions>=10.0
   --dark-bg: #282a36;
   --dark-bg-alt: #44475a;
   --dark-text: #f8f8f2;
-  --dark-text-muted: #6272a4;
+  --dark-text-muted: #939fcc;
   --dark-accent-cyan: #8be9fd;
   --dark-accent-green: #50fa7b;
   --dark-accent-orange: #ffb86c;
@@ -51713,7 +51748,7 @@ server:
 
 ## Environment Variables
 
-All settings can be overridden via environment:
+Only the variables listed in PART 5 -> "Environment Variables" are read from the environment:
 
 ```bash
 {PROJECT_NAME}_SERVER_PORT=8080
@@ -51942,7 +51977,7 @@ make test
 | **Admin Panel** | All admin UI: dashboard, settings forms, labels, tooltips, wizard steps, notifications |
 | **API Responses** | Error messages, validation messages, status descriptions |
 | **Swagger/OpenAPI** | Endpoint descriptions, parameter descriptions, schema descriptions, error examples |
-| **GraphQL** | Type descriptions, field descriptions, query/mutation descriptions |
+| **GraphQL** | Type descriptions and field descriptions of the query-only schema (a project that ever exposes mutations adds their descriptions here) |
 | **Email Templates** | Subject lines, body text, headings, CTAs, regulatory/compliance notices |
 | **Server CLI Output** | Help text, status messages, error messages, startup banners |
 | **Client CLI Output** | Help text, command descriptions, error messages, TUI labels, admin output |
@@ -51990,7 +52025,7 @@ make test
 
 ### Language Selection via Query Parameter
 
-**`?lang=` sets the language and persists it via cookie.** No URL path prefixes (avoids route conflicts).
+**`?lang=` sets the language for the response and, once the Preferences consent category is accepted, persists it via cookie.** No URL path prefixes (avoids route conflicts).
 
 ```
 GET /dashboard?lang=es
@@ -57129,7 +57164,7 @@ func ValidateI2PConfig(config *I2PConfig) []ValidationError {
 
 | Scenario | Behavior |
 |----------|----------|
-| I2P disabled (default) | No provider contacted, no port, no config — eepsite off |
+| I2P disabled (the default outside a container; in a container the default is enabled) | No provider contacted, no port, no config — eepsite off |
 | Enabled, i2pd found | Model A: i2pd spawned with its own `i2pd.conf`, SAM session + `STREAM FORWARD`, `.b32.i2p` derived from `site-keys.dat` |
 | Enabled, no i2pd, SAM reachable | Model B: SAM session + STREAM FORWARD to backend port |
 | Enabled, no provider | Log WARN, continue without I2P (not an error) |
@@ -57338,7 +57373,7 @@ update:
 
 | Endpoint | Method | Auth | Purpose |
 |----------|--------|------|---------|
-| `/api/autodiscover` | GET | None or bearer | Returns `cli_versions` and `agent_versions` (each entry has `version` + `sha256`), plus `cli_min_version` (from `server.update.cli_min_version`) and `agent_min_version` (from `update.agent_min_version`), alongside `name`, `version`, `api`, `urls` and the exposed `onion` and `i2p` addresses |
+| `/api/autodiscover` | GET | None or bearer | Returns `cli_versions` and `agent_versions` (each entry has `version` + `sha256`), plus `cli_min_version` (from `server.update.cli_min_version`) and `agent_min_version` (from `server.update.agent_min_version`), alongside `name`, `version`, `api`, `urls` and the exposed `onion` and `i2p` addresses |
 | `{base}/cli/binaries/{project_name}-cli-{os}-{arch}` | GET | None (public — CLIs are user-distributed) OR bearer if `cli.binary_download.require_auth: true` is set | Streams the binary |
 | `{base}/agent/binaries/{project_name}-agent-{os}-{arch}` | GET | Bearer (agent token) | Streams the agent binary |
 
@@ -59346,7 +59381,7 @@ Flags:
 ...
 ```
 
-**Official site (`{official_site}`) is taken from `site.txt` when that file exists. Otherwise fall back to `IDEA.md ## Project variables` (`official_site`) and other compatibility sources.**
+**The operational official site (the CLI's compiled default server) is taken from `site.txt` when that file exists, otherwise from the `OFFICIAL_SITE` environment variable or CI secret (PART 26 -> "Official Site File"). `IDEA.md` `official_site` only resolves the `{official_site}` placeholder in README and docs; it is never a CLI default.**
 
 **What official site affects:**
 - README.md: Default production site URL in examples
@@ -59358,18 +59393,17 @@ Flags:
 - Build artifacts or binary metadata
 - Any runtime behavior (just a compiled default)
 
-Sources for official site (check in order):
+Sources for the operational official site (check in order):
 1. `site.txt`: single line URL `https://...`
-2. `IDEA.md ## Project variables`: `official_site: https://...`
-3. README.md: `Official site is: https://...` or `Site: https://...` (compatibility fallback only)
-4. AI asks user (if not found in canonical project files)
-5. If user selects "none", project has no default server
+2. `OFFICIAL_SITE` environment variable or CI secret
+3. AI asks the user, and when a URL is given the user creates `site.txt` (never written by AI)
+4. If the user selects "none", the project has no default server and the CLI requires `--server`
 
-**Conflict rule:** if both `site.txt` and `IDEA.md` exist and disagree, `site.txt` wins. Update `IDEA.md` to match or remove the stale `official_site` entry.
+**Conflict rule:** if `site.txt` and `IDEA.md` `official_site` both exist and disagree, `site.txt` wins; update `IDEA.md` to match (it documents the same value) or remove the stale `official_site` entry.
 
 **AI should ask if not defined:**
 ```
-Official site not found in site.txt, IDEA.md, or README.md.
+Official site not found in site.txt or OFFICIAL_SITE.
 What is the official site for this project?
 
 1) https://projectname.example.com
@@ -61343,7 +61377,7 @@ mode: ""
 
 | Step | Action |
 |------|--------|
-| 1. Discover | `/api/autodiscover` returns `agent_versions: { "linux-amd64": {"version": "1.2.3", "sha256": "..."}, ... }` and `agent_min_version` (the value of `update.agent_min_version`; empty means no minimum). The agent checks on every (re)connect and every `update.check_interval` (default `6h`). |
+| 1. Discover | `/api/autodiscover` returns `agent_versions: { "linux-amd64": {"version": "1.2.3", "sha256": "..."}, ... }` and `agent_min_version` (the value of `server.update.agent_min_version`; empty means no minimum). The agent checks on every (re)connect and every `update.check_interval` (default `6h`). |
 | 2. Decide | If `current_version < agent_versions[os-arch].version`: with `update.auto: false` (default) the agent installs nothing and reports `update_available: {version}` in its next health payload so the server shows it to admins; with `update.auto: true` it continues. If `current_version < agent_min_version`: the agent stops collecting (the offline buffer is kept), keeps health reporting, reports `update_required`, and waits; it installs only when `update.auto: true` or `--update yes` is run. |
 | 3. Download | Fetch `{base}/agent/binaries/{project_name}-agent-{os}-{arch}` over HTTPS with the agent token (always authenticated). Save to a tmp path (`/tmp/{project_org}/{internal_name}-XXXXXX/agent.update.tmp` per the spec's tmp-dir rules). |
 | 4. Verify SHA-256 | Same `verifyChecksum()` from PART 23 — match against the `sha256` from autodiscover. Mismatch → delete temp, emit `agent.update_checksum_invalid`, keep running the current version. |
@@ -61351,7 +61385,7 @@ mode: ""
 | 6. Atomic swap | Same platform-specific `replaceBinary()` from PART 23. If the agent lacks write permission to its install path, emit `agent.update_failed` with the path and keep running. |
 | 7. Restart | Exit with code `75` (sysexits `EX_TEMPFAIL`). The service unit's restart policy (`Restart=on-failure` on systemd, `KeepAlive` on launchd, recovery actions on Windows) starts the new binary. The agent never re-execs itself. |
 
-**Configuration (`agent.yml`):** the `update:` block above (`auto`, `check_interval`). The minimum version is server-side only: `update.agent_min_version` in the admin Update section.
+**Configuration (`agent.yml`):** the `update:` block above (`auto`, `check_interval`). The minimum version is server-side only: `server.update.agent_min_version` in the admin Update section.
 
 **Audit events:**
 
@@ -62933,10 +62967,10 @@ See **PART 22: BACKUP & RESTORE → Admin Recovery Command** for full details.
 ```
 POST /api/{api_version}/server/auth/login
   → { "identifier": "john@example.com", "password": "secretpassword" }
-  ← { "ok": true, "data": { "requires_2fa": true, "session_token": "temp_xxx" } }
+  ← { "ok": true, "data": { "requires_2fa": true, "partial_token": "temp_xxx" } }
 
 POST /api/{api_version}/server/auth/recovery/use
-  → { "session_token": "temp_xxx", "recovery_key": "a1b2c3d4-e5f6" }
+  → { "partial_token": "temp_xxx", "recovery_key": "a1b2c3d4-e5f6" }
   ← { "ok": true, "data": { "token": "auth_xxx", "remaining_keys": 9 } }
 
 # Now authenticated - can manage 2FA via /users/security/
@@ -63662,7 +63696,7 @@ server:
 | `bio` | String | No | Yes | Yes | Short biography (max 500 chars) |
 | `location` | String | No | Yes | Yes | Location (free text) |
 | `website` | String | No | Yes | Yes | Personal website URL |
-| `visibility` | Enum | Yes | Yes | N/A | `public` (default), `private` for the org/team profile only |
+| `visibility` | Enum | Yes | Yes | N/A | `public` (default), `private`: the user's profile visibility, the one field behind `/users/settings/privacy`; org and team pages show a private member as basic info only when `org_visibility` is on |
 | `timezone` | String | No | Yes | No | IANA timezone (e.g., `America/New_York`) |
 | `language` | String | No | Yes | No | Preferred language (e.g., `en`, `es`) |
 | `role` | String | Yes | No | No | User role (set by admin) |
@@ -63740,8 +63774,6 @@ Settings are organized into categories. Each setting has a default value and can
 | `website` | URL | null | Personal website |
 | `timezone` | Select | Auto-detect | Timezone for dates/times |
 | `language` | Select | `en` | Interface language |
-| `date_format` | Select | `YYYY-MM-DD` | Date display format |
-| `time_format` | Select | `24h` | 12h or 24h time |
 
 **Account Settings Form Example:**
 ```
@@ -63786,7 +63818,7 @@ Account Settings (/users/settings)
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `visibility` | Select | `public` | Profile visibility (public/private) |
-| `show_email` | Toggle | Off | Show email on public profile |
+| `show_email` | Toggle | Off | Opt-in exception: when On, the user's own email is shown on their public profile; every other surface keeps email private |
 | `show_activity` | Toggle | On | Show activity on public profile |
 | `show_orgs` | Toggle | On | Show org memberships on profile |
 | `searchable` | Toggle | On | Appear in user search results |
@@ -63890,6 +63922,8 @@ Notification Settings (/users/settings/notifications)
 |---------|------|---------|-------------|
 | `theme` | Select | `dark` | Theme (dark/light/auto) |
 | `font_size` | Select | `medium` | Font size (small/medium/large) |
+| `date_format` | Select | `YYYY-MM-DD` | Date display format |
+| `time_format` | Select | `24h` | 12h or 24h time |
 | `reduce_motion` | Toggle | Off | Reduce animations |
 
 **Appearance Settings Form Example:**
@@ -63956,9 +63990,7 @@ GET /api/{api_version}/users/settings
         "location": "San Francisco, CA",
         "website": "https://johndoe.dev",
         "timezone": "America/New_York",
-        "language": "en",
-        "date_format": "MM/DD/YYYY",
-        "time_format": "24h"
+        "language": "en"
     },
     "privacy": {
         "visibility": "private",
@@ -63979,7 +64011,9 @@ GET /api/{api_version}/users/settings
     "appearance": {
         "theme": "dark",
         "font_size": "medium",
-        "reduce_motion": false
+        "reduce_motion": false,
+        "date_format": "MM/DD/YYYY",
+        "time_format": "24h"
     }
 }
 ```
@@ -64103,7 +64137,7 @@ PATCH /api/{api_version}/users/settings
 | Auth | `/server/auth/` | `/api/{api_version}/server/auth/` | Authentication flows |
 | Users | `/users/` | `/api/{api_version}/users/` | User resources |
 | Orgs | `/orgs/` | `/api/{api_version}/orgs/` | Organization resources |
-| Server Admin | `/server/{admin_path}/` | `/api/{api_version}/server/{admin_path}/` | Admin panel |
+| Server Admin | `/server/{admin_path}` | `/api/{api_version}/server/{admin_path}` | Admin panel |
 | Server Settings | `/server/{admin_path}/{section}/` | `/api/{api_version}/server/{admin_path}/{section}/` | Server configuration within admin |
 
 ### Default Auth by Scope (Canonical Rule)
@@ -64122,6 +64156,8 @@ PATCH /api/{api_version}/users/settings
 | `Invite token` | one-shot URL param (`/server/auth/invite/{user|server}/{token}`) | hashed in `invites` table; single-use by default (`max_uses` = 1, 0 = unlimited); expires per `invite_expiration_days` (default 7d) | admin issues from `/server/{admin_path}/admins` (server invite) or user from `/users/orgs/{slug}/invites` (org invite) |
 | `Tracking token` | one-shot URL param (`/server/security/report/{tracking_id}?token=…`) | per-tracking-id token; single-use-per-day (researcher can refresh by re-clicking the email link); expires 30 days after report closes | sent via email when researcher submits a security report (PART 11 → "Security Reports") |
 | `Partial-session` | short-lived cookie issued mid-flow (post-password-correct, pre-2FA) | `partial_sessions` table; consumed when 2FA / recovery completes; expires per `auth.partial_session_ttl` (default 5m) | `/server/auth/login` flow when 2FA is required |
+
+**API login.** `POST /api/{api_version}/server/auth/login` sets no cookie. A successful login returns `data.token`, a Bearer API token (`adm_` for a Server Admin, `usr_` for a Regular User) named `login`, with the account's own scope and a 24-hour expiry, revocable like any token; scripts and tests send it as `Authorization: Bearer`. A login that still needs 2FA returns `data.requires_2fa: true` and `data.partial_token` (the single-use `Partial-session` value, 5 minutes). There is no field called `session_token`.
 
 **All one-shot tokens (`Reset`, `Verify`, `Invite`, `Tracking`, `Partial-session`) share the same construction:**
 - Generated from `crypto/rand` (32 bytes → URL-safe base64).
@@ -64229,79 +64265,7 @@ curl "/api/{api_version}/search/hello"
 |-------|--------|------|-------------|
 | `/api/autodiscover` | GET | None | Return server connection settings |
 
-**Response:**
-
-```json
-{
-  "primary": "https://api.example.com",
-  "cluster": [
-    "https://api.example.com",
-    "https://api2.example.com",
-    "https://api3.example.com"
-  ],
-  "api_version": "v1",
-  "timeout": 30,
-  "retry": 3,
-  "retry_delay": 1,
-  "config": {
-    "database": {
-      "drivers": ["file", "sqlite", "libsql", "postgres", "mysql", "mssql", "mongodb"],
-      "aliases": {
-        "sqlite2": "sqlite",
-        "sqlite3": "sqlite",
-        "turso": "libsql",
-        "pgsql": "postgres",
-        "postgresql": "postgres",
-        "mariadb": "mysql",
-        "mongo": "mongodb"
-      },
-      "ssl_modes": ["disable", "require", "verify-full"]
-    },
-    "cache": {
-      "types": ["none", "memory", "valkey", "redis"]
-    },
-    "formats": {
-      "duration": ["s", "m", "h", "d"],
-      "size": ["KB", "MB", "GB"]
-    },
-    "logging": {
-      "levels": ["debug", "info", "warn", "error"]
-    },
-    "smtp": {
-      "tls_modes": ["auto", "starttls", "tls", "none"]
-    },
-    "features": {
-      "clustering": true,
-      "tor": true,
-      "webauthn": true,
-      "oauth": ["google", "github", "gitlab", "microsoft"]
-    }
-  }
-}
-```
-
-**Fields:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `primary` | string | Primary server URL (current server) |
-| `cluster` | array | All cluster node URLs (empty if single-node) |
-| `api_version` | string | API version prefix (default: "v1") |
-| `timeout` | int | Recommended request timeout in seconds |
-| `retry` | int | Recommended retry attempts |
-| `retry_delay` | int | Recommended seconds between retries |
-| `config` | object | Configuration schema, options, aliases, and enabled features |
-
-**Config Section:**
-
-| Field | Description |
-|-------|-------------|
-| `config.database` | Supported drivers, aliases (`sqlite2`→`sqlite`, `mariadb`→`mysql`), SSL modes |
-| `config.cache` | Supported cache types |
-| `config.formats` | Duration (`s`,`m`,`h`,`d`) and size (`KB`,`MB`,`GB`) unit suffixes |
-| `config.logging` | Valid log levels |
-| `config.smtp` | SMTP TLS mode options |
-| `config.features` | Server-enabled features (for conditional UI) |
+**Response:** the standard envelope `{"ok": true, "data": {...}}`, with exactly the fields defined in PART 33 "Autodiscover response" (`data.api.current_version`, `name`, `version`, `urls`, `onion`, `i2p`, `cli_versions`, `cli_min_version`, `agent_versions`, `agent_min_version`). The server publishes no `primary`/`cluster` pair, no timeouts and no config schema; the CLI carries its own configuration (`cli.yml`).
 
 **Security :**
 
@@ -64316,62 +64280,6 @@ curl "/api/{api_version}/search/hello"
 1. Server administrators (from server.yml or admin panel)
 2. Users with admin tokens (they already know)
 
-**Implementation:**
-
-```go
-// GET /api/autodiscover
-func AutodiscoverHandler(w http.ResponseWriter, r *http.Request) {
-    response := map[string]interface{}{
-        "primary":     cfg.GetPublicURL(),
-        "cluster":     cfg.GetClusterNodes(),
-        "api_version": cfg.APIVersion(),
-        "timeout":     cfg.Server.Timeout,
-        "retry":       cfg.Server.Retry,
-        "retry_delay": cfg.Server.RetryDelay,
-        "config": map[string]interface{}{
-            "database": map[string]interface{}{
-                "drivers": []string{"file", "sqlite", "libsql", "postgres", "mysql", "mssql", "mongodb"},
-                "aliases": map[string]string{
-                    "sqlite2":    "sqlite",
-                    "sqlite3":    "sqlite",
-                    "turso":      "libsql",
-                    "pgsql":      "postgres",
-                    "postgresql": "postgres",
-                    "mariadb":    "mysql",
-                    "mongo":      "mongodb",
-                },
-                "ssl_modes": []string{"disable", "require", "verify-full"},
-            },
-            "cache": map[string]interface{}{
-                "types": []string{"none", "memory", "valkey", "redis"},
-            },
-            "formats": map[string]interface{}{
-                "duration": []string{"s", "m", "h", "d"},
-                "size":     []string{"KB", "MB", "GB"},
-            },
-            "logging": map[string]interface{}{
-                "levels": []string{"debug", "info", "warn", "error"},
-            },
-            "smtp": map[string]interface{}{
-                "tls_modes": []string{"auto", "starttls", "tls", "none"},
-            },
-            "features": map[string]interface{}{
-                "clustering": cfg.Cluster.Enabled,
-                "tor":        torManager.Enabled(),
-                "webauthn":   cfg.Auth.WebAuthn.Enabled,
-                "oauth":      cfg.Auth.OAuth.EnabledProviders(),
-            },
-        },
-    }
-
-    // NEVER include admin_path - security by obscurity
-    // NEVER include internal addresses
-
-    w.Header().Set("Content-Type", "application/json")
-    w.Header().Set("Cache-Control", "public, max-age=3600")
-    json.NewEncoder(w).Encode(response)
-}
-```
 
 **Built-in autodiscovery:**
 
@@ -64417,10 +64325,10 @@ curl -q -LSsf https://api.example.com/api/autodiscover
 
 | Cookie | Scope | Max Age | Notes |
 |--------|-------|---------|-------|
-| `admin_session` | `/` | 30 days | Admin web sessions (`HttpOnly`, `Secure`, `SameSite=Lax`) |
-| `user_session` | `/` | 7 days | User web sessions (`HttpOnly`, `Secure`, `SameSite=Lax`) |
+| `admin_session` | `/` | 30 days | Admin web sessions (`HttpOnly`, `Secure`, `SameSite=Strict`) |
+| `user_session` | `/` | 7 days | User web sessions (`HttpOnly`, `Secure`, `SameSite=Strict`) |
 
-**Path is `/` for both, and the route decides what a cookie is worth.** A narrower `Path` would hide the cookie from `/server/auth/logout` (which must find the session to end it) and from `/server/{admin_path}` (where a signed-in Regular User is redirected to `/users` instead of being shown the login form). Validity is enforced server-side, per the "Admin Session vs User Session" table: an `admin_session` is honored only under `/server/{admin_path}/**` and `/server/auth/*`, a `user_session` never grants anything under `/server/{admin_path}/**`, and `/server/auth/logout` reads both cookies, ends whichever sessions exist and clears both.
+**Both session cookies are `SameSite=Strict`, the session-cookie default of the CSRF posture (PART 11), and their `Path` is `/`; the route decides what a cookie is worth.** A narrower `Path` would hide the cookie from `/server/auth/logout` (which must find the session to end it) and from `/server/{admin_path}` (where a signed-in Regular User is redirected to `/users` instead of being shown the login form). Validity is enforced server-side, per the "Admin Session vs User Session" table: an `admin_session` is honored only under `/server/{admin_path}/**` and `/server/auth/*`, a `user_session` never grants anything under `/server/{admin_path}/**`, and `/server/auth/logout` reads both cookies, ends whichever sessions exist and clears both.
 | `{project_name}_build` | `/` | 1 year | Build stamp for the PART 9 version-change purge — not a session cookie |
 
 ## Web Routes
@@ -66085,7 +65993,7 @@ This is OPTIONAL and only applies when user profiles should be publicly accessib
 | `website` | ✓ | ✓ |
 | `location` | ✓ (if enabled) | ✓ |
 | `created_at` | ✓ | ✓ |
-| `email` | ✗ | ✓ |
+| `email` | ✗ (✓ only when the user turned on `show_email`) | ✓ |
 | `email_verified` | ✗ | ✓ |
 | `2fa_enabled` | ✗ | ✓ |
 | `last_login` | ✗ | ✓ |
@@ -68546,7 +68454,7 @@ make docker
 
 **PART 17: Admin Panel**
 - [ ] Admin UI at `/server/{admin_path}`
-- [ ] Admin API at `/api/{api_version}/server/{admin_path}/`
+- [ ] Admin API at `/api/{api_version}/server/{admin_path}`
 - [ ] First-run setup wizard
 - [ ] All settings configurable via UI
 - [ ] Settings organized by category
@@ -68982,7 +68890,7 @@ make docker
 - [ ] Examples provided
 - [ ] Theme matches project theme
 
-### GraphQL (`/server/docs/graphql` UI, `/api/{api_version}/server/graphql` POST endpoint)
+### GraphQL (`/server/docs/graphql` UI, `/api/{api_version}/server/graphql` POST and GET-for-queries endpoint)
 
 - [ ] GraphQL endpoint accessible
 - [ ] GraphiQL/Playground available
@@ -69969,7 +69877,7 @@ Implement the required client, then any project-specific optional features:
 - [ ] First-run setup wizard works
 - [ ] REST API endpoints defined
 - [ ] Swagger UI accessible at `/server/docs/swagger`; OpenAPI JSON at `/api/{api_version}/server/swagger` (with `/api/swagger` alias)
-- [ ] GraphiQL UI accessible at `/server/docs/graphql`; GraphQL POST at `/api/{api_version}/server/graphql` (with `/api/graphql` alias)
+- [ ] GraphiQL UI accessible at `/server/docs/graphql`; GraphQL POST, and GET for queries, at `/api/{api_version}/server/graphql` (with `/api/graphql` alias)
 - [ ] All three APIs in sync
 
 ### Infrastructure

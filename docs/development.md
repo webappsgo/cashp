@@ -45,7 +45,7 @@ two additional binaries, and each is built only if its directory exists.
 | `make dev` | Fast build with no ldflags into an isolated temp directory |
 | `make test` | Run the full test suite with coverage enforcement |
 | `make docker` | Build the multi-arch container image locally |
-| `make release` | Build, package, and publish a GitHub release |
+| `make release` | Build binaries and package local release artifacts; it does not publish a GitHub release |
 | `make clean` | Remove `binaries/` and `releases/` |
 
 `make build` and `make local` both depend on `clean`, so each starts from an
@@ -57,7 +57,7 @@ Everything is overridable on the command line.
 
 | Variable | Default |
 |---|---|
-| `VERSION` | Contents of `release.txt`, else `devel` |
+| `VERSION` | `VERSION` environment/command value, then non-empty `release.txt`, then the short Git commit, then `devel` outside Git |
 | `PLATFORMS` | `linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 freebsd/amd64 freebsd/arm64` |
 | `BINDIR` | `binaries` |
 | `RELDIR` | `releases` |
@@ -67,8 +67,8 @@ Everything is overridable on the command line.
 | `DOCKER_MEM` | `4g` |
 | `DOCKER_CPUS` | `2` |
 
-`PROJECT_NAME` and `PROJECT_ORG` are inferred from the git remote — never
-hardcoded — falling back to the directory path when there is no remote.
+`PROJECT_NAME`, `PROJECT_ORG`, and `INTERNAL_NAME` are read from `IDEA.md`
+first, then inferred from the git remote or directory path as applicable.
 
 ```bash
 make build VERSION=1.2.0
@@ -88,12 +88,11 @@ The linker embeds version metadata into every binary:
 | `main.Version` | `VERSION` |
 | `main.CommitID` | `git rev-parse --short=7 HEAD` |
 | `main.BuildEpoch` | Unix seconds, UTC, captured once |
-| `main.BuildDate` | RFC 3339 UTC, derived from `BUILD_EPOCH` |
+| `main.BuildDate` | Derived at runtime from `main.BuildEpoch`; not set by an ldflag |
 | `main.OfficialSite` | `site.txt` or the `OFFICIAL_SITE` environment variable |
 
-`BUILD_EPOCH` is the single captured time source; `BUILD_DATE` is derived from
-it rather than sampled separately, so the two can never disagree. The epoch is
-what lets the updater tell whether a daily build is newer than the running one.
+`BUILD_EPOCH` is embedded in the binaries. `BUILD_DATE` is derived from it for
+the Docker image label; the server derives its displayed build date at runtime.
 
 `OFFICIAL_SITE` is optional and is never guessed from the project name or a
 domain. Self-hosted deployments leave it empty and use `--server`.
@@ -113,8 +112,7 @@ floor**. The target fails the build if total coverage drops below it, so a
 change that adds code without adding tests will not pass.
 
 Coverage profiles are written to a temporary directory under
-`$TMPDIR/{org}/{project}-XXXXXX`, never into the repository — build artifacts
-do not belong in the source tree.
+`$TMPDIR/{project_org}/{internal_name}-XXXXXX`, never into the repository.
 
 Never skip tests to save time. `make test` must pass before every commit.
 

@@ -9,8 +9,9 @@ PART 0. AI.md itself is read-only; template defects belong only in
 
 - [ ] Verify and complete core configuration, path security, runtime modes, startup validation, and binary behavior (PARTS 4–8, 12).
 - [ ] Verify and complete authentication, authorization, tenant isolation, credential handling, database access, cluster behavior, rate limiting, and error/logging controls (PARTS 9–11).
+- [ ] Consolidate the incompatible `src/admin` and `src/auth` admin/session schemas and make both the admin panel and shared auth use the canonical account records (PARTS 10–11).
 - [ ] Verify and complete API route behavior, content negotiation, health/version endpoints, OpenAPI/GraphQL parity, and endpoint integration coverage (PARTS 13–14, 29).
-- [ ] Replace the current signal-only composition root with a running HTTP/TLS application that mounts the configured server middleware, public pages, shared auth, admin panel, API, health/readiness/version, metrics, Swagger, and GraphQL handlers (PARTS 8, 12–17).
+- [ ] Complete the running HTTP/TLS composition root by wiring shared auth, the complete API, and every configured service alongside the existing middleware, public pages, admin panel, health/readiness/version, metrics, Swagger, and GraphQL handlers (PARTS 8, 12–17).
 - [ ] Rebuild the admin route tree and settings/pages to match PART 17's canonical `/server/{admin_path}/...` structure; remove obsolete route aliases and close every required page/form flow.
 - [ ] Mount all registered user, organization, custom-domain, billing, support, hosting, backup, notification, security, and integration API handlers and their required server-rendered pages (PARTS 14, 16–23, 32–36; IDEA.md).
 - [ ] Verify and complete server rendered public pages, admin pages, no-JavaScript flows, accessibility, content safety, and mobile styling (PARTS 16–17, 31).
@@ -35,6 +36,6 @@ PART 0. AI.md itself is read-only; template defects belong only in
 
 - [ ] Bring README, MkDocs/ReadTheDocs, operator/admin/API/integration/security/CLI docs, generated API references, and examples into sync with implemented behavior (PARTS 3, 14, 30).
 - [ ] Complete translation parity, locale selection, pluralization, accessibility, and server/client text coverage (PART 31).
-- [ ] Raise unit coverage from the verified 59.0% to at least AI.md's 60% gate and reach 100% coverage for all HTTP endpoints.
+- [ ] Raise aggregate unit coverage from the currently verified 54.2% to at least AI.md's 60% gate and reach 100% coverage for all HTTP endpoints.
 - [ ] Reconcile IDEA.md with AI.md and actual behavior; ensure root instruction files and all 14 `.claude/rules/` files accurately load/summarize the authoritative spec.
 - [ ] Complete the AI.md FINAL CHECKPOINT, required unit/route/accessibility/security/E2E validation, documentation checks, and provider workflow validation; resolve every failure.

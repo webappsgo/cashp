@@ -42,7 +42,7 @@ also supports these global options:
 | `--server URL` | Select the server |
 | `--token TOKEN` | Authenticate with a token |
 | `--token-file FILE` | Read a token from a file |
-| `--user NAME` | Select a user context |
+| `--user NAME` | Select a user or organization context; use `@NAME` or `+NAME` to specify the type |
 | `--config NAME` | Select the client configuration |
 | `--output table\|json\|yaml\|plain\|csv` | Select output format |
 | `--json` | Shorthand for JSON output |
