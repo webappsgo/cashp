@@ -17595,7 +17595,7 @@ All three coexist under the admin tree. The admin-panel UI groups them under a s
 
 ### GPG Keypair Management (Admin Panel)
 
-**One project-level GPG keypair. Used to encrypt incoming security reports at rest, sign outbound notifications, and seed the `Encryption:` line in security.txt.**
+**One project-level GPG keypair. Used to encrypt incoming security reports at rest, sign a rotated public key with the previous key (see Rotate below), and seed the `Encryption:` line in security.txt. It does NOT sign outbound notifications: an email carries no PGP signature, and a webhook is authenticated by its own HMAC ("Outbound webhook signing").**
 
 | Action | Behavior |
 |--------|----------|
