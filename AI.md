@@ -11444,6 +11444,7 @@ Run '{project_name} <flag> --help' (for example `--service --help`) for detailed
 | **Create if missing** | All directories are created with proper permissions if they don't exist |
 | **Permissions (root)** | Directories: `0755`, Files: `0644`, PID: `0644`, except the private paths below |
 | **Permissions (user)** | Directories: `0700`, Files: `0600`, PID: `0600` |
+| **Backup archives** | Created `0600`, owned by the service identity `{internal_name}:{internal_name}`. A root-run `--maintenance backup` (and any other root write into `{backup_dir}`) chowns every file and directory it creates to the service identity, so the service can later read, verify and prune them. A retention sweep that cannot delete a file logs a WARN with the path and mode, continues, and never fails the backup |
 | **Private paths (root AND user mode)** | Directories `0700` and files `0600`, whoever runs the server, on: `{config_dir}/server.yml`, `{config_dir}/secrets.yml`, `{config_dir}/yaml.d/` and its drop-ins, `{config_dir}/assets/`, `{config_dir}/ssl/`, `{config_dir}/tor/`, `{config_dir}/i2p/`, `{data_dir}/security/` and `{data_dir}/tor/` INCLUDING `tor/site/`, each with EVERYTHING below it. `secrets.yml` holds `server.token`, the encryption key and every other credential, and an operator may hand-write a secret into `server.yml` or a drop-in until the next start moves it, so those files are private too. Files and directories are CREATED with these modes (never created `0644`/`0755` and fixed later) |
 | **Private path enforcement** | `enforcePrivate` runs on every private path at every start, BEFORE the first read of `server.yml` and BEFORE any child process (tor, i2pd) is spawned. A wrong mode is FIXED, never reported as a config load failure; only a path that is neither private nor fixable stops the start, with an error naming the path and its mode (never any content). The unit test builds the tree at `0755`/`0644` and asserts every private path ends `0700`/`0600`, `tor/site` and `server.yml` included |
 | **PID directory (root)** | `/var/run/{internal_org}/{internal_name}/`, one directory per service, `0755`, owned by `{internal_name}:{internal_name}`, created in the root phase (PART 8 startup step 8b) or by the init script before the start. Never a directory shared between services of one org: a service account can then remove only its own PID file on shutdown and can never touch another service's |
@@ -11756,7 +11757,7 @@ PHASE 5: Server startup (actual server start)
       ├─ {backup_dir}/
       ├─ {db_dir}/ (when it is not already under {data_dir})
       └─ /var/run/{internal_org}/{internal_name}/ (the per-service PID directory, owned by {internal_name}:{internal_name})
-   c. Set ownership: chown -R {internal_name}:{internal_name} on all dirs
+   c. Set ownership: chown -R {internal_name}:{internal_name} on every dir above EXCEPT {backup_dir}. {backup_dir} gets only the directory itself chowned, never recursively: it is often a NAS or another mount holding many archives, where a recursive chown is slow and fails under root squash. A chown refused on {backup_dir} is a WARN, not a startup failure; step 8j decides whether the service user can use it
    d. Set permissions: 0755 general dirs; 0700 dirs and 0600 files on every private path with everything below it (PART 8 → "Directory Validation Rules": security/, ssl/, tor/ INCLUDING tor/site/, i2p/, server.yml, yaml.d/)
    e. Determine ports (see PART 5 for full port rules):
       ├─ Format 1: --port {port} (single port)
@@ -11778,6 +11779,7 @@ PHASE 5: Server startup (actual server start)
    g. (reserved) No child process is started while root. Tor and I2P start in step 17 as the service user, after the drop; their directories were created and chowned in steps 8b-8c
    h. DROP PRIVILEGES to the {internal_name} user
    i. Verify privilege drop succeeded (getuid() != 0)
+   j. Verify, as the service user, that {backup_dir} accepts a write (create and remove a probe file). A failure logs ONE error naming the path, its owner and mode and the service user, and the server still starts; the backup task then reports backup.failed with the same detail. It NEVER falls back silently to another directory, because existing backups would be orphaned
 
 9. IF RUNNING AS USER (non-root) - setup user directories:
    ├─ Create {config_dir} (~/.config/{internal_org}/{internal_name}/)
@@ -14056,19 +14058,29 @@ func GetBackupDir(flagValue string, dataDir string) string {
     return userBackupDir()
 }
 
-// isWritable checks if a directory is writable (or can be created)
+// isWritable reports whether the backup directory can be used or created. The backup root (two levels above it, for example /mnt/Backups)
+// must already exist, because a host without that mount keeps the {data_dir}/backup/ fallback. The missing {internal_org} and {internal_name}
+// levels are created by startup step 8b, so the write probe runs in the nearest existing ancestor
 func isWritable(path string) bool {
-    // Check if parent exists and is writable
-    parent := filepath.Dir(path)
-    info, err := os.Stat(parent)
-    if err != nil {
+    root := filepath.Dir(filepath.Dir(path))
+    if info, err := os.Stat(root); err != nil || !info.IsDir() {
         return false
     }
-    if !info.IsDir() {
-        return false
+    probeDir := path
+    for {
+        info, err := os.Stat(probeDir)
+        if err == nil {
+            if !info.IsDir() {
+                return false
+            }
+            break
+        }
+        if probeDir == root {
+            return false
+        }
+        probeDir = filepath.Dir(probeDir)
     }
-    // Try to create a temp file to test write access
-    testFile := filepath.Join(parent, ".write_test_"+strconv.FormatInt(time.Now().UnixNano(), 36))
+    testFile := filepath.Join(probeDir, ".write_test_"+strconv.FormatInt(time.Now().UnixNano(), 36))
     f, err := os.Create(testFile)
     if err != nil {
         return false
@@ -39147,6 +39159,8 @@ server:
 **Backup Creation Flow (backup_daily task at 02:00):**
 
 ```
+0. Ensure {backup_dir} exists and is writable: EnsureDir (PART 8; it is created again when missing, for example removed or an unmounted external disk; 0755 as root, 0700 as user), then a write probe.
+   A failure aborts the run with ONE error naming the path, its owner and mode and the running user (backup.failed); nothing is created elsewhere
 1. Run retention sweep on backup dir (resolved and cached at startup step 7)
 2. Check free space: if free < 2× size of most recent backup, OR disk usage
    > disk_threshold (default 90%), log backup.skipped_disk_full (level=error)
