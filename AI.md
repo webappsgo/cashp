@@ -28609,10 +28609,10 @@ See **JavaScript Rules** section below for `app.js` structure.
   <a href="/server/login">Login</a>
 </nav>
 
-<style>
+<!-- The CSS lives in static/css/common.css, never in a <style> block:
 .menu { display: none; }
 #menu-toggle:checked ~ .menu { display: block; }
-</style>
+-->
 
 <!-- Dropdown - use :focus-within NOT JS -->
 <div class="dropdown">
@@ -28623,10 +28623,10 @@ See **JavaScript Rules** section below for `app.js` structure.
   </div>
 </div>
 
-<style>
+<!-- The CSS lives in static/css/common.css, never in a <style> block:
 .dropdown-content { display: none; }
 .dropdown:focus-within .dropdown-content { display: block; }
-</style>
+-->
 ```
 
 ### Go Templates
