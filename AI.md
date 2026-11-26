@@ -8708,7 +8708,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | **Generated** | When one of these keys is empty or missing at start, the server generates it BEFORE it serves anything, writes it to `secrets.yml` (atomic, `0600`) and records `config.secret_generated` (the key name only) in `audit.log`: `server.token`; `server.security.encryption_key` (with `encryption_key_version: 1`); `server.metrics.auth.tokens.prometheus`, `.grafana` and `.loki`; and a `server.contact.{role}.webhooks.{transport}_secret` whenever its webhook URL `server.contact.{role}.webhooks.{transport}` is set. `server.token` is an `adm_` token and each metrics token an `mtr_` token, each plus 32 random base62 characters ("Token Catalogue") and the encryption key is 32 random bytes. Only `server.token` is printed, once, to the console at first creation ("First-start disclosure") and never logged; every other value is read from `secrets.yml` |
 | **Never generated** | Credentials that someone else issues stay empty until the operator sets them: `server.notifications.email.smtp.password`, `server.cache.password`, `server.database.password` and `server.database.token`, `server.database.url` and `server.cache.url` with a credential in them, `server.pages.contact.captcha_secret_key`, `server.ssl.letsencrypt.dns_credentials`, `data.cve.api_key`, `server.backup.encryption_password`, the LDAP bind password, the OIDC client secret and the webhook URLs |
 | **Rotation** | Blank a generated key in `secrets.yml` and restart: a new value is generated. `--maintenance secret rotate {name}` rotates `installation_secret` or the encryption key with their grace periods (PART 11); those are the only two with a manual rotation, while `cookie_signing_key` and `csrf_token_secret` rotate automatically and any other name is rejected with a usage error |
-| **Written by** | The server writes generated, rotated and moved secrets to `secrets.yml` and ONLY there, never to `server.yml` and never to a drop-in (this limits what the server writes; an operator may still hand-write a value elsewhere, see "Operator-set values"): the first-run `server.token`, `server.security.encryption_key` with its version, and every rotation (`--maintenance secret rotate encryption_key`) |
+| **Written by** | The server writes the FILE-based secrets (every key of this list; PART 11 keeps three others in `app_secrets`) to `secrets.yml` and ONLY there, never to `server.yml` and never to a drop-in (this limits what the server writes; an operator may still hand-write a value elsewhere, see "Operator-set values"): the first-run `server.token`, `server.security.encryption_key` with its version, and its rotation (`--maintenance secret rotate encryption_key`). The `app_secrets` rows (`installation_secret`, `cookie_signing_key`, `csrf_token_secret`) are written to `server.db` and nowhere else; a rotation of `installation_secret` (`--maintenance secret rotate installation_secret`) updates its row there |
 | **Operator-set values** | An operator MAY write a secret key in `server.yml` or a drop-in (for example from configuration management). The automatic migration moves it to `secrets.yml` at the next start ("Area Files and Automatic Migration"), where it wins over any other file. A value may also be an environment reference such as `${DB_PASSWORD}`, which is moved like any other value. A plaintext DNS credential is rewritten as `enc:v1:` in the file that holds it. So `secrets.yml` is where a secret lives at rest, and a secret in `server.yml` or a drop-in is a hand-off that ends at the next start |
 | **Migration** | At start, if `server.token` or `server.security.encryption_key` is found in `server.yml` and `secrets.yml` does not hold it, the server writes `secrets.yml` first (atomic, `0600`, fsynced) and only then rewrites `server.yml` without those keys, so a secret is never in both files and never lost |
 | **Early read** | The early config read (PART 8 startup, step 8e) never opens `secrets.yml`: it needs only `server.port`, `server.address`, `server.daemonize` and `server.pidfile`, plus each raw-protocol listener's `{proto}.enabled`, `{proto}.address` and `{proto}.port` |
@@ -57573,17 +57573,17 @@ export {PROJECT_NAME}_TOKEN="usr_abc123..."
 
 ## CLI Cluster Failover
 
-**The autodiscover response (PART 14) returns the full cluster URL list (`primary` + `cluster: [...]`). The CLI MUST honor this for fault tolerance — if the primary becomes unreachable mid-session, the CLI tries the next cluster URL automatically.**
+**The health response (PART 13: `cluster.primary` and `cluster.nodes` of `GET /api/{api_version}/server/healthz`) returns the full cluster URL list; `/api/autodiscover` (PART 14) carries none. The CLI MUST honor this for fault tolerance — if the primary becomes unreachable mid-session, the CLI tries the next cluster URL automatically.**
 
 | Step | Action |
 |------|--------|
-| 1. Initial config | After `login` (or initial bootstrap), CLI calls `/api/autodiscover` and caches the full cluster URL list in `cli.yml` under `server.cluster: [...]`. |
-| 2. Periodic refresh | Every 30 minutes (or on every CLI start, whichever comes first), CLI re-runs autodiscover against `server.primary` and refreshes the cluster list. |
+| 1. Initial config | After `login` (or initial bootstrap), CLI reads the health response and caches the full cluster URL list (`cluster.nodes`) in `cli.yml` under `server.cluster: [...]`. |
+| 2. Periodic refresh | Every 30 minutes (or on every CLI start, whichever comes first), CLI re-reads the health response from `server.primary` and refreshes the cluster list. |
 | 3. Failover | On any request to `server.primary` that fails with a connection-level error (DNS failure, TCP timeout, TLS handshake failure, 5xx after retry) — NOT auth or 4xx errors — the CLI tries each `server.cluster` URL in order with a fresh request. First success becomes the new "preferred" URL for the rest of the session. |
 | 4. Promotion | If the primary stays down for >5 minutes (CLI session-local timer) AND a cluster URL is consistently working, CLI updates `cli.yml` to make the working URL the new `server.primary`. The old primary stays in `cluster:` so it's tried again later. |
 | 5. Total failure | If ALL cluster URLs fail, print: `error: cannot reach {project_name} server at any of {N} configured URLs (last error: ...)`. Exit non-zero. Do not auto-retry beyond the cluster list — operator handles via DNS / connectivity tools. |
 
-The CLI never adds URLs that weren't in the autodiscover response — operators control which cluster nodes are exposed.
+The CLI never adds URLs that weren't in the health response's `cluster.nodes` — operators control which cluster nodes are exposed.
 
 ## CLI Auto-Update (Same Pattern as Server Self-Update + Agent)
 
@@ -59532,7 +59532,7 @@ defaults:
 
 | Feature | Behavior |
 |---------|----------|
-| **Background discovery** | CLI calls `/api/autodiscover` in background |
+| **Background discovery** | CLI reads `GET /api/{api_version}/server/healthz` in background |
 | **Auto-update** | `server.cluster` updated from `cluster.nodes` in response |
 | **Failover** | If primary fails, try cluster nodes transparently |
 | **No user action** | Completely automatic, user sees no difference |
@@ -59544,8 +59544,8 @@ On every CLI command:
 2. Try server.primary
 3. If fails → try server.cluster nodes (silent failover)
 4. Execute command on first available node
-5. Background: GET /api/autodiscover (at most every 30 minutes)
-6. Read primary and cluster URL list from the autodiscover response
+5. Background: GET /api/{api_version}/server/healthz (at most every 30 minutes)
+6. Read cluster.primary and cluster.nodes from the health response
 7. Update server.primary and server.cluster in cli.yml (async, non-blocking)
 ```
 
@@ -61426,10 +61426,9 @@ func GenerateAgentToken(scope AgentScope) string {
 | User | `POST /api/{api_version}/users/agents/register` |
 | Org | `POST /api/{api_version}/orgs/{slug}/agents/register` |
 
-**Request:**
+**Request** (the credential travels ONLY as the header `Authorization: Bearer adm_abc123def456ghi789jkl012mno345pqr6`, PART 8; the body carries no credential):
 ```json
 {
-  "token": "adm_abc123def456ghi789jkl012mno345pqr6",
   "hostname": "web-server-01",
   "os": "linux",
   "arch": "amd64",
@@ -61609,7 +61608,7 @@ mode: ""
 
 | Feature | Behavior |
 |---------|----------|
-| **Node discovery** | Agent calls `/api/autodiscover` on connect |
+| **Node discovery** | Agent reads `GET /api/{api_version}/server/healthz` on connect |
 | **Auto-update** | `server.cluster` updated from `cluster.nodes` in response |
 | **Failover** | If primary fails, try cluster nodes in order |
 | **Reconnect** | When primary recovers, switch back automatically |
@@ -61618,8 +61617,8 @@ mode: ""
 **Failover Flow:**
 ```
 1. Agent connects to server.primary
-2. Agent calls GET /api/autodiscover
-3. Agent reads the primary and cluster URL list from the response
+2. Agent calls GET /api/{api_version}/server/healthz
+3. Agent reads cluster.primary and cluster.nodes from the health response
 4. Agent saves to server.primary and server.cluster in agent.yml
 5. If primary fails:
    a. Try each node in server.cluster
@@ -61635,8 +61634,8 @@ mode: ""
 1. Load agent.yml
 2. Try server.primary
 3. If fails → try server.cluster nodes
-4. Once connected → GET /api/autodiscover
-5. Update server.primary and server.cluster from response
+4. Once connected → GET /api/{api_version}/server/healthz
+5. Update server.primary and server.cluster from cluster.primary and cluster.nodes
 6. Begin normal operation
 ```
 
@@ -67130,9 +67129,6 @@ server:
 
       # Verification token TTL
       verification_ttl: 24h
-
-      # Renew SSL certs N days before expiry
-      ssl_renewal_days: 7
 
       # Reserved domains that cannot be used
       reserved:
