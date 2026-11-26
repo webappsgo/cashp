@@ -16692,6 +16692,7 @@ Agent tokens use the same prefixes: an agent token is an adm_, usr_ or org_ toke
 | `adm_` | Admin token | **YES - all projects** | Server admin API access |
 | `usr_` | User token | If multi-user (PART 34) | Regular user API access |
 | `org_` | Organization token | If orgs (PART 35) | Organization-level API access |
+| `mtr_` | Metrics scraper token | If metrics are enabled | `GET /server/metrics` only. Read from `secrets.yml` (`server.metrics.auth.tokens.*`) and checked by constant-time comparison against those values; it is never a row of the `tokens` table and never an admin, user or org token |
 
 ### Token Catalogue
 
@@ -17628,6 +17629,8 @@ All three coexist under the admin tree. The admin-panel UI groups them under a s
 | `{config_dir}/security/pgp.priv.asc.enc` | Always | Encrypted private key. The decryption KDF input is `installation_secret`, which is also part of the backup — so a backup is sufficient to restore. |
 | Security reports DB rows | Always | Tracking metadata. The encrypted report bodies are restored too (encrypted at rest with the same PGP key). |
 | `{config_dir}/security/keyservers.state` | Always | Per-keyserver publish state, so a restore doesn't double-submit. |
+
+**Cluster Mode.** All nodes serve the same keypair (one fingerprint in `security.txt`). The primary stores the encrypted private key and the public key as the `app_secrets` rows `pgp_priv_enc` and `pgp_pub` (the private key stays encrypted with the key derived from `installation_secret`), every node writes its `{config_dir}/security/pgp.priv.asc.enc` and `pgp.pub.asc` files from those rows at start and whenever the row version changes, and a joining node receives them in the bootstrap payload with every other `app_secrets` row. Files are never copied between nodes, and a rotation updates the rows in one transaction with the version bump.
 
 **Restore behavior:** restoring a backup re-installs the keypair and `keyservers.state`, then submits the public key only to the configured keyservers that the restored state does not already list for this fingerprint (a keyserver added since the backup, or a different fingerprint). A keyserver already listed is not contacted again, and a submission that does happen is idempotent because keyservers de-duplicate by fingerprint. The `installation_secret` is restored from the same backup, so the encrypted private key decrypts correctly.
 
