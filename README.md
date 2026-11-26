@@ -89,10 +89,10 @@ make test
 ```
 
 Phase-2 endpoint checks run against an already-running server and do not build
-or start one. They read the live OpenAPI document and exercise every
-advertised API method and path, including the JSON, plain-text, and HTML
-content-negotiation requests for GET routes, alongside the explicit public,
-admin, metrics, and static-route checks:
+or start one. They read the live OpenAPI document, enumerate public and
+module/admin browser page routes, and exercise every advertised API method
+and path. GET routes receive JSON, plain-text, and HTML content-negotiation
+requests, alongside explicit metrics and static-route checks:
 
 ```sh
 CASHP_BASE_URL=http://localhost:64580 ./tests/test_endpoints.sh

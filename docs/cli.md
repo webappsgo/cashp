@@ -15,11 +15,19 @@ CasHp builds three binaries: `cashp` (server), `cashp-cli` (client), and
 | `--color auto\|yes\|no` | Select terminal color behavior |
 | `--config DIR` | Set the configuration directory |
 | `--data DIR` | Set the data directory |
+| `--cache DIR` | Set the cache directory |
 | `--log DIR` | Set the log directory |
+| `--backup DIR` | Set the backup directory |
 | `--pid FILE` | Set the PID file path |
 | `--address ADDR` | Set the listen address |
 | `--baseurl PATH` | Set the URL path prefix |
 | `--port PORT` | Set one HTTP port or an `HTTP,HTTPS` pair |
+| `--service CMD` | Start, stop, restart, reload, install, disable, or uninstall the service |
+
+Use `cashp --service --help` to inspect the service manager and available
+commands. Directory overrides reject control characters and `..` path
+segments, then create the resolved directory tree with owner or system
+permissions before server startup.
 
 Without overrides, the server reads `server.yml` from the resolved config
 directory. See [Configuration](configuration.md) for directory precedence and

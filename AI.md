@@ -2358,7 +2358,7 @@ This distinction exists for clarity. When referring to OS-level resources that b
 |----------|-------------|
 | `/server/healthz` | Frontend route - content negotiation (HTML for browsers, JSON for API clients, text for CLI) |
 | `/healthz` | Optional root alias for `/server/healthz` when `server.healthz.root.enabled: true` |
-| `/api/{api_version}/server/healthz` | API route - JSON by default; text via standard API text rules |
+| `/api/{api_version}/server/healthz` | API route - JSON by default; text via the `.txt` suffix (`/api/{api_version}/server/healthz.txt`) or `Accept: text/plain`. The optional root alias `/healthz` has no suffix form: it content-negotiates like `/server/healthz` |
 | `/api/healthz` | Unversioned direct alias for machine-friendly versionless probing |
 | `/server/metrics[/{service}]` | Metrics services (`prometheus`, `grafana`, `loki`) - internal only, per-service bearer tokens |
 | `/metrics[/{service}]` | Root alias (default enabled - Prometheus scrapers expect `/metrics`); same handler, never a redirect |
@@ -7888,7 +7888,7 @@ func setupMiddleware(handler http.Handler) http.Handler {
 |------|---------|
 | **server.yml** | YAML configuration file on disk |
 | **Configuration** | Settings (stored in server.yml OR database) |
-| **Database** | SQLite (local) or PostgreSQL/MySQL (remote) |
+| **Database** | SQLite (local) or a remote PostgreSQL, MySQL/MariaDB or MSSQL database |
 | **Server Address** | The bind address for the server (e.g., `[::]`, `0.0.0.0`, `127.0.0.1`) |
 | **FQDN** | Fully Qualified Domain Name (e.g., `api.example.com`) |
 | **Node ID** | Unique identifier for a cluster node (default: hostname) |
@@ -11086,6 +11086,8 @@ func GetThemePalette(themeMode string) ThemePalette {
 
 ### Banner Package
 
+**This package serves the client, TUI and GUI binaries. The SERVER binary prints its banner with `src/server/banner.PrintServerStartupBanner(appName, version, appMode, urls, forceColor, lang)` ("Responsive Startup Banner"), a separate package that is not built on `common/banner`.**
+
 ```go
 // src/common/banner/banner.go
 package banner
@@ -11988,7 +11990,7 @@ PHASE 5: Server startup (actual server start)
     ├─ Resolve {startup_datetime} = the current time at this step in the server's timezone (`TZ`, default `America/New_York`), human-readable as `%B %d, %Y at %H:%M:%S %Z` ("Human-Readable Values (Frontend)")
     └─ Build `urls` from the resolved {proto}/{fqdn}/{port} and call
        PrintServerStartupBanner(appName, version, appMode, urls,
-       forceColor) — the banner's "Listening on" line ALWAYS shows the
+       forceColor, lang) — the banner's "Listening on" line ALWAYS shows the
        resolved {fqdn}, never the raw bind {address} (see "Banner
        Placeholders (Must Be Defined)" for the full placeholder list)
 
@@ -13140,7 +13142,7 @@ func OpenDatabase(cfg *Config) (*Database, error) {
 -- ============================================================================
 
 -- Single-instance SQLite server.db has NO config table: configuration lives only in server.yml (PART 5).
--- Cluster Mode ONLY (remote PostgreSQL/MySQL): the remote database is the configuration source of truth (PART 5), so these two tables exist there (srv_ prefix) and the area files in `yaml.d/` are its synced copy (`server.yml` and `secrets.yml` are node-local).
+-- Cluster Mode ONLY (remote PostgreSQL, MySQL/MariaDB or MSSQL): the remote database is the configuration source of truth (PART 5), so these two tables exist there (srv_ prefix) and the area files in `yaml.d/` are its synced copy (`server.yml` and `secrets.yml` are node-local).
 CREATE TABLE IF NOT EXISTS srv_config (
     key        VARCHAR(255) PRIMARY KEY,
     value      TEXT NOT NULL,
@@ -15516,7 +15518,7 @@ func (u *User) SetDisplayName(name string) {
 
 ### Remote Database Updates
 
-**Same approach for SQLite and remote databases (PostgreSQL/MySQL).**
+**Same approach for SQLite and remote databases (PostgreSQL, MySQL/MariaDB, MSSQL).**
 
 | Database | `CREATE TABLE IF NOT EXISTS` | `ALTER TABLE ADD COLUMN` |
 |----------|------------------------------|--------------------------|
@@ -15578,7 +15580,7 @@ if err != nil && !isColumnExistsError(err) {
 ### Cluster Mode (Auto-detected)
 
 - Auto-enabled when external cache or shared database detected
-- Requires: PostgreSQL/MySQL + Valkey/Redis
+- Requires: a remote PostgreSQL, MySQL/MariaDB or MSSQL database + Valkey/Redis
 - All nodes share same database and cache
 - Config changes propagate automatically
 
@@ -16618,7 +16620,7 @@ default-src 'self';
 script-src 'self';
 style-src 'self' 'unsafe-inline';
 img-src 'self' data: blob: https:;
-font-src 'self' https:;
+font-src 'self' data: https:;
 connect-src 'self' {learned_origins};
 media-src 'self' blob:;
 worker-src 'self' blob:;
@@ -16641,7 +16643,7 @@ report-uri /api/{api_version}/server/reports/csp
 | `script-src` | `'self'` | All JS lives in `static/js/app.js` — no inline scripts (the `application/ld+json` block is data that is never executed) and no inline handlers — so `'self'` costs nothing and blocks every injected `<script>`, inline or cross-origin. |
 | `style-src` | `'self' 'unsafe-inline'` | Application code NEVER emits inline `style=""` attributes or `<style>` blocks (all CSS lives in static files, PART 16). `'unsafe-inline'` stays in `style-src` only as a tolerance for styles injected by third parties (browser extensions, embedded widgets); it is not permission for application code, and the frontend tests assert that rendered pages contain no inline styles. |
 | `img-src` | `'self' data: blob: https:` | `data:` for inline icons/SVG, `blob:` for client-side generated previews, `https:` so user avatars / CDN images / OG embeds work without per-host config. (HTTP images explicitly excluded — TLS only.) |
-| `font-src` | `'self' https:` | Web fonts (Google Fonts, FontAwesome CDN, custom CDNs) work without per-host config. HTTPS only. |
+| `font-src` | `'self' data: https:` | Web fonts (Google Fonts, FontAwesome CDN, custom CDNs) work without per-host config. HTTPS only, plus `data:` because the vendored GraphiQL/Monaco stylesheet embeds its editor and icon fonts as `data:` URLs. |
 | `connect-src` | `'self' {learned_origins}` | XHR/fetch/EventSource/WebSocket. `{learned_origins}` = DOMAIN env entries + reverse-proxy-detected hosts (same source as CORS — see PART 16 → "CORS Allow-list Resolution Order"). |
 | `media-src` | `'self' blob:` | `<video>`/`<audio>` from own host + client-generated streams (recording, MediaSource API). |
 | `worker-src` | `'self' blob:` | Service workers (PWA), web workers, including blob-instantiated workers. |
@@ -18233,7 +18235,7 @@ server:
       filename: audit.log
       # json only - must be machine-parseable
       format: json
-      # daily, weekly, monthly, NMB, or combined
+      # daily, weekly, monthly, NMB, or a comma-separated combination such as `weekly,50MB`: rotates at whichever trigger is reached first
       rotate: daily
       # none, N, Nd, Nw, Nm
       keep: none
@@ -18261,8 +18263,7 @@ server:
         token_usage: false
 
       # Sensitive data handling
-      # Show j***n@e***.com instead of full
-      mask_emails: true
+      # Email addresses are ALWAYS masked (j***n@e***.com): there is no setting that logs them in full
       # Show full usernames in logs
       mask_usernames: false
       include_user_agent: true
@@ -18277,7 +18278,6 @@ server:
 | `rotate` | `daily` | Rotate daily |
 | `keep` | `none` | Delete on rotation (no old logs kept) |
 | `compress` | `false` | No compression (deleted immediately) |
-| `mask_emails` | `true` | Mask email addresses |
 | All event categories | `true` | Log all events |
 | `token_usage` | `false` | Don't log every token use |
 
@@ -19601,6 +19601,8 @@ These rules apply to **all responses** when the request is detected as a Tor req
 | **Email** | Show `server.tor.contact_email` only; if unset, omit email entirely from all responses (security.txt, contact pages, error pages, footers). Never fall back to the clearnet contact email. |
 | **URLs** | All absolute URLs in responses must use `tor.onion_address`. Never embed clearnet FQDN. Applies to: `security.txt`, `llms.txt`, OpenAPI `servers[0].url`, GraphQL endpoint, OAuth redirect URIs, email verification links, pagination links. |
 | **Clearnet links** | Any link that would normally point to the clearnet site must use the onion address or be omitted entirely. |
+| **Third-party and user-authored links** | An operator- or user-authored external link (a privacy-policy URL, a profile website, a Markdown link) is rendered as plain text without a link, and an external avatar (Gravatar included) is replaced by the built-in default avatar, so a Tor visitor's browser never contacts a clearnet host. `/api/autodiscover` answers a Tor request with the onion origin only, never a clearnet origin. A personal-data export keeps the stored values: it is a download, not a page. |
+| **Personal email on public pages** | A user's opted-in public-profile email is suppressed on Tor responses: `server.tor.contact_email` stays the only address shown |
 | **CORS** | The onion address is added to the CORS allow-list automatically when `tor.onion_address` is set. The clearnet origin must NOT appear in Tor response CORS headers. |
 | **OAuth / external auth** | Redirect URIs must use the onion address. If the OAuth provider does not support `.onion` redirect URIs, that provider is disabled for Tor requests with a `503` error. |
 | **`Preferred-Languages`** | Omitted from `security.txt` served over Tor — locale selection leaks fingerprinting information. |
@@ -21043,6 +21045,8 @@ type HealthResponse struct {
     PendingRestart bool     `json:"pending_restart,omitempty"`
     // settings that changed
     RestartReason  []string `json:"restart_reason,omitempty"`
+    // present only while status is "maintenance"
+    Maintenance    *MaintenanceInfo `json:"maintenance,omitempty"`
 
     // 3. Version & build info (PART 7: binary requirements)
     // SemVer "1.0.0"
@@ -21106,6 +21110,24 @@ type ClusterInfo struct {
     NodeCount int      `json:"node_count,omitempty"`
     // "primary" or "member"
     Role      string   `json:"role,omitempty"`
+}
+
+// MaintenanceInfo - present in the health response only while status is "maintenance"
+type MaintenanceInfo struct {
+    Reason      string          `json:"reason"`
+    Message     string          `json:"message"`
+    // RFC 3339, UTC
+    Since       string          `json:"since"`
+    SelfHealing SelfHealingInfo `json:"self_healing"`
+}
+
+// SelfHealingInfo - the automatic recovery attempts (PART 5)
+type SelfHealingInfo struct {
+    Enabled     bool   `json:"enabled"`
+    Exhausted   bool   `json:"exhausted"`
+    Attempts    int    `json:"attempts"`
+    LastAttempt string `json:"last_attempt,omitempty"`
+    NextAttempt string `json:"next_attempt,omitempty"`
 }
 
 // FeaturesInfo - PUBLIC features only (no /server/metrics - PART 21 is internal)
@@ -21855,6 +21877,7 @@ When not in cluster mode:
 | `status` | healthy, degraded, unhealthy, restart_required, maintenance, shutting_down (see Health Status Values & HTTP Codes) |
 | `pending_restart` | Present (`true`) only when a config change requires a restart |
 | `restart_reason` | Settings that changed (only with `pending_restart`) |
+| `maintenance` | Present only while `status` is `maintenance`, right after the restart fields: `reason`, `message`, `since` (RFC 3339 UTC) and `self_healing` (`enabled`, `exhausted`, `attempts`, `last_attempt`, `next_attempt`); the shape of the maintenance example in PART 5 |
 | `version` | The version `--version` reports: SemVer for a release, `YYYYMMDDHHMMSS-beta` for a beta, the short commit id for a devel build (`devel` only for a local build outside git that has no release, beta or commit identity, "Health Output Invariants") |
 | `mode` | production, development, debug |
 | `uptime` | Compact uptime `{d}d {h}h {m}m` (zero leading units dropped, `45s` under a minute); the frontend shows `format.Duration()` |
@@ -23214,6 +23237,7 @@ See the **"Themes (NON-NEGOTIABLE - PROJECT-WIDE)"** section for the complete th
 - BOTH light AND dark themes MUST be easy to read with no color conflicts
 - File locations: `src/swagger/theme.go` and `src/graphql/theme.go`
 - Every color below is the value of a `ThemePalette` role ("Unified Color Palette"): these swatches are the palette, never a second one, and the theme files read `theme.ThemePaletteDark` and `theme.ThemePaletteLight` instead of defining their own hex values
+- Any value in the examples below that is not exactly a palette role (for example `#6272a4`, `#f1fa8c`, or a light-theme value that differs from `ThemePaletteLight`) is illustrative only: the real theme file takes the nearest role (`Border`, `Muted`, `Primary`, `Warning`) and never ships such a literal
 
 ---
 
@@ -24281,7 +24305,7 @@ func isDevTLD(host, projectName string) bool {
 
 ### Responsive Startup Banner
 
-**Banner MUST adapt to terminal size. Phone SSH users are common.**
+**Banner MUST adapt to terminal size. Phone SSH users are common.** The server banner decides on COLUMNS only (rows are ignored because a banner scrolls); its 40, 60 and 80 column boundaries are the same as the `common/terminal` size modes.
 
 | Terminal Size | Banner Style | Example |
 |---------------|--------------|---------|
@@ -28522,8 +28546,10 @@ type Route struct {
     // the MCP tool list is generated from the registry for every route the caller's token may call, and the operator token also sees
     // the operator-only tools (never the service routes and the routes with `Internal` set)
     Listed bool
-    // Internal-only (the debug and diagnostics routes of the debug flag, PART 6): in neither llms.txt, Swagger, GraphQL nor MCP, whatever Listed and Auth say; registered only while the debug flag is on
+    // Internal (visibility only): in neither llms.txt, Swagger, GraphQL nor MCP, whatever Listed and Auth say. Set for the debug routes, the metrics routes and the local-CLI control routes (for example Tor control); it says nothing about whether the route is mounted
     Internal bool
+    // Mount condition (separate from Internal): the route is registered only while the debug flag is on (the debug and diagnostics routes of PART 6); metrics and control routes are not DebugOnly
+    DebugOnly bool
     // Request and response models; the response struct's declared field order is the text output order
     Request, Response any
     // Name of the response field returned bare in text output; empty means none
@@ -36295,7 +36321,7 @@ Do not reply to this email.
 |--------|------|
 | Measured | The same probe as `checks.database` in `/server/healthz` (PART 13): a trivial query on the write handle and on the read handle, each under a 5-second deadline |
 | Trigger | `server.notifications.database_error.failures` (default `3`) consecutive failed probes; `{since}` is the time of the FIRST failure of that run, `{error}` the last error with any credentials removed |
-| Cadence | Built-in scheduler task `database_check` every `server.notifications.database_error.check_interval` (default `1m`); no external cron |
+| Cadence | Built-in scheduler task `database_check` on its own schedule `server.scheduler.tasks.database_check.schedule` (default `@every 1m`), the one cadence key: there is no separate `check_interval`; no external cron |
 | Deduplication | One WARN and email when the trigger is first met; repeated at most once per `server.notifications.database_error.repeat` (default `24h`) while probes keep failing |
 | Recovery | The first successful probe logs INFO `Database connection recovered` (log only, no email) and resets the failure count and the deduplication state |
 | Remote database | A remote libSQL/Turso outage is a failed probe like any other; the cache fallback of PART 10 does not stop the probe from failing |
@@ -36306,7 +36332,6 @@ server:
     database_error:
       enabled: true
       failures: 3
-      check_interval: 1m
       repeat: 24h
 ```
 
@@ -36317,7 +36342,7 @@ server:
 | Measured | The filesystem volumes holding `{data_dir}`, `{log_dir}` and `{backup_dir}`, deduplicated by volume so each volume notifies once; the `path` in the message is the first of those directories on the volume |
 | Value | Used percentage (the same value as `system_disk_usage_percent`, PART 20) plus free bytes |
 | Threshold | `server.notifications.disk_low.threshold_percent` (default `85`, matching the PART 20 Prometheus example). The stricter backup rule in PART 21 (skip backups above 90%) is a separate safeguard |
-| Cadence | Built-in scheduler task `disk_check` every `server.notifications.disk_low.check_interval` (default `5m`); no external cron |
+| Cadence | Built-in scheduler task `disk_check` on its own schedule `server.scheduler.tasks.disk_check.schedule` (default `@every 5m`), the one cadence key: there is no separate `check_interval`; no external cron |
 | Deduplication | One WARN and email per volume when the threshold is first crossed; repeated at most once per `server.notifications.disk_low.repeat` (default `24h`) while usage stays above it |
 | Switch | `server.notifications.disk_low.enabled` (default `true`) controls the check and its email together; there is no separate `events.disk_low` email switch, so while it is on the email follows the matrix below (sent whenever SMTP works) |
 | Recovery | When usage falls 5 percentage points below the threshold, log INFO `Disk space recovered` (log only) and reset the deduplication state |
@@ -36328,7 +36353,6 @@ server:
     disk_low:
       enabled: true
       threshold_percent: 85
-      check_interval: 5m
       repeat: 24h
 ```
 
@@ -59722,7 +59746,7 @@ On every CLI command:
 2. `{PROJECT_NAME}_SERVER_PRIMARY` environment variable (if set)
 3. `server.primary` in `cli.yml` (if set)
 4. `server.cluster` nodes (only if the primary fails)
-5. `{official_site}` compiled default (if project has official site)
+5. The compiled official-site default (from `site.txt` or `OFFICIAL_SITE` at build time, PART 26 → "Official Site Files"; IDEA.md's `official_site` never feeds it), if the project has an official site
 6. Error with setup instructions
 
 **Behavior:**
@@ -61418,7 +61442,7 @@ test
 register
 
 # Service management (same as server)
---service {install|uninstall|start|stop|restart|status}
+--service {start,restart,stop,reload,--install,--uninstall,--disable,--help}
 
 # Updates (same as server/CLI)
 # Check for or perform self-update
@@ -61460,7 +61484,7 @@ Flags:
 --lang CODE                            - Language for output (default: auto)
 --status                               - Show agent health
 
---service CMD                          - Service management (install|uninstall|start|stop|restart)
+--service CMD                          - Service management (start|restart|stop|reload|--install|--uninstall|--disable); `status` is the top-level `--status`, not a service subcommand
 --update [CMD]                         - Check/perform self-update
 
 Shells: bash, zsh, fish, sh, dash, ksh, powershell, pwsh
@@ -61511,7 +61535,7 @@ Shells: bash, zsh, fish, sh, dash, ksh, powershell, pwsh
 # Stop service
 {project_name}-agent --service stop
 # Show service status
-{project_name}-agent --service status
+{project_name}-agent --status
 # Remove service
 {project_name}-agent --service --uninstall
 ```
@@ -65424,7 +65448,7 @@ mysql://[username[:password]@]host[:port]/database[?params]
 
 | Requirement | Description |
 |-------------|-------------|
-| **Shared database** | All nodes connect to same PostgreSQL/MySQL |
+| **Shared database** | All nodes connect to the same remote database (PostgreSQL, MySQL/MariaDB or MSSQL) |
 | **Same credentials** | Admin can log into any node |
 | **Session sharing** | User sessions valid across all nodes |
 | **Token validation** | API tokens work on any node |
