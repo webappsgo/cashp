@@ -54,6 +54,7 @@ actual listener address.
 - [Admin panel guide](docs/admin.md)
 - [Security notes](docs/security.md)
 - [Integrations](docs/integrations.md)
+- [Translation guide](docs/translating.md)
 - [Issue tracker](https://github.com/webappsgo/cashp/issues)
 
 ## Development
