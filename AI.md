@@ -15518,14 +15518,14 @@ Agents are NEVER cluster nodes; they don't share the DB; they don't get `app_sec
 Node A sends heartbeat every 30 seconds
          │
          ▼
-Other nodes track "last_seen" timestamp
+Other nodes track the `last_heartbeat` timestamp
          │
          ▼
-If now - last_seen > 90 seconds:
+If now - last_heartbeat > 90 seconds:
    Mark as "degraded", log warning
          │
          ▼
-If now - last_seen > 5 minutes:
+If now - last_heartbeat > 5 minutes:
    Mark as "offline", exclude from cluster operations
          │
          ▼
@@ -15533,19 +15533,20 @@ Admin manually removes dead nodes via:
    /server/{admin_path}/cluster → Remove Node
 ```
 
-**Heartbeat Payload (every 30s, written to `nodes` table):**
+**Heartbeat Payload (every 30s, written to the `nodes` table; the one definition of that table, with every column named here, is PART 34 → "Database Tables for Clustering"):**
 
 | Field | Description |
 |-------|-------------|
-| `node_id` | Hostname or operator-assigned ID |
-| `app_version` | Running binary's version (Tier-2 public-safe per PART 11) |
+| `id` | Hostname or operator-assigned ID (the `nodes.id` column) |
+| `version` | Running binary's version (Tier-2 public-safe per PART 11) |
 | `commit_hash` | Build commit |
 | `installation_secret_version` | The version number of the `installation_secret` row this node currently has loaded (matches `app_secrets.version` for the `installation_secret` name). Used to detect drift. |
 | `server_security_encryption_key_version` | The node's local `server.security.encryption_key_version` value from `secrets.yml` (not an `app_secrets` row — this key is file-based, see PART 11 → "Server Encryption Key"). Used to detect drift the same way. |
 | `cookie_signing_key_version` | Same. |
 | `csrf_token_secret_version` | Same. |
 | `learned_origins_version` | Latest `MAX(observed_at)` from the `learned_origins` table this node has read. |
-| `last_seen` | Heartbeat timestamp (server-side, on insert) |
+| `last_heartbeat` | Heartbeat timestamp (server-side) |
+| `system_info` | JSON: CPU, memory and disk stats |
 
 **Secret-version mismatch handling:** if a node's heartbeat reports a `*_version` lower than the cluster's current version (read from `app_secrets`), the primary logs `cluster.secret_version_drift` (which node, which secret, version delta) and the lagging node forces a re-read from the table on its next tick. If the drift exceeds 7 days (the `installation_secret` rotation grace window), the lagging node is marked **`stale`** instead of `healthy` and excluded from cluster ops until it catches up — preventing it from validating in-flight HMACs against an old key.
 
@@ -39329,7 +39330,7 @@ retention:
 Backups on disk (January 15, 2025):
   myapp_backup_2025-01-15.tar.gz.enc    ← Today's run (daily full at T0)
   myapp_backup_2025-01-12.tar.gz.enc    ← Last Sunday (weekly)
-  myapp_backup_2025-01-01.tar.gz.enc    ← 1st of Jan 2025 (monthly + yearly)
+  myapp_backup_2025-01-01.tar.gz.enc    ← 1st of Jan 2025 (yearly; a backup fills exactly one category, so the monthly slot stays empty until the next 1st)
   myapp-daily.tar.gz.enc                 ← Incremental
 
 Total: 4 files
@@ -39347,12 +39348,11 @@ retention:
 Backups on disk (January 15, 2026):
   myapp_backup_2026-01-15.tar.gz.enc    ← Today's run (daily full at T0)
   myapp_backup_2026-01-12.tar.gz.enc    ← Last Sunday (weekly)
-  myapp_backup_2026-01-01.tar.gz.enc    ← 1st of Jan 2026 (monthly + yearly)
-  myapp_backup_2025-12-01.tar.gz.enc    ← 1st of Dec 2025 (monthly, kept until Feb)
-  myapp_backup_2025-01-01.tar.gz.enc    ← 1st of Jan 2025 (yearly)
+  myapp_backup_2026-01-01.tar.gz.enc    ← 1st of Jan 2026 (yearly; the 2025-01-01 yearly is pruned, keep_yearly is 1)
+  myapp_backup_2025-12-01.tar.gz.enc    ← 1st of Dec 2025 (monthly, kept until the next 1st)
   myapp-daily.tar.gz.enc                 ← Incremental
 
-Total: 6 files (1 daily + 1 weekly + 2 monthly + 1 yearly + incremental)
+Total: 5 files (1 daily + 1 weekly + 1 yearly + 1 monthly + incremental)
 ```
 
 **Backup Cleanup Logic (runs at startup and after every backup):**
@@ -39376,11 +39376,12 @@ nothing in the backup dir matching the app's naming is ever exempt from pruning.
 ```
 1. Collect all backup files in the cached backup dir matching the app's
    naming patterns above; sort by date (oldest first)
-2. Mark all backups from January 1st as "yearly" (keep up to keep_yearly)
-3. Mark all backups from 1st of month as "monthly" (keep up to keep_monthly)
-4. Mark all backups from Sunday as "weekly" (keep up to keep_weekly)
-5. Mark remaining backups (daily full + manual/timestamped) as "daily"
-   (keep up to max_backups, oldest deleted first)
+2. Classify every backup into exactly ONE category, the first that applies: "yearly" (January 1st),
+   "monthly" (1st of a month), "weekly" (Sunday), otherwise "daily" (daily full + manual/timestamped).
+   The categories are exclusive: a January 1st backup fills only a yearly slot
+3. Keep the newest keep_yearly yearly, keep_monthly monthly and keep_weekly weekly backups
+4. Keep the newest max_backups daily backups (oldest deleted first)
+5. Every backup not kept by steps 3 and 4 is unmarked (nothing is counted twice)
 6. Delete unmarked backups, oldest first
 7. Daily incremental ({project_name}-daily.tar.gz[.enc]) is always replaced
    (only 1 exists); hourly incremental likewise
@@ -39388,8 +39389,8 @@ nothing in the backup dir matching the app's naming is ever exempt from pruning.
    all backup files still exceeds the cap, delete oldest files first until
    total is under the cap (size cap overrides all count limits)
 
-Note: A single backup can satisfy multiple retention types (e.g., Jan 1st 2025
-on a Sunday counts as daily + weekly + monthly + yearly — uses highest priority)
+Note: the categories never overlap (e.g., Jan 1st 2025 on a Sunday is a yearly
+backup only: highest priority wins, and it consumes no monthly, weekly or daily slot)
 ```
 
 **Daily incremental is NOT counted** in retention - it's always exactly 1 file that gets replaced. A full backup that is the `base_backup` of a retained incremental is exempt from pruning until that incremental is replaced (at most one extra full on disk). Lifetime: the next run replaces the incremental with one based on the newest full; from then on the former base is a plain full, restorable alone at its own snapshot, and it ages out by the normal retention rules. Only the newest incremental and its base form a point-in-time pair, there is never a second incremental on disk, and the fixed file name `{project_name}-daily.tar.gz[.enc]` names no pair (its manifest's `base_backup` does).
@@ -65835,10 +65836,16 @@ func decryptBootstrapData(encrypted []byte, token string) []byte {
 | `hostname` | String | Server hostname |
 | `ip_address` | String | Node IP address |
 | `version` | String | Application version |
-| `status` | String | online, offline, degraded |
+| `commit_hash` | String | Build commit |
+| `status` | String | healthy, degraded, offline (PART 10 → Cluster Heartbeat & Failure Handling) |
 | `last_heartbeat` | Timestamp | Last heartbeat time |
 | `joined_at` | Timestamp | When node joined cluster |
 | `system_info` | JSON | CPU, memory, disk stats |
+| `installation_secret_version` | Integer | Secret-version drift detection (PART 10 heartbeat payload) |
+| `server_security_encryption_key_version` | Integer | Same |
+| `cookie_signing_key_version` | Integer | Same |
+| `csrf_token_secret_version` | Integer | Same |
+| `learned_origins_version` | Timestamp | Latest `observed_at` of `learned_origins` this node has read |
 
 **Join Tokens Table (in remote database):**
 
@@ -65876,7 +65883,7 @@ func updateHeartbeat(db *sql.DB, nodeID string) {
     db.Exec(`
         UPDATE nodes
         SET last_heartbeat = NOW(),
-            status = 'online',
+            status = 'healthy',
             system_info = $1
         WHERE id = $2
     `, getSystemInfo(), nodeID)
