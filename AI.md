@@ -33483,7 +33483,7 @@ Admin clicks "Invite New Admin"
 **Rules:**
 - Account email is set during setup (required)
 - Notification email is optional (defaults to account email if not set)
-- Both emails must be verified before use
+- Both emails must be verified before use, while email verification is in effect (`server.users.registration.require_email_verification` is `true` AND SMTP works); otherwise they are auto-verified (PART 18)
 - Account email changes require current password + 2FA (if enabled)
 - Notification email changes only require current session
 - **All email features require working SMTP** - if SMTP unavailable, no emails sent
@@ -35338,7 +35338,7 @@ server:
 | Login alerts | Not sent, not attempted, not logged |
 | Welcome email | Not sent, not attempted |
 | Security alerts | Not sent, not attempted |
-| All notifications | Not sent, not attempted |
+| All email notifications | Not sent, not attempted (in-app notifications are unaffected: they are stored in the database, not sent by email) |
 
 **DO NOT:**
 - ❌ Attempt to send emails without valid SMTP
@@ -39036,7 +39036,7 @@ server:
     encryption:
       # true if password was set
       enabled: true
-      # The password itself is set in the admin panel (stored encrypted at rest, see Password Storage above)
+      # The password is NOT a key of this block: it is server.backup.encryption_password in secrets.yml (see Password Storage above), written by the admin panel and the setup wizard
 ```
 
 **Compliance mode has no setting of its own.** It is ON when ANY standard under `server.compliance` (see "Compliance Standards") is `true`, and OFF when all are `false` (the default). Every standard requires protecting personal data wherever it is stored, and a backup is a full copy of it, so the strictest rule applies as soon as one standard is on (see "Overlap Resolution"). The check runs at every backup.
@@ -62022,16 +62022,17 @@ Add this section to the project's `SPEC.md` (create the file when it is missing)
 
 **Multi-user apps use a SINGLE setting to control registration behavior.**
 
-**Config setting:**
+**Config setting** (the whole user configuration lives under `server.users`, never a top-level `users:`):
 ```yaml
-users:
-  # Enable multi-user mode
-  enabled: true
+server:
+  users:
+    # Enable multi-user mode
+    enabled: true
 
-  registration:
-    # Registration mode: open, private
-    # Default: anyone can self-register
-    mode: open
+    registration:
+      # Registration mode: open, private
+      # Default: anyone can self-register
+      mode: open
 ```
 
 ### Registration Mode Definitions
@@ -62245,7 +62246,7 @@ Admin clicks "Invite New User"
 **Rules:**
 - Account email is set during registration (required)
 - Notification email is optional (defaults to account email if not set)
-- Both emails must be verified before use
+- Both emails must be verified before use, while email verification is in effect (`server.users.registration.require_email_verification` is `true` AND SMTP works); otherwise they are auto-verified (PART 18)
 - Account email changes require current password + 2FA (if enabled)
 - Notification email changes only require current session
 - **All email features require working SMTP** - if SMTP unavailable, no emails sent
@@ -62314,7 +62315,7 @@ Admin clicks "Invite New User"
 
 **SMTP Requirement:**
 - All email notifications require working SMTP configuration
-- If SMTP unavailable, in-app notifications only (no email delivery)
+- If SMTP is unavailable, in-app notifications are still created and stored in the database as always; only the EMAIL delivery is skipped (PART 18: not sent, not attempted, not queued)
 - See PART 18: EMAIL & NOTIFICATIONS for SMTP configuration
 
 ### Username Validation
@@ -62574,7 +62575,7 @@ var EmailDomainBlocklist = []string{
 - User can designate a different verified email as account email
 - Additional emails require verification (SMTP required)
 - All emails must be unique across all users
-- Unverified emails cannot be used for login
+- Unverified emails cannot be used for login (an email is never unverified while verification is not in effect)
 - Account email receives security-sensitive communications ONLY
 - Notification email receives everything else (if set, otherwise account email)
 
@@ -63721,7 +63722,9 @@ server:
       # - private: No public self-registration form; only Server Admin can add users, by invite or direct creation
       mode: open
 
-      # Email verification (applies to open mode)
+      # Email verification (applies to open mode). Default true. It takes effect only while SMTP works:
+      # without SMTP no verification email can be sent, so emails are auto-verified (PART 18);
+      # with false, emails are auto-verified whatever SMTP does
       require_email_verification: true
 
       # Email domain restrictions (applies to open mode)
