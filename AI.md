@@ -151,6 +151,8 @@ IDEA.md is the project PLAN. AI.md (this file) is the authoritative template bas
 
 **A feature IDEA.md defines that AI.md has no contract for** (for example operator-level billing or federation) is built from IDEA.md under the full AI.md baseline: security, authentication, database, API conventions, configuration, audit, i18n and every PART the feature touches. AI.md defines no protocol for it and forbids nothing about it. The project's SPEC.md states the feature's technical contract (data, endpoints, signatures, retries, conflict handling) and is the only place that does; the feature never loosens a baseline rule, and a baseline rule it cannot meet is a SPEC.md exception (PART 0).
 
+**Billing** (plans, subscriptions, payment providers, invoices, dunning, usage metering, tax) is such a feature. When IDEA.md defines it, the reference for the SPEC.md billing contract is `~/.claude/TEMPLATES/BILLING.md`, and the `billing-builder` agent implements it. CAVEAT: that file is an optional, machine-level reference outside this specification: it may be absent, it is never copied into a project, it only informs the SPEC.md contract and never overrides AI.md (AI.md wins every conflict), and when it is absent the project's SPEC.md states the billing contract itself. A project that defines no billing ignores it.
+
 | IDEA.md MAY | IDEA.md MAY NOT |
 |-------------|-----------------|
 | Define the product's features, data models, business rules and audience, and its API surface: the `### API routes` inventory of what callers can do (method, path, auth, purpose, request/response summary), never how a handler is written | Remove, weaken or waive a mandatory AI.md requirement (server baseline, configuration, security, health, build, CI/CD, i18n, accessibility, documentation, testing) |
@@ -10483,7 +10485,7 @@ data:
 
 ### Update Contract and Sources
 
-**Blocklist sources** (`server.security.blocklists`, file-only, hot-reloaded). `extra_sources` entries have exactly the fields `id`, `type`, `url` and `enabled` below (the `Name` column of PART 17's suggested-sources table is the `id`, and the list format is detected from the content, never a field); the master keys `enabled`, `auto_update`, `action`, `reject_message` and `log_blocked` of `server.security.blocklists` are defined in PART 17 → Blocklists and apply to every source. `extra_sources` takes the same fields as below, for example `- {id: my_list, type: domain, url: "https://example.com/list.txt", enabled: true}`:
+**Blocklist sources** (`server.security.blocklists`, file-only, hot-reloaded). `extra_sources` entries have exactly the fields `id`, `type`, `url` and `enabled` below (the `Name` column of PART 17's suggested-sources table is the `id`, and the list format is detected from the content, never a field); the master keys of `server.security.blocklists` apply to every source: `enabled` (default `true`), `auto_update` (default `true`), `action` (`reject`, the default, answers `403`; or `drop`, which closes the connection silently), `reject_message` (optional text that overrides the translated `errors.forbidden`) and `log_blocked` (default `true`). `type` is CONFIGURED, the operator declares what the list holds; only the line layout is detected from the content. A line that does not parse as the declared type is skipped, and a download with no valid line of that type fails the atomic-update validation, so the previous data stays in use. `extra_sources` takes the same fields as below, for example `- {id: my_list, type: domain, url: "https://example.com/list.txt", enabled: true}`:
 
 ```yaml
 server:
@@ -15585,7 +15587,7 @@ Admin manually removes dead nodes via:
 |------|--------|
 | **Server-side** (from the removing node) | Delete the row from `nodes` table. Record each `app_secrets` version that was valid for that node as a row `(name, version, node_id)` in `app_secret_revocations` so audit can see the removal happened mid-rotation if applicable. Emit `cluster.node_removed` audit event. |
 | **Removed-node-side** (when the removed node next attempts to heartbeat) | Heartbeat returns `403 NODE_REMOVED`. The binary on the removed node MUST: (1) wipe `{config_dir}/security/pgp.priv.asc.enc` if present (PGP keys are cluster-shared and the removed node has lost permission to participate); (2) wipe its `app_secrets` cache and the cluster-shared keys in `secrets.yml` (the encryption key with its version, the database password); (3) leave `server.yml` minus the cluster section; (4) log `cluster.removed_self_cleanup` to local `audit.log`; (5) refuse to serve requests until re-joined. The binary does NOT delete logs, data files, or user content — those stay on the removed host for forensic / audit purposes. |
-| **If the removed node is offline at removal time** | The cleanup happens whenever the removed node next attempts to communicate. Until then, it's running with stale secrets — but per the secret-version-mismatch flow above, its requests would already fail because `installation_secret` may have rotated. Operators removing a node SHOULD power down or `systemctl stop {internal_name}` first, then remove. The admin panel surfaces this guidance. |
+| **If the removed node is offline at removal time** | The cleanup happens whenever the removed node next attempts to communicate. Until then, it's running with stale secrets — but per the secret-version-mismatch flow above, its requests would already fail because `installation_secret` may have rotated. A node can only remove ITSELF (PART 34), so an operator removes a node from ITS OWN page while it is still running and stops it afterwards. A node that is already dead cannot be removed by another: it ages to `offline` and stays listed until it comes back and removes itself, or the cluster is rebuilt, and the Caveat below applies (rotate the secrets it held). The admin panel surfaces this guidance. |
 
 **Caveat:** removed-node cleanup is best-effort. A truly compromised host that's been removed cannot be trusted to wipe its own secrets — assume the secrets it had ARE in attacker hands. Always rotate `installation_secret`, `cookie_signing_key`, `csrf_token_secret`, `server.security.encryption_key`, and the project PGP keypair after removing a compromised node. The admin panel offers a "Rotate everything" button on the Remove Node confirmation dialog.
 
@@ -39004,9 +39006,14 @@ groups:
   ],
   "encrypted": true,
   "encryption_method": "AES-256-GCM",
-  "checksum": "sha256:abc123..."
+  "type": "full",
+  "snapshot_at": "2025-01-15T10:30:00Z",
+  "files": [{"path": "server.yml", "size": 4096, "mtime": 1736937000, "sha256": "def456..."}],
+  "sha256": "abc123..."
 }
 ```
+
+**The one canonical checksum field is `sha256`.** It is the SHA-256 (hex) of the lines `{file sha256}  {path}` of `files`, one per line, sorted by path. It covers the content files and never `manifest.json` itself, so there is no self-reference. In an encrypted archive the manifest is inside the ciphertext: decrypt first (a wrong password fails the GCM tag), then read the manifest and verify; the integrity of the encrypted file itself is the GCM tag. An incremental's `base_sha256` is the `sha256` field of its base's manifest.
 
 ### Backup Encryption
 
