@@ -28808,6 +28808,9 @@ func RecoverMiddleware(next http.Handler) http.Handler {
 // themed error.tmpl itself fails to render, or a panic is recovered here.
 // It MUST NOT depend on the template engine, theme system, or any state
 // that could itself panic or fail — plain strings only.
+// It is the ONE page exempt from the shared page shell and chrome (PART 16 "Same chrome everywhere"):
+// a constant with no header, footer, consent banner or theme, used only when the themed page cannot be
+// rendered. It is still valid HTML: a doctype, a title, one main and one h1, and a link home.
 func renderFallbackError(w http.ResponseWriter, r *http.Request, status int) {
 	if strings.Contains(r.Header.Get("Accept"), "application/json") {
 		w.Header().Set("Content-Type", "application/json")
@@ -28818,7 +28821,7 @@ func renderFallbackError(w http.ResponseWriter, r *http.Request, status int) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	fmt.Fprintf(w, "<html><body><h1>%d %s</h1></body></html>", status, http.StatusText(status))
+	fmt.Fprintf(w, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>%d %s</title></head><body><main><h1>%d %s</h1><p><a href=\"/\">Home</a></p></main></body></html>", status, http.StatusText(status), status, http.StatusText(status))
 }
 ```
 
@@ -31638,7 +31641,7 @@ func trackingScript(r *http.Request) template.HTML {
 | **Vendor files** | The tool's libraries (for example React, ReactDOM, GraphiQL, the Swagger UI bundle and its preset) are pinned releases vendored under `static/vendor/{tool}/`, loaded only by their own page, never combined into `app.js` and never edited; the tool's start-up code is one small file, `static/js/docs-{tool}.js`. This is the explicit exception to the one-file, no-framework and no-bundler rules, which govern the project's own JavaScript |
 | **Theme** | The tool follows the project-wide theme through the project's Swagger and GraphiQL theme modules and the shared CSS custom properties; no hardcoded colors |
 | **Without JavaScript** | A `<noscript>` card states that the interactive view needs JavaScript and links to the plain endpoints: the OpenAPI JSON (`/api/{api_version}/server/swagger`) or the GraphQL endpoint (`/api/{api_version}/server/graphql`) |
-| **Same chrome everywhere** | The same header, footer, consent banner and skip links on every page, error pages included. A page never adds, removes or reorders header or footer elements |
+| **Same chrome everywhere** | The same header, footer, consent banner and skip links on every page, error pages included (the guaranteed last-resort fallback of the error handler is the one exemption). A page never adds, removes or reorders header or footer elements |
 
 **Shared shell CSS (in `components.css`, tokens only, no pixel literals except the width caps):**
 
