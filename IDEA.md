@@ -480,3 +480,132 @@ username enumeration for targeted attacks.
   sites/VMs/containers, etc.) but must never restrict which features exist —
   a free-tier tenant runs the same code path as a paid tenant, just with
   lower limits.
+
+### API routes
+
+These project-defined routes extend the template routes in `AI.md`. `{api_version}`
+is the configured version segment. Browser pages and admin panel routes are not
+listed here; this inventory covers the native machine API. Authentication and
+organization-role checks are enforced by the route handler. JSON requests use
+resource-shaped request bodies and JSON success/error responses unless the route
+returns a file export.
+
+| Path | Method | Authentication | Purpose | Request → response summary |
+|---|---|---|---|---|
+| `/api/{api_version}/server/auth/register` | POST | Public | Register a user | Registration fields → created public user and session |
+| `/api/{api_version}/server/auth/check-name` | GET | Public | Check username availability | `name` query → availability result |
+| `/api/{api_version}/server/auth/login` | POST | Public | Authenticate a user | Login credentials and optional TOTP → session token and public user |
+| `/api/{api_version}/server/auth/logout` | POST | Authenticated | End the current session | Empty body → success |
+| `/api/{api_version}/server/auth/password/forgot` | POST | Public | Request password recovery | Email → privacy-preserving success |
+| `/api/{api_version}/server/auth/password/reset` | POST | Public recovery token | Reset a password | Recovery token and new password → success |
+| `/api/{api_version}/server/auth/verify` | POST | Public verification token | Verify an email address | Verification token → public user |
+| `/api/{api_version}/server/auth/invite/accept` | POST | Public invitation token | Accept an organization invitation | Invitation token and account details → user and membership |
+| `/api/{api_version}/users` | GET | Authenticated | Read current account | Empty body → public user |
+| `/api/{api_version}/users` | PATCH | Authenticated | Update current account | Profile fields → updated public user |
+| `/api/{api_version}/users` | DELETE | Authenticated | Delete current account | Confirmation fields → success |
+| `/api/{api_version}/users/password` | POST | Authenticated | Change password | Current and new passwords → success and rotated session |
+| `/api/{api_version}/users/sessions` | GET | Authenticated | List user sessions | Empty body → session list |
+| `/api/{api_version}/users/sessions/{id}` | DELETE | Authenticated | Revoke one session | Empty body → success |
+| `/api/{api_version}/users/sessions` | DELETE | Authenticated | Revoke all sessions | Empty body → success |
+| `/api/{api_version}/users/tokens` | GET | Authenticated | List personal API tokens | Empty body → token metadata list |
+| `/api/{api_version}/users/tokens` | POST | Authenticated | Create personal API token | Token name and scopes → token metadata and one-time secret |
+| `/api/{api_version}/users/tokens/{id}` | DELETE | Authenticated | Revoke personal API token | Empty body → success |
+| `/api/{api_version}/users/security/totp` | POST | Authenticated | Begin TOTP enrollment | Empty body → secret and provisioning URI |
+| `/api/{api_version}/users/security/totp` | PUT | Authenticated | Confirm TOTP enrollment | TOTP code → recovery codes |
+| `/api/{api_version}/users/security/totp` | DELETE | Authenticated | Disable TOTP | Password and code → success |
+| `/api/{api_version}/orgs` | GET | Authenticated | List memberships | Empty body → organization list |
+| `/api/{api_version}/orgs` | POST | Authenticated | Create organization | Organization fields → created organization |
+| `/api/{api_version}/orgs/{slug}` | GET | Organization visibility policy | Read organization | Empty body → visible organization |
+| `/api/{api_version}/orgs/{slug}` | PATCH | Organization admin | Update organization | Organization fields → updated organization |
+| `/api/{api_version}/orgs/{slug}` | DELETE | Organization owner | Delete organization | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/members` | GET | Organization member | List members | Empty body → member list |
+| `/api/{api_version}/orgs/{slug}/members` | POST | Organization admin | Add member | Username and role → membership |
+| `/api/{api_version}/orgs/{slug}/members/{id}` | PATCH | Organization admin | Change member role | Role → updated membership |
+| `/api/{api_version}/orgs/{slug}/members/{id}` | DELETE | Organization admin | Remove member | Empty body → success |
+| `/api/{api_version}/orgs/{slug}/transfer` | POST | Organization owner | Transfer ownership | New owner → updated organization |
+| `/api/{api_version}/orgs/{slug}/invites` | GET | Organization admin | List invitations | Empty body → invitation list |
+| `/api/{api_version}/orgs/{slug}/invites` | POST | Organization admin | Create invitation | Email and role → invitation and one-time code |
+| `/api/{api_version}/orgs/{slug}/invites/{id}` | DELETE | Organization admin | Revoke invitation | Empty body → success |
+| `/api/{api_version}/orgs/{slug}/tokens` | GET | Organization admin | List organization tokens | Empty body → token metadata list |
+| `/api/{api_version}/orgs/{slug}/tokens` | POST | Organization admin | Create organization token | Name and scopes → metadata and one-time secret |
+| `/api/{api_version}/orgs/{slug}/tokens/{id}` | DELETE | Organization admin | Revoke organization token | Empty body → success |
+| `/api/{api_version}/users/domains` | GET | Authenticated | List user domains | Empty body → domain list |
+| `/api/{api_version}/users/domains` | POST | Authenticated | Add user domain | Hostname → domain and verification instructions |
+| `/api/{api_version}/users/domains/{domain}` | GET | Authenticated owner | Read domain | Empty body → domain status |
+| `/api/{api_version}/users/domains/{domain}` | DELETE | Authenticated owner | Delete domain | Empty body → success |
+| `/api/{api_version}/users/domains/{domain}/verify` | POST | Authenticated owner | Verify user domain | Empty body → verification result |
+| `/api/{api_version}/orgs/{slug}/domains` | GET | Organization admin | List organization domains | Empty body → domain list |
+| `/api/{api_version}/orgs/{slug}/domains` | POST | Organization admin | Add organization domain | Hostname → domain and verification instructions |
+| `/api/{api_version}/orgs/{slug}/domains/{domain}` | GET | Organization admin | Read domain | Empty body → domain status |
+| `/api/{api_version}/orgs/{slug}/domains/{domain}` | DELETE | Organization admin | Delete domain | Empty body → success |
+| `/api/{api_version}/orgs/{slug}/domains/{domain}/verify` | POST | Organization admin | Verify organization domain | Empty body → verification result |
+| `/api/{api_version}/orgs/{slug}/billing` | GET | Organization billing access | Read billing overview | Empty body → subscription and balance |
+| `/api/{api_version}/orgs/{slug}/billing/plans` | GET | Organization billing access | List plans | Empty body → available plans |
+| `/api/{api_version}/orgs/{slug}/billing/subscribe` | POST | Organization billing admin | Subscribe to plan | Plan and payment details → subscription |
+| `/api/{api_version}/orgs/{slug}/billing/cancel` | POST | Organization billing admin | Cancel subscription | Cancellation choice → subscription |
+| `/api/{api_version}/orgs/{slug}/billing/resume` | POST | Organization billing admin | Resume subscription | Empty body → subscription |
+| `/api/{api_version}/orgs/{slug}/billing/account` | POST | Organization billing admin | Update billing account | Billing contact/tax fields → updated account |
+| `/api/{api_version}/orgs/{slug}/billing/invoices` | GET | Organization billing access | List invoices | Pagination → invoice list |
+| `/api/{api_version}/orgs/{slug}/billing/invoices/{id}` | GET | Organization billing access | Read invoice | Empty body → invoice |
+| `/api/{api_version}/orgs/{slug}/billing/invoices/{id}/pay` | POST | Organization billing admin | Pay invoice | Payment method → updated invoice |
+| `/api/{api_version}/orgs/{slug}/billing/usage` | GET | Organization billing access | Read usage | Period query → usage records |
+| `/api/{api_version}/orgs/{slug}/billing/payment-methods` | GET | Organization billing access | List payment methods | Empty body → payment method metadata |
+| `/api/{api_version}/orgs/{slug}/billing/payment-methods` | POST | Organization billing admin | Add payment method | Provider token → payment method metadata |
+| `/api/{api_version}/orgs/{slug}/billing/payment-methods/{id}/remove` | POST | Organization billing admin | Remove payment method | Empty body → success |
+| `/api/{api_version}/orgs/{slug}/billing/payment-methods/{id}/default` | POST | Organization billing admin | Set default payment method | Empty body → updated payment method |
+| `/api/{api_version}/orgs/{slug}/billing/export` | GET | Organization billing admin | Export billing records | Format/period query → downloadable export |
+| `/api/{api_version}/support` | GET | Public or authenticated | Read support landing content | Empty body → rendered/negotiated support content |
+| `/api/{api_version}/support/bot-sessions` | POST | Public or authenticated | Send support bot message | Message and session context → response and choices |
+| `/api/{api_version}/support/bot-sessions/{id}/feedback` | POST | Session owner | Rate bot response | Rating → feedback result |
+| `/api/{api_version}/support/bot-sessions/{id}/escalations` | POST | Session owner | Escalate to support | Issue details → ticket reference |
+| `/api/{api_version}/support/tickets` | GET | Ticket owner or support agent | List tickets | Filters/page → ticket list |
+| `/api/{api_version}/support/tickets/{id}` | GET | Ticket owner or support agent | Read ticket | Empty body → ticket and messages |
+| `/api/{api_version}/support/tickets/{id}/edit` | GET | Ticket owner | Read ticket edit form data | Empty body → ticket draft |
+| `/api/{api_version}/support/tickets/{id}/draft` | POST | Ticket owner | Save ticket draft | Draft fields → saved draft |
+| `/api/{api_version}/support/tickets/{id}` | POST | Ticket owner | Submit ticket | Subject/category/body → ticket |
+| `/api/{api_version}/support/tickets/{id}/messages` | POST | Ticket owner | Reply to ticket | Message → appended message |
+| `/api/{api_version}/support/tickets/{id}/close` | POST | Ticket owner | Close ticket | Empty body → updated ticket |
+| `/api/{api_version}/support/tickets/{id}/reopen` | POST | Ticket owner | Reopen ticket | Empty body → updated ticket |
+| `/api/{api_version}/support/tickets/{id}/attachments` | POST | Ticket owner or support agent | Upload attachment | Multipart file → attachment metadata |
+| `/api/{api_version}/support/attachments/{id}` | GET | Attachment owner or support agent | Download attachment | Empty body → file |
+| `/api/{api_version}/support/chats` | GET | Public or authenticated | List caller chats | Empty body → chat list |
+| `/api/{api_version}/support/chats` | POST | Public or authenticated | Start chat | Initial message → chat |
+| `/api/{api_version}/support/chats/{id}` | GET | Chat participant or support agent | Read chat | Empty body → chat and messages |
+| `/api/{api_version}/support/chats/{id}/messages` | POST | Chat participant or support agent | Send chat message | Message → appended message |
+| `/api/{api_version}/support/chats/{id}/close` | POST | Chat participant or support agent | Close chat | Empty body → updated chat |
+| `/api/{api_version}/support/kb` | GET | Public | List knowledge-base articles | Search/page → article list |
+| `/api/{api_version}/support/kb/{slug}` | GET | Public | Read knowledge-base article | Empty body → article |
+| `/api/{api_version}/support/kb/{slug}/feedback` | POST | Public or authenticated | Rate article | Rating → feedback result |
+| `/api/{api_version}/support/agents/queue` | GET | Support agent | Read ticket queue | Filters/page → queue |
+| `/api/{api_version}/support/agents/metrics` | GET | Support agent | Read support metrics | Period → aggregate metrics |
+| `/api/{api_version}/support/agents/support-mode` | GET | Support agent | Read support mode | Empty body → mode state |
+| `/api/{api_version}/support/agents/support-mode/enter` | POST | Support agent | Enter support mode | Reason → mode state |
+| `/api/{api_version}/support/agents/support-mode/exit` | POST | Support agent | Exit support mode | Empty body → mode state |
+| `/api/{api_version}/support/agents/tickets/{id}` | GET | Support agent | Read assigned ticket | Empty body → ticket |
+| `/api/{api_version}/support/agents/tickets/{id}/claim` | POST | Support agent | Claim ticket | Empty body → ticket |
+| `/api/{api_version}/support/agents/tickets/{id}/assign` | POST | Support agent | Assign ticket | Agent ID → ticket |
+| `/api/{api_version}/support/agents/tickets/{id}/messages` | POST | Support agent | Reply to ticket | Message → appended message |
+| `/api/{api_version}/support/agents/tickets/{id}/status` | POST | Support agent | Change ticket status | Status → ticket |
+| `/api/{api_version}/support/agents/chats` | GET | Support agent | List agent chats | Filters/page → chat list |
+| `/api/{api_version}/support/agents/chats/{id}` | GET | Support agent | Read agent chat | Empty body → chat |
+| `/api/{api_version}/support/agents/chats/{id}/accept` | POST | Support agent | Accept chat | Empty body → chat |
+| `/api/{api_version}/support/agents/chats/{id}/messages` | POST | Support agent | Reply in chat | Message → appended message |
+| `/api/{api_version}/support/agents/chats/{id}/close` | POST | Support agent | Close agent chat | Empty body → chat |
+| `/api/{api_version}/support/agents/chats/{id}/escalate` | POST | Support agent | Escalate chat | Escalation details → ticket reference |
+| `/api/{api_version}/support/agents/articles` | GET | Support agent | List knowledge-base articles | Filters/page → article list |
+| `/api/{api_version}/support/agents/articles` | POST | Support agent | Create knowledge-base article | Article fields → article |
+| `/api/{api_version}/support/agents/articles/{id}/edit` | GET | Support agent | Read article edit data | Empty body → article |
+| `/api/{api_version}/support/agents/articles/{id}` | POST | Support agent | Update article | Article fields → updated article |
+| `/api/{api_version}/support/agents/articles/{id}/status` | POST | Support agent | Change article status | Status → article |
+| `/api/{api_version}/support/agents/canned-responses` | GET | Support agent | List canned responses | Empty body → response list |
+| `/api/{api_version}/support/agents/canned-responses` | POST | Support agent | Create canned response | Response fields → response |
+| `/api/{api_version}/support/agents/canned-responses/{id}` | PUT | Support agent | Update canned response | Response fields → updated response |
+| `/api/{api_version}/support/agents/canned-responses/{id}/delete` | POST | Support agent | Delete canned response | Empty body → success |
+| `/api/{api_version}/support/admin` | GET | Support administrator | Read support administration page data | Empty body → settings summary |
+| `/api/{api_version}/support/admin/settings` | POST | Support administrator | Update support settings | Settings fields → updated settings |
+| `/api/{api_version}/support/admin/sla-policies` | POST | Support administrator | Manage SLA policies | Policy fields → policy |
+| `/api/{api_version}/support/admin/departments` | POST | Support administrator | Manage departments | Department fields → department |
+| `/api/{api_version}/support/admin/categories` | POST | Support administrator | Manage ticket categories | Category fields → category |
+| `/api/{api_version}/support/admin/agents` | POST | Support administrator | Manage support agents | Agent fields → agent |
+| `/api/{api_version}/support/admin/canned-responses` | POST | Support administrator | Manage canned responses | Response fields → response |
+| `/api/{api_version}/support/admin/reports/{name}` | GET | Support administrator | Read report | Period/filter query → report data |
