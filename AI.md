@@ -19223,12 +19223,13 @@ const (
 ```go
 // validateConfig validates all config values, replacing invalid with defaults
 func validateConfig(cfg *Config) {
-    // Example: port must be 1-65535
-    if cfg.Server.Port < 1 || cfg.Server.Port > 65535 {
+    // Example: server.port is a STRING holding one port ("8090") or two ("{http},{https}", "80,443"); a YAML integer is accepted
+    // and read as its decimal string. Every number must be 1-65535 and there are at most two (PART 5 "Dual Port Support")
+    if _, err := ParsePortSpec(cfg.Server.Port); err != nil {
         // 64000-64999 range
         randomPort := getRandomAvailablePort()
-        log.Warnf("invalid port %d, using random port %d", cfg.Server.Port, randomPort)
-        cfg.Server.Port = randomPort
+        log.Warnf("invalid port %q, using random port %d", cfg.Server.Port, randomPort)
+        cfg.Server.Port = strconv.Itoa(randomPort)
     }
 
     // Example: timeout must be positive
