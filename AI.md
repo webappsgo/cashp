@@ -31268,7 +31268,7 @@ message := cfg.Privacy.GetConsentMessage()
 <!-- Cookie Consent Banner - server renders it ONLY when no cookie_consent cookie exists -->
 <!-- No hidden-by-default + JS reveal: the server decides, so it works without JS -->
 <!-- {message} is dynamically selected based on server.privacy.data.sold -->
-{{ if not .HasConsentCookie }}
+{{ if and (not .HasConsentCookie) (not .IsPreferencesPage) }}
 <div id="cookie-consent" class="cookie-banner" data-sold="{data_sold}">
   <div class="cookie-banner-content">
     <span class="cookie-message">
@@ -62148,7 +62148,7 @@ Admin clicks "Invite New User"
 5. Account active after password set
 
 **Invite/activation rules (same as Server Admin invites):**
-- Single-use by default (`max_uses` = 1, invalidated after first use or expiry); admin may raise `max_uses` (0 = unlimited)
+- A user invite or activation link is bound to the ONE username the admin chose and activates exactly that account, so it is ALWAYS single-use (`max_uses` is fixed at 1; invalidated after first use or expiry). Raising `max_uses` (0 = unlimited) exists only for the generic Server Admin invite, where each recipient picks their own username
 - Default expiry: 7 days (configurable: 1h, 6h, 24h, 48h, 7d)
 - Only Server Admin can generate invites or activation links (users cannot invite other users)
 
@@ -64299,7 +64299,7 @@ PATCH /api/{api_version}/users/settings
 
 | Section | Contents |
 |---------|----------|
-| Profile | Email, name, avatar, bio, role (read-only) |
+| Profile | Email (masked, `j***n@e***.com`: an admin never sees a full user email), name, avatar, bio, role (read-only) |
 | Security | 2FA status, sessions |
 | Activity | Login history, API usage |
 | Actions | Disable, delete, impersonate |
@@ -64384,7 +64384,7 @@ PATCH /api/{api_version}/users/settings
 **All one-shot tokens (`Reset`, `Verify`, `Invite`, `Tracking`, `Partial-session`) share the same construction:**
 - Generated from `crypto/rand` (32 bytes → URL-safe base64).
 - Stored ONLY as `SHA-256(token)` in DB. Plaintext exists in transit (URL/email) and in operator-side ephemeral state only.
-- Single-use unless explicitly noted (`Tracking token` is single-use-per-day; `Invite token` may allow multiple uses via `max_uses`).
+- Single-use unless explicitly noted (`Tracking token` is single-use-per-day; `Invite token` may allow multiple uses via `max_uses`, for a server-admin invite only; a user invite is bound to its username and always single-use).
 - Logged as `audit.{flow}_token_issued` and `audit.{flow}_token_consumed`. Token value itself is NEVER logged.
 - Wrong tokens: constant-time-compared, generic 404 on miss (no "expired vs invalid" disclosure).
 
