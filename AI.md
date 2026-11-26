@@ -37215,11 +37215,11 @@ All databases come from [sapics/ip-location-db](https://github.com/sapics/ip-loc
 | Category | Package / File | CDN URL | Fields |
 |----------|-----------------|---------|--------|
 | ASN | `iptoasn-asn` → `iptoasn-asn.mmdb` | `https://github.com/sapics/ip-location-db/releases/download/latest/iptoasn-asn.mmdb` | `autonomous_system_number`, `autonomous_system_organization` |
-| Country | `iptoasn-country` → `iptoasn-country.mmdb` | `https://github.com/sapics/ip-location-db/releases/download/latest/iptoasn-country.mmdb` | `country_code` |
+| Country | `iptoasn-country` → `iptoasn-country.mmdb` | `https://github.com/sapics/ip-location-db/releases/download/latest/iptoasn-country.mmdb` | `country.iso_code` (the GeoLite2 record layout the upstream Country and ASN MMDB files use; the deprecated top-level `country_code` is read only as a fallback when `country.iso_code` is absent) |
 | City (IPv4) | `dbip-city` → `dbip-city-ipv4.mmdb` | `https://github.com/sapics/ip-location-db/releases/download/latest/dbip-city-ipv4.mmdb` | `city`, `country_code`, `state1`, `state2`, `postcode`, `latitude`, `longitude`, `timezone` |
 | City (IPv6) | `dbip-city` → `dbip-city-ipv6.mmdb` | `https://github.com/sapics/ip-location-db/releases/download/latest/dbip-city-ipv6.mmdb` | (same fields as City IPv4) |
 
-**No separate "WHOIS" database.** Earlier drafts of this spec described a combined WHOIS lookup exposing a `registrant_org` field — no such dataset exists in ip-location-db. The Country file (`iptoasn-country`) exposes only `country_code`, derived upstream from iptoasn.com's IP-to-ASN data. Organization-name data available to this project comes solely from the ASN database's `autonomous_system_organization` field (a BGP/RIR-derived AS holder name, not an RDAP/WHOIS registrant record) — use that field directly and do not label it "WHOIS" anywhere in code, config, or docs.
+**No separate "WHOIS" database.** Earlier drafts of this spec described a combined WHOIS lookup exposing a `registrant_org` field — no such dataset exists in ip-location-db. The Country file (`iptoasn-country`) exposes only the country code (`country.iso_code`), derived upstream from iptoasn.com's IP-to-ASN data. Organization-name data available to this project comes solely from the ASN database's `autonomous_system_organization` field (a BGP/RIR-derived AS holder name, not an RDAP/WHOIS registrant record) — use that field directly and do not label it "WHOIS" anywhere in code, config, or docs.
 
 **Do not use MaxMind GeoLite2 as an alternative or fallback.** GeoLite2 requires acceptance of the MaxMind GeoLite2 EULA in addition to CC BY-SA 4.0 attribution — stricter terms (e.g. redistribution and update-frequency restrictions) than the DB-IP and iptoasn sources above. It is not zero-config-compatible with this project's "first run works with zero config, no account required" rule.
 
@@ -39070,6 +39070,7 @@ When compliance mode is on:
 | Set during setup | Setup wizard Step 4 | Optional (unless compliance mode is on) |
 | Set later | `/server/{admin_path}/backup` | Click "Set Encryption Password" |
 | Change password | `/server/{admin_path}/backup` | New backups use new password |
+| Storage | `secrets.yml`, key `server.backup.encryption_password` (PART 5), never `server.yml` | The wizard and the admin page write it there; a project without an admin panel edits `secrets.yml` itself |
 | Remove encryption | Only while compliance mode is off | Cannot remove while compliance mode is on |
 
 **Important:**
@@ -39620,6 +39621,7 @@ POST /api/{api_version}/server/{admin_path}/backup/restore
 | **Clears admin password** | Admin password is set to null/empty |
 | **Clears admin API token** | Admin API token is invalidated |
 | **Generates new setup token** | One-time setup token displayed in console |
+| **Keeps the primary admin row** | Its `id`, username and 2FA settings stay. The account has no password until the token is used. The web setup wizard runs only while NO admin exists, so it does not run here: the token page asks for a new password for that same account and then issues a new API token |
 | **Preserves everything else** | User accounts, data, configuration unchanged |
 
 ### What It Does NOT Do
@@ -39653,7 +39655,7 @@ POST /api/{api_version}/server/{admin_path}/backup/restore
 # │  1. Start the service: {project_name} --service start        │
 # │  2. Go to: {proto}://{fqdn}/server/{admin_path}                    │
 # │  3. Enter the setup token above                             │
-# │  4. Create new admin account via setup wizard               │
+# │  4. Set a new password for the primary admin                │
 # │                                                             │
 # │  This token will only be shown ONCE.                        │
 # └─────────────────────────────────────────────────────────────┘
@@ -39854,9 +39856,9 @@ server:
 
 **Stage, restart, swap (started as root):**
 
-1. The `update_check` task, running as the service user, performs steps 1 to 3 of the Update Flow into `{data_dir}/update/` (`{project_name}.new` and its SHA256) and records `update.staged` (version only).
+1. The `update_check` task, running as the service user, performs steps 1 to 3 of the Update Flow into `{data_dir}/update/` (`{project_name}.new`; its SHA256 file is informational only) and records `update.staged` (version only).
 2. The server shuts down gracefully (PART 8 → shutdown) and exits with code `75` (`EX_TEMPFAIL`), a failure exit, so the supervisor restarts it.
-3. The restart runs as root. Startup step 7b verifies the SHA256 again, checks that the staged version is newer than the running one, runs `replaceBinary()` (step 4), deletes `{data_dir}/update/` and re-executes the new binary (step 5), which continues at step 6 as the new version.
+3. The restart runs as root. Startup step 7b computes the SHA-256 of the staged `{project_name}.new` and compares it with the digest the root phase itself re-fetches for that version from the official release URL over HTTPS (TLS verified, short timeout, never from `{data_dir}/update/`: the service account can write every file there, so a staged digest proves nothing). A fetch failure or a mismatch is a failure (item 4, fail closed). It then checks that the staged version is newer than the running one, runs `replaceBinary()` (step 4), deletes `{data_dir}/update/` and re-executes the new binary (step 5), which continues at step 6 as the new version.
 4. Any failure (bad checksum, rename error): the staged files are deleted, the old binary keeps running, `update.failed` is recorded and the Server Admins get the `update_failed` notification. The same version is not staged again until the next release.
 
 **Restart support:** systemd (`Restart=on-failure`), launchd (`KeepAlive`), runit, s6 and rc.d (`daemon -r` restarts the server whenever it exits) restart the service after exit `75`. OpenRC and SysV do not supervise it: the staged update waits for the next start (boot or `--service restart`) and the Server Admins get the `update_staged` notification (restart to apply). In a cluster the rollout stays node-by-node.
@@ -49777,7 +49779,7 @@ fi
 
 #### Testing Operator-Token Routes
 
-**Every operator route (`server.token`, `adm_`) is tested with five requests, in `docker.sh` and `incus.sh` alike:** no `Authorization` header → `401`; a wrong token → `401`; an owner or linked token (`own_`) → `403`; the real `server.token` read from `secrets.yml` inside the test container → `200`; and the same route with the token in a query string → `401` (a URL is never a credential). The token value is never echoed: scripts pass it through a variable and print only the route and the status.
+**Every operator route (`server.token`, `adm_`) is tested with five requests, in `docker.sh` and `incus.sh` alike:** no `Authorization` header → `401`; a wrong token → `401`; an owner or linked token (`own_`) → `403`; the real `server.token` read from `secrets.yml` inside the test container → `200`, meaning authentication succeeds (a route that deliberately answers with another status keeps its own documented status, for example `/debug/error500` answers `500` after authenticating, and the suite asserts that status for it); and the same route with the token in a query string → `401` (a URL is never a credential). The token value is never echoed: scripts pass it through a variable and print only the route and the status.
 
 **CLI full functionality:** the built client runs against the running server with a linked API token (not just `--help`): `--version`, a status or health command, one read command and one write command, each checked for exit code `0` and expected output, plus one failure case (bad token → non-zero exit and a clear message).
 
