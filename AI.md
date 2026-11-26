@@ -10471,7 +10471,7 @@ data:
 │   └── .last_updated
 ├── blocklists/
 │   ├── {id}.txt                  # one file per source (the built-in source is firehol_level1)
-│   └── .last_updated
+│   └── {id}.last_updated         # one per source: the time of THAT source's last successful update
 ├── cve/
 │   ├── nvd.json
 │   └── .last_updated
@@ -10512,7 +10512,7 @@ server:
 
 **Health and freshness.** `cve_update` registers the check `cve_nvd` and, only when `data.trivy.enabled` is true, the check `trivy_db` (a disabled Trivy database is omitted from `checks`). Both use the same fixed `max_age` of 72 hours as the blocklists (three missed daily runs): past it the check is `degraded` and the last good copy stays in use, and a database that never loaded is `error`. Neither is registered `critical`.
 
-**Atomic update (every data set in this section):** download or extract into a temporary file or directory beside the final path, validate it (non-empty, parses, at least one valid entry or record), then rename it over the old one; a directory is swapped by renaming the old one aside and deleting it afterwards. On any failure the previous data stays untouched and in use, a warning is logged, and the data set's health check reports it as stale (PART 13). `.last_updated` holds one line: the UTC RFC 3339 time of the last SUCCESSFUL update of that directory.
+**Atomic update (every data set in this section):** download or extract into a temporary file or directory beside the final path, validate it (non-empty, parses, at least one valid entry or record), then rename it over the old one; a directory is swapped by renaming the old one aside and deleting it afterwards. On any failure the previous data stays untouched and in use, a warning is logged, and the data set's health check reports it as stale (PART 13). `.last_updated` holds one line: the UTC RFC 3339 time of the last SUCCESSFUL update of that directory. The exception is `blocklists/`: each source is updated, and can fail, on its own, so every source has its own `{id}.last_updated` (written only after that source's atomic rename), and the per-source freshness and health check read that file, so a restart never lets one source's success stand for another's.
 
 ## Display Environment Detection
 
@@ -18972,8 +18972,8 @@ server:
 type AllowlistEntry struct {
     // IP or CIDR (e.g., "192.168.1.0/24", "2001:db8::1")
     CIDR        string    `yaml:"cidr" json:"cidr"`
-    // Human-readable label (required for clarity)
-    Description string    `yaml:"description" json:"description"`
+    // Human-readable label. Optional: an omitted or empty value is stored as "(no description)", never rejected
+    Description string    `yaml:"description,omitempty" json:"description,omitempty"`
     AddedAt     time.Time `json:"added_at"`
     // admin username or "config" if from YAML
     AddedBy     string    `json:"added_by"`
