@@ -2255,7 +2255,7 @@ This distinction exists for clarity. When referring to OS-level resources that b
 |------|------------|
 | **Managed Node** | An EXTERNAL resource the app controls/monitors (NOT an app instance) - e.g., Docker hosts, monitored servers |
 | **HA (High Availability)** | Automatic failover for critical apps - specialized, not standard |
-| **API Token** | Authentication credential for API access - prefixed by holder (`adm_`, `usr_`, `org_`) |
+| **API Token** | Authentication credential for API access - prefixed by holder (`adm_`, `usr_`, `org_`; the metrics scraper credential is `mtr_`) |
 | **Owner (agents, tokens)** | The admin, user or org that owns an agent or a token. Not the API/HYBRID "owner token", which is the `own_` credential of a resource owner |
 | **Operator Token** | The built-in admin token `server.token`, kept in `secrets.yml`; an admin token like any other, and the only one that works without the database |
 | **Agent Token** | An `adm_`, `usr_` or `org_` token with scope `agent`: it may only register, send heartbeats and report for its own agent |
@@ -3225,6 +3225,30 @@ Getting code correct on the first try is much harder than iterating with feedbac
 **When verification is genuinely impossible in this environment** (e.g., no browser, no DB, no display, no internet for an external API): say so explicitly. Do not imply success — list what was checked and what could not be checked, so the user knows where to look.
 
 **Reference:** based on published guidance about AI coding agent self-validation (Eivind Kjosbakken, Towards Data Science, 2026) — when an AI agent is given verification tools (output diffing, browser MCP, test runners) and allowed to iterate, one-shot success rate, run length, and task complexity all improve substantially.
+
+## Definition of Done
+
+**A unit of work is done only when it is committed and pushed. Edited files are not done, and neither is a clean diff left in the working tree.**
+
+| Step | Requirement |
+|------|-------------|
+| 1. Review | The main instance reads the full diff, so the commit says what the diff really does |
+| 2. Gates | The project's test and lint gates run once, after the full diff is reviewed (never by a subagent). A failing gate is fixed, never skipped or overridden |
+| 3. TODO | `TODO.AI.md` is made true in the same change ("TODO Hygiene") |
+| 4. Message | `.git/COMMIT_MESS` is written and re-read |
+| 5. Commit | `gitcommit --dir {project_dir} all`, after the branch gate passes |
+| 6. Verify | The committed scope is clean in `git status --porcelain`, the push succeeded, and CI for the pushed commit is green. Never report done while it is red or still running |
+
+**Subagents.** A subagent's report is a hand-back, never completion. The main instance runs steps 1-6 right after the report arrives, without waiting for the user to ask. An instance that was itself started as an agent is the main instance for this purpose and runs the steps too.
+
+**The ONLY reasons to stop before step 5, each reported by name with the exact detail:**
+- the branch gate failed (not on `main`)
+- a gate or a hook fails or blocks the commit and the cause cannot be fixed within the task: report the failing check, its output and what was tried (a hook block is never bypassed automatically)
+- a contradiction or unclear requirement that only the user can decide: ask the one specific question
+- the user said to wait, or the rule needs explicit approval first (for example a proposed rewrite of an existing file)
+- a destructive or irreversible action that needs confirmation
+
+**Never stop at "edits finished", at "ready for review", or with a message that tells the user to commit.**
 
 ## TODO.AI.md Completion
 
@@ -39004,6 +39028,7 @@ groups:
 | `{config_dir}/secrets.yml` | ✓ If exists | Secrets (encryption key, credentials); `server.token` is blanked in the backup copy |
 | `{config_dir}/assets/` | If exists | Branding image files |
 | `server.db` | ✓ When the local file exists | The local SQLite main database (settings). A remote database is never part of a backup (see below) |
+| `app_secrets.json` | ✓ Always | The `app_secrets` rows (`installation_secret`, `cookie_signing_key`, `csrf_token_secret` and their `{name}_previous` rows), exported by the server whether the database is local or remote, so a restore can decrypt the PGP private key (PART 11) even when the database is remote with no local cache. A restore writes them back and replaces rows that exist |
 | `users.db` | ✓ When the local file exists | The local SQLite user database (admins table holds admin credentials) |
 | `{config_dir}/template/` | ✓ If exists | Custom email templates |
 | `{config_dir}/ssl/` | Optional | SSL certificates (flag: `--include-ssl`) |
@@ -39011,7 +39036,7 @@ groups:
 | External TLS files | ✓ Always, when referenced | The files named by `server.ssl.cert` and `server.ssl.key` that lie OUTSIDE `{config_dir}/ssl/` (a manually supplied certificate), even without `--include-ssl`: only those two files, stored under `ssl-external/` in the archive. On restore they are written into `{config_dir}/ssl/` (the key with mode `0600`) and `server.ssl.cert` and `server.ssl.key` are rewritten to those paths, so the restored config never points at a file the archive lacks |
 | `{data_dir}/` | Optional | Data files (flag: `--include-data`) |
 
-**Remote database (PostgreSQL, MySQL, MariaDB, libSQL/Turso):** the remote database itself is never part of a backup, and that is neither an error nor a warning (a remote database is backed up by its own provider; the backup writes one `info` line naming the driver). On restore with a remote driver configured, the restored local `server.db` and `users.db` seed the remote database ONLY when it is empty, exactly as a new setup initializes it; a remote database that already holds data is left untouched.
+**Remote database (PostgreSQL, MySQL, MariaDB, libSQL/Turso):** the remote database itself is never part of a backup (its `app_secrets` rows are the one exception, exported as `app_secrets.json`), and that is neither an error nor a warning (a remote database is backed up by its own provider; the backup writes one `info` line naming the driver). On restore with a remote driver configured, the restored local `server.db` and `users.db` seed the remote database ONLY when it is empty, exactly as a new setup initializes it; a remote database that already holds data is left untouched.
 
 ### Admin Credentials in Backup
 
@@ -39075,7 +39100,7 @@ groups:
 |--------|---------|
 | Algorithm | AES-256-GCM |
 | Key Derivation | Argon2id (password → encryption key) |
-| Encrypted archive format | A cleartext header, then the AES-256-GCM ciphertext. Header: magic `BKUP1`, `salt` (16 random bytes, new for every archive), the Argon2id parameters (`m`, `t`, `p`), the 12-byte `nonce`, `key_id` and, for an incremental, `base_backup` (the base file's name). Retention and base protection use only this header and the file names, never a password. The whole header is bound to the ciphertext as AES-GCM additional data, so any change to it fails decryption. It holds no password and no key material |
+| Encrypted archive format | A cleartext header, then the AES-256-GCM ciphertext. Header, in this fixed order and encoding: magic `BKUP1` (5 bytes), `salt` (16 random bytes, new for every archive), `m`, `t`, `p` (each a uint32, big-endian: memory in KiB, iterations, parallelism), the 12-byte `nonce`, `key_id` (8 ASCII lowercase hex characters), then `base_len` (uint16, big-endian; 0 for a full backup) followed by `base_len` bytes of the base file's name (UTF-8, at most 255 bytes, no path separators). The header is exactly the concatenation of these fields (55 bytes plus the name), and a reader rejects a `base_len` above 255 or a header that ends early before it derives any key. Retention and base protection use only this header and the file names, never a password. The whole header is bound to the ciphertext as AES-GCM additional data, so any change to it fails decryption. It holds no password and no key material |
 | `key_id` | The first 8 hex characters of `HMAC-SHA256(derived_key, "key-id")`, where `derived_key` is Argon2id over the password with THAT archive's own salt and parameters. The same password gives the same `key_id` only when derived with the same salt, so comparing against another archive means re-deriving with that archive's salt and parameters |
 | File Extension | `.tar.gz` (unencrypted) or `.tar.gz.enc` (encrypted) |
 | Password Storage | Kept only so scheduled backups can run unattended: encrypted at rest with `server.security.encryption_key` (AES-256-GCM), never hashed (it is key material, not a login verifier), never written to a log, manifest or archive, and never returned by any API. Restore never reads it: the admin supplies the password |
@@ -59633,16 +59658,18 @@ On every CLI command:
 **Priority order (highest to lowest):**
 
 1. `--server` flag (if provided)
-2. `server.primary` in `cli.yml` (if set)
-3. `server.cluster` nodes (if primary fails)
-4. `{official_site}` compiled default (if project has official site)
-5. Error with setup instructions
+2. `{PROJECT_NAME}_SERVER_PRIMARY` environment variable (if set)
+3. `server.primary` in `cli.yml` (if set)
+4. `server.cluster` nodes (only if the primary fails)
+5. `{official_site}` compiled default (if project has official site)
+6. Error with setup instructions
 
 **Behavior:**
 
 | Scenario | Result |
 |----------|--------|
 | `--server` flag used | Use that server, **save to `server.primary` in cli.yml only if it is empty or invalid** |
+| `{PROJECT_NAME}_SERVER_PRIMARY` set (and no `--server`) | Use that server; nothing is saved |
 | `server.primary` in cli.yml | Use configured primary server |
 | Primary fails, cluster exists | Silently try cluster nodes |
 | Project has `{official_site}` | Use official site as default |
