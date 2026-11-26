@@ -151,7 +151,7 @@ IDEA.md is the project PLAN. AI.md (this file) is the authoritative template bas
 
 **A feature IDEA.md defines that AI.md has no contract for** (for example operator-level billing or federation) is built from IDEA.md under the full AI.md baseline: security, authentication, database, API conventions, configuration, audit, i18n and every PART the feature touches. AI.md defines no protocol for it and forbids nothing about it. The project's SPEC.md states the feature's technical contract (data, endpoints, signatures, retries, conflict handling) and is the only place that does; the feature never loosens a baseline rule, and a baseline rule it cannot meet is a SPEC.md exception (PART 0).
 
-**Billing** (plans, subscriptions, payment providers, invoices, dunning, usage metering, tax) is such a feature. When IDEA.md defines it, the reference for the SPEC.md billing contract is `~/.claude/TEMPLATES/BILLING.md`, and the `billing-builder` agent implements it. CAVEAT: that file is an optional, machine-level reference outside this specification: it may be absent, it is never copied into a project, it only informs the SPEC.md contract and never overrides AI.md (AI.md wins every conflict), and when it is absent the project's SPEC.md states the billing contract itself. A project that defines no billing ignores it.
+**Billing** (plans, subscriptions, payment providers, invoices, dunning, usage metering, tax) is such a feature. When IDEA.md defines it, the reference for the SPEC.md billing contract is `~/.claude/TEMPLATES/BILLING.md`, and the `billing-builder` agent implements it. CAVEAT: that file is an optional, machine-level reference outside this specification: it may be absent, it is never copied into a project, it only informs the SPEC.md contract and never overrides AI.md (AI.md wins every conflict), and when it is absent the project's SPEC.md states the billing contract itself. The project's SPEC.md (with the user's approval) is where the provider list is chosen: it may drop or add providers relative to that file, and a provider the user removes there is never reintroduced from the reference. A project that defines no billing ignores it.
 
 | IDEA.md MAY | IDEA.md MAY NOT |
 |-------------|-----------------|
@@ -4794,7 +4794,7 @@ db.Query("SELECT * FROM users WHERE email = '" + email + "'")
 | **User (WebUI/API)** | Minimal, helpful | Guide user to fix issue, no internals |
 | **Admin (Panel)** | Actionable | Enough to diagnose, no stack traces |
 | **Console (stdout)** | Full | Debugging during development |
-| **Log file** | Full + context | Structured, timestamps, request IDs |
+| **Log file** | Full + context | Structured, timestamps, request IDs. A panic's stack trace is written here (the log file is the only place; never in CLI output, a response or the production console) |
 | **Audit log** | Who/what/when | Security events, compliance |
 
 **Error Messages by Context:**
@@ -5775,7 +5775,7 @@ curl -L https://api.example.com/server/healthz
 | **No AI/ML** | Smart logic only, no machine learning |
 | **Concise Responses** | Short, descriptive, and helpful |
 | **Everything Configurable** | ALL settings MUST be configurable via admin WebUI |
-| **Live Reload** | Configuration changes apply without restart (file-watch hot-reload), except the restart-required settings of "Smart Config Reload" (listen port and address, `server.ssl.*`, `server.database.*`, `server.daemonize`, `server.pidfile`, `server.tor.*`), which the admin panel reports and which apply at the next start |
+| **Live Reload** | Configuration changes apply without restart (file-watch hot-reload), except the restart-required settings of "Smart Config Reload" (listen port and address, `server.ssl.*`, `server.database.*`, `server.daemonize`, `server.pidfile`), which the admin panel reports and which apply at the next start |
 | **Built-in Scheduler** | NEVER use cron, Task Scheduler, or external schedulers (PART 19) |
 
 ### Admin WebUI Configuration
@@ -5821,7 +5821,7 @@ Not every project needs admin UI extensions - it depends on the project's nature
 | **Hot reload** | Application watches for config changes and reloads |
 | **Graceful** | In-flight requests complete before new config applies |
 | **Feedback** | User sees confirmation that changes are active |
-| **Exceptions** | The restart-required settings of "Smart Config Reload" (`server.port`, `server.address`, `server.ssl.*`, `server.daemonize`, `server.pidfile`, `server.database.*`, `server.tor.*`) apply at the next start, with a clear warning; the graceful-reload settings apply without downtime |
+| **Exceptions** | The restart-required settings of "Smart Config Reload" (`server.port`, `server.address`, `server.ssl.*`, `server.daemonize`, `server.pidfile`, `server.database.*`) apply at the next start, with a clear warning; the graceful-reload settings apply without downtime |
 
 **What MUST live reload:**
 - Branding (title, tagline, description)
@@ -5833,6 +5833,7 @@ Not every project needs admin UI extensions - it depends on the project's nature
 - Scheduler settings
 - SSL certificate renewal (the `server.ssl.*` settings themselves need a restart)
 - All feature toggles
+- `server.tor.*` (only the Tor child process is restarted, in-process, while the server keeps serving; "Tor Restart Triggers")
 
 **What requires restart (with warning), exactly the "Requires Restart" list of "Smart Config Reload":**
 - Listen address and port number
@@ -5840,7 +5841,6 @@ Not every project needs admin UI extensions - it depends on the project's nature
 - `server.daemonize`
 - `server.pidfile` (PID file creation and checking)
 - `server.database.*` (connection pool and driver)
-- `server.tor.*`
 
 ### Sensitive Information Handling
 
@@ -8595,6 +8595,8 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | `LISTEN` | Listen address, read at EVERY startup: precedence is the `--address` flag, then `LISTEN`, then the early config peek of `server.address`, then `[::]` |
 | `MODE` | `production` (default; shortcut `prod`) · `development` (shortcuts `dev`, `devel`) · `debug` (explicit opt-in only) |
 | `DEBUG` | Truthy value turns the debug flag on (`--debug` wins; precedence and the `/debug/*` endpoints are defined in PART 6 → Debug Flag). Independent of `MODE`: `MODE=debug` only defaults the flag on |
+| `PID_FILE` | PID file path (`--pid`; precedence: the flag, then `PID_FILE`, then the platform default; PART 8) |
+| `I2P_ENABLED` | Enable the I2P eepsite (`--i2p`; config key `server.i2p.enabled`; the default is on in a container and off elsewhere, PART 31.2) |
 | `SMTP_HOST` | SMTP server hostname (if set, skips autodetect) |
 | `SMTP_PORT` | SMTP server port (default: 587) |
 | `SMTP_USERNAME` | SMTP authentication username |
@@ -8620,6 +8622,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | `LOG_DIR` | `--log` | Log directory |
 | `DATABASE_DIR` | (none) | SQLite database directory (changeable) |
 | `BACKUP_DIR` | `--backup` | Backup directory (changeable) |
+| `CACHE_DIR` | (none) | Cache directory (precedence: the environment variable, then the platform default; PART 4) |
 
 **Directory variables are applied on EVERY startup, never "once".** Precedence: flag, then environment variable, then the platform default (PART 4). They locate `server.yml` and the rest of the app's files, so they cannot live inside `server.yml` and are never written to it.
 
@@ -8771,7 +8774,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | **Never generated** | Credentials that someone else issues stay empty until the operator sets them: `server.notifications.email.smtp.password`, `server.cache.password`, `server.database.password` and `server.database.token`, `server.database.url` and `server.cache.url` with a credential in them, `server.pages.contact.captcha_secret_key`, `server.ssl.letsencrypt.dns_credentials`, `data.cve.api_key`, `server.backup.encryption_password`, the LDAP bind password, the OIDC client secret and the webhook URLs |
 | **Rotation** | Blank a generated key in `secrets.yml` and restart: a new value is generated. `--maintenance secret rotate {name}` rotates `installation_secret` or the encryption key with their grace periods (PART 11); those are the only two with a manual rotation, while `cookie_signing_key` and `csrf_token_secret` rotate automatically and any other name is rejected with a usage error |
 | **Written by** | The server writes the FILE-based secrets (every key of this list; PART 11 keeps three others in `app_secrets`) to `secrets.yml` and ONLY there, never to `server.yml` and never to a drop-in (this limits what the server writes; an operator may still hand-write a value elsewhere, see "Operator-set values"): the first-run `server.token`, `server.security.encryption_key` with its version, and its rotation (`--maintenance secret rotate encryption_key`). The `app_secrets` rows (`installation_secret`, `cookie_signing_key`, `csrf_token_secret`) are written to `server.db` and nowhere else; a rotation of `installation_secret` (`--maintenance secret rotate installation_secret`) updates its row there |
-| **Operator-set values** | An operator MAY write a secret key in `server.yml` or a drop-in (for example from configuration management). The automatic migration moves it to `secrets.yml` at the next start ("Area Files and Automatic Migration"), where it wins over any other file. A value may also be an environment reference such as `${DB_PASSWORD}`, which is moved like any other value. A plaintext DNS credential is rewritten as `enc:v1:` in the file that holds it. So `secrets.yml` is where a secret lives at rest, and a secret in `server.yml` or a drop-in is a hand-off that ends at the next start |
+| **Operator-set values** | An operator MAY write a secret key in `server.yml` or a drop-in (for example from configuration management). The automatic migration moves it to `secrets.yml` at the next start ("Area Files and Automatic Migration"), where it wins over any other file. A value may also be an environment reference such as `${DB_PASSWORD}`, which is moved like any other value. A plaintext DNS credential is encrypted as `enc:v1:` in `secrets.yml` by that same migration write, so it is never left as plaintext in `server.yml` or a drop-in. So `secrets.yml` is where a secret lives at rest, and a secret in `server.yml` or a drop-in is a hand-off that ends at the next start |
 | **Migration** | At start, if `server.token` or `server.security.encryption_key` is found in `server.yml` and `secrets.yml` does not hold it, the server writes `secrets.yml` first (atomic, `0600`, fsynced) and only then rewrites `server.yml` without those keys, so a secret is never in both files and never lost |
 | **Early read** | The early config read (PART 8 startup, step 8e) never opens `secrets.yml`: it needs only `server.port`, `server.address`, `server.daemonize` and `server.pidfile`, plus each raw-protocol listener's `{proto}.enabled`, `{proto}.address` and `{proto}.port` |
 | **Permissions** | Always `0600` (PART 8 → "Directory Validation Rules": private paths); a wrong mode is fixed at start |
@@ -11195,7 +11198,7 @@ func main() {
 
 ## Command-Flag Help (`--shell --help`)
 
-**The command flags (`--shell`, `--service`, `--maintenance`, `--update`, `--admin`) take a value (`--shell completions`), so the parser would consume a following `--help` as that value. Help for a command flag is therefore routed BEFORE the main flag parse. Both forms are valid and print that flag's help, then exit 0:**
+**The command flags (`--shell`, `--service`, `--maintenance`, `--update`) take a value (`--shell completions`), so the parser would consume a following `--help` as that value. Help for a command flag is therefore routed BEFORE the main flag parse. Both forms are valid and print that flag's help, then exit 0:**
 
 | Form | Example |
 |------|---------|
@@ -11220,7 +11223,7 @@ func commandHelp(args []string, commands ...string) (string, bool) {
 }
 
 // in main, before fs.Parse:
-if name, ok := commandHelp(os.Args[1:], "shell", "service", "maintenance", "update", "admin"); ok {
+if name, ok := commandHelp(os.Args[1:], "shell", "service", "maintenance", "update"); ok {
     printCommandHelp(name)
     os.Exit(0)
 }
@@ -11987,7 +11990,7 @@ PHASE 5: Server startup (actual server start)
 22. Enter main loop (block until shutdown signal received)
 ```
 
-**Overlay networks start asynchronously.** Steps 17a and 17b only start the Tor and I2P managers and return at once: no overlay bootstrap, hidden-service creation or destination creation ever delays step 18, so the HTTP listener is up while an overlay is still coming up (Tor bootstrap can take minutes). Health reports the overlay as `starting` until it is `healthy`, or `unavailable` once `server.tor.bootstrap_timeout` (I2P: its own timeout) elapses without success, exactly as "Overlay Network Health" defines; a stalled or failed overlay is a single WARN and never blocks, restarts or fails the server. The `.onion` and `.b32.i2p` addresses are read from the hostname and destination files the managers write shortly after they start (before bootstrap completes): the startup banner shows an address only when it is already known at step 20 (waiting at most 5 seconds for the file, never for bootstrap), and an address that is not known yet is omitted from the banner and logged once, as a single INFO line, when it appears.
+**Overlay networks start asynchronously.** Steps 17a and 17b only start the Tor and I2P managers and return at once: no overlay bootstrap, hidden-service creation or destination creation ever delays step 18, so the HTTP listener is up while an overlay is still coming up (Tor bootstrap can take minutes). Health reports the overlay as `starting` until it is `healthy`, or `unavailable` once `server.tor.bootstrap_timeout` (I2P: its own timeout) elapses without success, exactly as "Overlay Network Health" defines; a stalled or failed overlay is a single WARN and never blocks, restarts or fails the server (only the overlay's own monitor restarts a crashed Tor process at runtime, "Tor Process Lifecycle"; a bootstrap timeout is reported, not retried by restarting the server). The `.onion` and `.b32.i2p` addresses are read from the hostname and destination files the managers write shortly after they start (before bootstrap completes): the startup banner shows an address only when it is already known at step 20 (waiting at most 5 seconds for the file, never for bootstrap), and an address that is not known yet is omitted from the banner and logged once, as a single INFO line, when it appears.
 
 | Step | Runs As | Why |
 |------|---------|-----|
@@ -12697,6 +12700,7 @@ The app automatically watches config files and hot-reloads what it can. Settings
 |---------|-----|
 | `server.admin_path` | Routes must be re-registered |
 | `server.limits.read_timeout`, `server.limits.write_timeout`, `server.limits.idle_timeout` | http.Server is swapped behind the existing listener |
+| `server.tor.*` | Only the Tor child process is restarted, in-process, while the server keeps serving ("Tor Restart Triggers") |
 
 **Requires Restart (admin UI shows notification):**
 
@@ -12708,7 +12712,6 @@ The app automatically watches config files and hot-reloads what it can. Settings
 | `server.daemonize` | Process mode cannot change |
 | `server.pidfile` | The PID file steps run once at start, before the full configuration loads |
 | `server.database.*` | Connection pool must be recreated |
-| `server.tor.*` | Child process must be restarted |
 
 **Implementation:**
 
@@ -13149,7 +13152,7 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
     ip_address  TEXT NOT NULL,
     user_agent  TEXT,
     created_at  INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-    -- Unix timestamp (default: 30 days)
+    -- Unix timestamp: the absolute expiry, created_at plus the role's max_age (admin 30 days); the idle timeout (session.timeout) is enforced from last_active
     expires_at  INTEGER NOT NULL,
     last_active INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
@@ -13781,24 +13784,22 @@ func flattenConfig(cfg *Config) []ConfigPair {
 ```
 1. CLI flags (highest priority)
 2. Environment variables
-3. Database (admin WebUI changes)
-4. Config files (`server.yml`, then `yaml.d/*`, then `secrets.yml`)
-5. Defaults (lowest priority)
+3. Config files (`server.yml`, then `yaml.d/*`, then `secrets.yml`; the admin panel writes these files)
+4. Defaults (lowest priority)
 ```
 
-On startup, merge all sources. Database and file stay in sync via ConfigManager.
+On startup, merge all sources. ConfigManager watches server.yml, yaml.d/ and secrets.yml for changes; the database is never a source of operator-editable settings.
 
 ```go
-// Settings that require restart
+// Settings that require restart — prefix-matched, so trailing-dot
+// entries cover their whole section (ssl.*, database.*)
 var restartRequiredSettings = []string{
     "server.port",
     "server.address",
-    "ssl.enabled",
-    "ssl.cert",
-    "ssl.key",
-    "ssl.min_version",
     "server.daemonize",
-    "database.path",
+    "server.pidfile",
+    "ssl.",
+    "database.",
 }
 
 func categorizeChanges(changes []string) (hotReload, needsRestart []string) {
@@ -15170,7 +15171,7 @@ See **PART 12: SERVER CONFIGURATION** for full Valkey/Redis setup.
 
 | Content Type | TTL | Reason |
 |--------------|-----|--------|
-| Session tokens | 24 hours | Matches `session.timeout` default |
+| Session tokens | 24 hours | Matches the `session.timeout` (idle timeout) default |
 | API tokens | No expiry | Explicit revocation only |
 | Rate limit counters | 1 minute | Rolling window |
 | User profile | 5 minutes | Balance freshness and load |
@@ -15487,7 +15488,7 @@ func (u *User) SetDisplayName(name string) {
 
 ### Canonical Column Renames (names this specification defines)
 
-**When this specification renames one of its own columns to the canonical name (for example the scheduler tables: `task_id` becomes `id`, `task_name` becomes `name`, `ran_at` becomes `started_at`), a database created with the old name is upgraded in place by the schema step.** The step runs `ALTER TABLE ... RENAME COLUMN old TO new` only when the table's column list shows the old name and not the new one, so it is idempotent. SQLite, libSQL, PostgreSQL and MySQL 8 / MariaDB 10.5 and later support `RENAME COLUMN` (SQL Server uses `sp_rename`); the column list comes from `PRAGMA table_info` on SQLite and libSQL and from `information_schema.columns` on the other databases. Data is kept, nothing is dropped and no alias or duplicate column remains, so "Canonical Terms Only" (PART 0) and "Never destructive" both hold. A column that is missing after the rename (for example `finished_at` on an old history table) is added with the plain `ADD COLUMN` rule. This exception covers only columns whose canonical name this specification defines; a project's own columns follow "Handling Column Renames".
+**When this specification renames one of its own columns to the canonical name (for example the scheduler tables: in `scheduler_tasks`, `task_id` becomes `id` and `task_name` becomes `name`; in `scheduler_history`, `ran_at` becomes `started_at` while its `task_id` stays, being the foreign key to `scheduler_tasks.id`), a database created with the old name is upgraded in place by the schema step.** The step runs `ALTER TABLE ... RENAME COLUMN old TO new` only when the table's column list shows the old name and not the new one, so it is idempotent. SQLite, libSQL, PostgreSQL and MySQL 8 / MariaDB 10.5 and later support `RENAME COLUMN` (SQL Server uses `sp_rename`); the column list comes from `PRAGMA table_info` on SQLite and libSQL and from `information_schema.columns` on the other databases. Data is kept, nothing is dropped and no alias or duplicate column remains, so "Canonical Terms Only" (PART 0) and "Never destructive" both hold. A column that is missing after the rename (for example `finished_at` on an old history table) is added with the plain `ADD COLUMN` rule. This exception covers only columns whose canonical name this specification defines; a project's own columns follow "Handling Column Renames".
 
 **A primary key is never converted by the schema step.** `admins.id` is `INTEGER PRIMARY KEY AUTOINCREMENT` from the first release of a project built on this template, so there is no type to migrate; the schema step never rebuilds a table, which keeps "Never destructive" true. An existing table keeps its key, and code treats `admins.id` as an opaque value it only compares. The ONLY exception to "No migration files" is a one-time adoption step for an installation that predates this template: the adopting project writes it in its own code (never in this template), the maintainer runs it ONCE, by hand, before the first start on the new binary (it is not part of startup, not versioned and never repeated), and it adopts the canonical key like this: a backup first, then one transaction that creates the new table, copies every row with its references remapped, swaps the tables and re-checks the foreign keys (`PRAGMA foreign_key_check`).
 
@@ -17273,6 +17274,9 @@ web:
     # Boolean, default true: the key is published while a keypair exists. false: pgp-key.asc answers 404 and security.txt has no Encryption: line,
     # even when a keypair exists (--maintenance pgp delete sets it to false)
     publish_pgp_key: true
+    # Keyservers the public key is published to: a list of bare host names (no scheme or path), validated at load; [] publishes nowhere. Stored in the config files only
+    keyservers:
+      - keys.openpgp.org
     # Auto-calculated 1 year from generation
     expires: "{1year}"
   well_known:
@@ -17652,7 +17656,7 @@ All three coexist under the admin tree. The admin-panel UI groups them under a s
 | Action | Behavior |
 |--------|----------|
 | **Generate** | Generates an Ed25519 (signing) + Curve25519 (encryption) keypair. Identity is `{app_name} Security <{security_contact}>`. Expires 2 years from generation. Private key is encrypted with a key derived from `installation_secret` and stored in `{config_dir}/security/pgp.priv.asc.enc`. Public key stored at `{config_dir}/security/pgp.pub.asc` (also served at `/.well-known/pgp-key.asc`). |
-| **Rotate** | Runs under the same lock the submission step uses, in this order: (1) generates the new keypair, signs the new pubkey with the old key and writes both new files as STAGED files (`pgp.pub.asc.new`, `pgp.priv.asc.enc.new`) beside the active ones, so every file write happens before any transaction; (2) in ONE database `Write` transaction with no file I/O inside it, re-encrypts every stored `body_enc` whose `body_alg` is `pgp` to the new key (decrypt with the old private key, encrypt to the new public key) and, in the same transaction, stores the new key's `fingerprint`, `created_at`, `expires_at` and `last_rotated_at`: that stored fingerprint is the commit marker, and it exists even when no report is PGP-encrypted; if any row fails, the transaction rolls back, the staged files are deleted and the old key stays active, so no retained report is ever left readable only by a discarded key; (3) after the commit, renames the staged files over the active ones (the old private key moves to the `.old` file below first), sets `last_rotated_at` and publishes the new key to configured keyservers. The commit is the single point of no return. Crash recovery runs at every start, before submissions are accepted: when staged files exist, the fingerprint of the staged public key is compared with the stored `fingerprint`. Equal: the commit happened, so step 3 is finished. Different: the transaction never committed, so the staged files are deleted. A mixed state cannot exist, because the rows and the marker change in the one transaction. After a successful rotation every stored body is readable with the current key for its whole retention period. The old private key is kept encrypted at `{config_dir}/security/pgp.priv.old.asc.enc` for 30 days, only for items already in transit (notifications sent to the old key, researchers who fetched the old public key); the daily `security_cleanup` task then deletes it. |
+| **Rotate** | Runs under the same lock the submission step uses, in this order: (1) generates the new keypair, signs the new pubkey with the old key and writes both new files as STAGED files (`pgp.pub.asc.new`, `pgp.priv.asc.enc.new`) beside the active ones, so every file write happens before any transaction; (2) in ONE database `Write` transaction with no file I/O inside it, re-encrypts every stored `body_enc` whose `body_alg` is `pgp` to the new key (decrypt with the old private key, encrypt to the new public key) and, in the same transaction, stores the new key's `fingerprint`, `created_at`, `expires_at` and `last_rotated_at`: that stored fingerprint is the commit marker, and it exists even when no report is PGP-encrypted; if any row fails, the transaction rolls back, the staged files are deleted and the old key stays active, so no retained report is ever left readable only by a discarded key; (3) after the commit, renames the staged files over the active ones (the old private key moves to the `.old` file below first), sets `last_rotated_at` and publishes the new key to configured keyservers. The commit is the single point of no return. Crash recovery runs at every start, before submissions are accepted: when staged files exist, the fingerprint of the staged public key is compared with the stored `fingerprint`. Equal: the commit happened, so step 3 is finished. Different: the transaction never committed, so the staged files are deleted. A mixed state cannot exist, because the rows and the marker change in the one transaction. After a successful rotation every stored body is readable with the current key for its whole retention period. The old private key is kept encrypted at `{config_dir}/security/pgp.priv.old.asc.enc` for 30 days, only for items already in transit (notifications sent to the old key, researchers who fetched the old public key); the daily `security_cleanup` task then deletes it. A second rotation inside those 30 days replaces the `.old` file with the key being retired (the earlier retired key is deleted at once) and the 30 days start again. |
 | **Publish to keyservers** | POST the public key to each entry in `web.security.keyservers`. Each entry is a keyserver host name and the host decides the submission form. `keys.openpgp.org` (VKS): `POST https://keys.openpgp.org/vks/v1/upload` with the JSON body `{"keytext": "<ASCII-armored public key>"}`; success is `200` with a JSON body holding `key_fpr` and `status`. Any other host, for example `keyserver.ubuntu.com` (HKP): `POST https://{host}/pks/add` with `Content-Type: application/x-www-form-urlencoded` and the field `keytext=<URL-encoded armored key>`; success is `200`. Triggered automatically on generate/rotate; manually via the "Republish" button. A network error, `5xx` or `429` is logged and retried with exponential backoff: 1 minute, doubling each time up to 6 hours, at most 8 attempts per keyserver and key, durable across restarts (the attempt count and the next time are kept in `keyservers.state`, and the scheduler task `keyserver_retry` submits again whenever a stored time has passed). Any other `4xx` is final: logged once and never retried. A keyserver that `keyservers.state` already lists for this fingerprint is skipped. |
 | **Export public key** | Download `pgp.pub.asc` directly from the admin panel. Or use the public URL `/.well-known/pgp-key.asc`. |
 | **Export private key** | **Full export, ASCII-armored, decrypted with the operator's confirmation password.** Triggers a sensitive-operation flow (PART 5 → "Sensitive Operations"): re-prompt admin password, log to `audit.log` as `security.private_key_exported`, return the file as a single download. **The download is rate-limited to 1 per hour per admin and the audit entry includes admin username, IP, and reason text the admin must type.** |
@@ -23657,7 +23661,7 @@ Need additional compatible endpoints?"
 | `/metrics[/{service}]` | GET | Bearer token (per-service) | Root alias when `server.metrics.root.enabled: true` (default true); same handler, never a redirect |
 | `/server/{admin_path}` | GET | Session | Admin dashboard; an unauthenticated request redirects to `/server/auth/login` |
 | `/server/{admin_path}/*` | ALL | Session | Admin panel pages |
-| `/api/autodiscover` | GET | None | Server settings, config schema, and options for CLI/agent (non-versioned) |
+| `/api/autodiscover` | GET | None | Discovery document: name, version, public origins, hidden-service addresses and the CLI/agent update versions. It publishes no settings, config schema or option list (non-versioned; "Autodiscover response") |
 | `/api/swagger` | GET | None | OpenAPI JSON spec — direct alias for current `{api_version}` |
 | `/api/graphql` | POST, GET | None | GraphQL queries — direct alias for current `{api_version}` (POST, and GET with `query` for queries only, exactly like the versioned route) |
 | `/api/mcp` | POST | Bearer (required) | MCP endpoint — direct alias for current `{api_version}`; same auth as the API |
@@ -23870,7 +23874,7 @@ Before proceeding, confirm you understand:
 | Rule | Detail |
 |------|--------|
 | YAML shape | `server.ssl.letsencrypt.dns_provider` is the lego provider name (the lowercase identifier on the lego DNS provider list, e.g. `cloudflare`). `dns_credentials` is ONE flat map of that provider's lego environment variable names to string values, e.g. `CF_DNS_API_TOKEN: "..."`; no nesting |
-| Encryption at rest | A plaintext value an operator writes is accepted at load and rewritten in place, in the file that holds it, atomically and `0600` (PART 8 private paths), as `enc:v1:{base64 of nonce + AES-256-GCM ciphertext}` under `server.security.encryption_key`. A value that starts with `enc:v1:` is decrypted in memory only. A value is never logged, never returned by the API, and shown as `********` in every view and bundle |
+| Encryption at rest | A plaintext value an operator writes is accepted at load and rewritten in place, in `secrets.yml` (where the automatic migration has already moved it), atomically and `0600` (PART 8 private paths), as `enc:v1:{base64 of nonce + AES-256-GCM ciphertext}` under `server.security.encryption_key`. A value that starts with `enc:v1:` is decrypted in memory only. A value is never logged, never returned by the API, and shown as `********` in every view and bundle |
 | Field discovery | The server hardcodes no field list for VALIDATION (lego decides what is missing); the table below only prefills the form. For one `dns.NewDNSChallengeProviderByName` call it sets the map as the provider's environment (under a mutex), then restores the environment. lego's error names a missing or invalid variable; the server reports the variable NAME only, never a value |
 | Passing to lego | Only through that constructor call: the resulting provider object is given to the ACME client as its DNS-01 solver. Credentials are never written to a file or kept in the process environment |
 | Validation | At startup and before every certificate request the provider is constructed (no DNS record is touched). A failure makes the request fail with the variable name and logs at ERROR; no other challenge type is tried silently. Real proof of the credentials is a successful issuance |
@@ -25105,7 +25109,7 @@ When custom domains are enabled, the vanity URL becomes the root:
 ```go
 // URLNormalizeMiddleware normalizes URLs for consistent routing
 // - Removes trailing slashes (except for root "/")
-// - Redirects to canonical URL with 301 if normalization changed path
+// - Redirects to the canonical URL if normalization changed the path: 301 for GET/HEAD, 308 for other methods
 func URLNormalizeMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         path := r.URL.Path
@@ -25125,7 +25129,12 @@ func URLNormalizeMiddleware(next http.Handler) http.Handler {
                 if r.URL.RawQuery != "" {
                     canonical += "?" + r.URL.RawQuery
                 }
-                http.Redirect(w, r, canonical, http.StatusMovedPermanently)
+                // 301 for GET/HEAD; 308 for every other method so it is replayed with the same method and body
+                status := http.StatusMovedPermanently
+                if r.Method != http.MethodGet && r.Method != http.MethodHead {
+                    status = http.StatusPermanentRedirect
+                }
+                http.Redirect(w, r, canonical, status)
                 return
             }
         }
@@ -25139,9 +25148,9 @@ func URLNormalizeMiddleware(next http.Handler) http.Handler {
 
 | Input | Output | Action |
 |-------|--------|--------|
-| `/users/` | `/users` | 301 redirect |
-| `/server/about/` | `/server/about` | 301 redirect |
-| `/api/{api_version}/users/` | `/api/{api_version}/users` | 301 redirect |
+| `/users/` | `/users` | 301 redirect (GET/HEAD; 308 for other methods) |
+| `/server/about/` | `/server/about` | 301 redirect (GET/HEAD; 308 for other methods) |
+| `/api/{api_version}/users/` | `/api/{api_version}/users` | 301 redirect (GET/HEAD; 308 for other methods) |
 | `/users` | `/users` | No redirect (canonical) |
 | `/` | `/` | No redirect (root exception) |
 | `/static/css/style.css` | `/static/css/style.css` | No redirect (file) |
@@ -31636,7 +31645,7 @@ func trackingScript(r *http.Request) template.HTML {
 | **Headings** | Exactly one `<h1 class="page-title">`; one `<h2>` per card; `<h3>` inside a card; levels are never skipped; the page title is never repeated in a card |
 | **Back link** | Every sub-page has the `.breadcrumb` with one link to its hub (`← Preferences`, `← Help`), above the `<h1>`; the text is one translation key. Hubs have none |
 | **Cards** | Content lives in `.section-card`, one concern per card, each labelled by its `<h2>` (`aria-labelledby`). No bare `<h2>` sections on the page background, no card inside a card, no card without a heading |
-| **Classes** | Only the shared theme classes (see "Shared Theme Classes"). A page never borrows a wrapper class from another page type (a help page is not a `search-section`, a preferences page is not a `paste-view`) and never invents a page-specific wrapper |
+| **Classes** | Only the shared theme classes (see "Shared Theme Classes"). A page never borrows a wrapper class from another page type (a help page is not a `search-section`, a preferences page is not a `paste-view`) and never invents a page-specific wrapper or a class that styles anything. A hook-only name is allowed: a semantic scope or content class such as `about-page`, `privacy-policy`, `tagline` or `key-point` that has NO rule of its own in any stylesheet (it exists for anchors, tests and readable markup; every look comes from the shared classes and components) |
 | **Frontend rules** | The "HTML5 & CSS Over JavaScript", "CSS Rules", "JavaScript Rules", "Template Rules" and "CSRF" sections apply unchanged: semantic HTML5 first, no inline `style`, executable `<script>` body (the `application/ld+json` data block is the one exception) or `on*` handler, every state-changing form is a `POST` with the CSRF token, and the page is fully usable without JavaScript |
 
 **Interactive API documentation pages (`/server/docs/swagger`, `/server/docs/graphql`).** These two pages follow the shell above: the shared chrome, `<h1 class="page-title">`, `.page-lead`, and the interactive tool mounted inside one `.section-card`. The tool itself (Swagger UI, GraphiQL) is a JavaScript application and is the one place a page may require JavaScript, so the "usable without JavaScript" rule applies to everything around it, not to the tool:
@@ -31792,7 +31801,7 @@ Language is detected automatically and changed in Preferences. It is never a hea
 - "Feature 1, Feature 2, Feature 3"
 - Any placeholder text
 
-**Example About Page (for a jokes API):**
+**Example About Page (for a jokes API)** — the page CONTENT, rendered inside the shared page shell of PART 16 (each `<section>` is a card section in `.section-card`); the class names in the example are hook-only names ("Classes" rule) with no stylesheet rule of their own:
 ```html
 <article class="about-page">
   <h1>JokeAPI</h1>
@@ -34080,7 +34089,7 @@ Admin Panel Header:
 
 | Setting | Control | Default | Restart | Description |
 |---------|---------|---------|---------|-------------|
-| `session.timeout` | Duration | `24 hours` | No | Session expiry |
+| `session.timeout` | Duration | `24 hours` | No | Idle timeout: writes `idle_timeout` for both admin and user sessions; each role's absolute lifetime `max_age` (admin 30 days, user 7 days, also the cookie `Max-Age`) is fixed and not exposed here |
 | `session.extend_on_activity` | Toggle | On | No | Extend on activity |
 | `mfa.enabled` | Toggle | Off | No | Require MFA for admins |
 | `mfa.methods` | Checkbox group | TOTP | No | Allowed MFA methods |
@@ -39349,6 +39358,8 @@ Every backup is verified **immediately after creation** - backups must be 100% w
 | `{project_name}-daily.tar.gz[.enc]` | Daily incremental (cumulative changes since the previous full - see Incremental Backup Contract) | Always 1 (replaced each run) |
 | `{project_name}-hourly.tar.gz[.enc]` | Hourly incremental (if enabled) | Always 1 (replaced each run) |
 
+**Default archive selection (restore and "Test Backup").** When no archive is named, the newest full is the one with the latest date in its file name (`{project_name}_backup_YYYY-MM-DD`, UTC; a tie goes to the later file modification time). The manifest and its `snapshot_at` are never read to choose, because an encrypted archive keeps the manifest inside the ciphertext and the cleartext `BKUP1` header carries no timestamp.
+
 ### Retention Validation & Examples
 
 **Validation (warn, don't error - server must start):**
@@ -39398,6 +39409,8 @@ WARN: keep_monthly: 24 exceeds recommended 12 (2 years of monthly backups)
 3. Weekly (Sunday) - next priority
 4. Daily (max_backups) - lowest priority, oldest deleted first
 ```
+
+**Reading the examples:** each example shows the state right after a run on a day that follows an earlier run. The incremental's base, the previous full (`myapp_backup_{previous run date}.tar.gz.enc`), is exempt from pruning until the next run, so it is one extra file beyond the counts shown. On the very first run there is no previous full, so the run makes only the full backup: no incremental and no extra file.
 
 **Example: Default settings (max=1, weekly=0, monthly=0, yearly=0)**
 ```
@@ -39543,7 +39556,7 @@ backup only: highest priority wins, and it consumes no monthly, weekly or daily 
 |-------|----------|
 | A full | Restore it as-is |
 | An incremental | Look up `base_backup` in the same directory (same password), verify `base_sha256`, extract the base, then extract the incremental over it, then delete every path in `deleted`. Base missing or checksum mismatch = abort with `ERR_BASE_MISSING` / `ERR_BASE_CORRUPT`, nothing modified |
-| Daily vs hourly | The newest `snapshot_at` wins; the operator may pick either file. Both are applied the same way |
+| Daily vs hourly | The one with the later file modification time wins (an encrypted incremental's `snapshot_at` cannot be read before decryption); the operator may pick either file. Both are applied the same way |
 
 All restore limits (`server.restore.*`) apply to the combined base + incremental expansion.
 
@@ -57709,7 +57722,7 @@ The CLI never adds URLs that weren't in the health response's `cluster.nodes` �
 | Step | Action |
 |------|--------|
 | 1. Discover | CLI's `/api/autodiscover` response includes `cli_versions: { "linux-amd64": {"version": "1.2.3", "sha256": "..."}, ... }` and `cli_min_version` (the value of `server.update.cli_min_version`; omitted or empty means no minimum is enforced). CLI checks on every start (it's short-lived; no separate poll loop needed) and additionally on `{project_name}-cli --update check`. |
-| 2. Decide | If `current_version < cli_versions[os-arch].version`: prompt the user (interactive) OR auto-update silently (when `update.auto: true` AND non-interactive AND `--update yes` was passed earlier). If `current_version < cli_min_version`: refuse to make further requests until updated; print "this CLI is too old; the server requires {min_version} — run '{project_name}-cli --update yes' to upgrade." |
+| 2. Decide | If `current_version < cli_versions[os-arch].version`: prompt the user (interactive) OR auto-update silently (when `update.auto: true` AND the run is non-interactive; `update.auto` is the consent and nothing earlier is required). If `current_version < cli_min_version`: refuse to make further requests until updated; print "this CLI is too old; the server requires {min_version} — run '{project_name}-cli --update yes' to upgrade." |
 | 3. Download | Fetch `{base}/cli/binaries/{project_name}-cli-{os}-{arch}` over HTTPS (with bearer token if logged in; without if `--update` is run pre-login). Save to a tmp path (`/tmp/{project_org}/{internal_name}-XXXXXX/cli.update.tmp` per the spec's tmp-dir rules). |
 | 4. Verify SHA-256 | Same `verifyChecksum()` from PART 23 — match against the `sha256` from autodiscover. Mismatch → delete temp, abort with stderr error. |
 | 5. Atomic swap | Same platform-specific `replaceBinary()` from PART 23. The CLI is user-installed (typically `/usr/local/bin/` or `~/bin/`) — if the user lacks write permission to the install path, CLI prints "you do not have permission to update {binary_path}; ask your admin or move the binary to a writable path" and exits cleanly. |
@@ -65252,7 +65265,7 @@ Moderation only - Server Admin does not manage org members/roles.
 |------|-----------|----------|----------|
 | **Single Instance** | Local SQLite | Local SQLite | Default, simple deployment |
 | **Cluster** | Remote (shared) | Remote (shared) | Multi-node, load distribution |
-| **Mixed Mode** | Any supported | Any supported | Heterogeneous backend infrastructure |
+| **Mixed Mode** | Remote (shared) primary, plus per-node replicas of other types | Same | Heterogeneous backend infrastructure |
 
 #### Clustering vs High Availability (IMPORTANT TERMINOLOGY)
 
@@ -65628,60 +65641,58 @@ DB is now source of truth
 
 ### Mixed Mode (Heterogeneous Database Backends)
 
-**Mixed Mode allows different nodes in a cluster to connect to different database backends.**
+**Mixed Mode is a Cluster whose ONE shared primary database is additionally replicated into databases of other types. Each node lists its own replicas (`server.database.replicas`, PART 5 → "Topology selection"); the primary, the source of truth, stays the single shared database that every node joins through.**
 
 This is useful when:
-- Migrating from one database to another (e.g., MySQL → PostgreSQL)
-- Geographic distribution with local database preferences
-- Testing new database backend before full migration
+- Migrating from one database to another (e.g., MySQL → PostgreSQL): the new type runs as a replica until it is promoted
+- Geographic distribution with a local read replica of another type per node
+- Testing a new database backend before full migration
 
 #### Mixed Mode Configuration
 
-Each node specifies its own database connection:
+Every node has the same primary (delivered to it by the join flow); only the replicas differ per node:
 
-**Node 1 (PostgreSQL):**
+**Node 1 (no replica):**
 ```yaml
 server:
   database:
     driver: postgres
-    host: pg.us-east.example.com
-    port: 5432
-    name: myapp
-    username: myapp
-    password: ${DB_PASSWORD}
+    url: ${DATABASE_URL}
 ```
 
-**Node 2 (MariaDB):**
-```yaml
-server:
-  database:
-    driver: mysql
-    host: maria.eu-west.example.com
-    port: 3306
-    name: myapp
-    username: myapp
-    password: ${DB_PASSWORD}
-```
-
-**Node 3 (PostgreSQL - different server):**
+**Node 2 (a MariaDB read replica):**
 ```yaml
 server:
   database:
     driver: postgres
-    host: pg.ap-south.example.com
-    port: 5432
-    name: myapp
-    username: myapp
-    password: ${DB_PASSWORD}
+    url: ${DATABASE_URL}
+    replicas:
+      - name: mariadb-eu
+        driver: mysql
+        url: mysql://{user}:{password}@maria.eu-west.example.com:3306/myapp
+        read_only: true
+```
+
+**Node 3 (a second PostgreSQL replica on another server):**
+```yaml
+server:
+  database:
+    driver: postgres
+    url: ${DATABASE_URL}
+    replicas:
+      - name: pg-ap
+        driver: postgres
+        url: postgres://{user}:{password}@pg.ap-south.example.com:5432/myapp
+        read_only: true
 ```
 
 #### Mixed Mode Requirements
 
 | Requirement | Description |
 |-------------|-------------|
-| **Valkey/Redis REQUIRED** | State synchronization between heterogeneous backends |
-| **Schema compatibility** | All databases MUST have identical schema |
-| **Data sync** | Application handles cross-database replication via Valkey |
+| **Valkey/Redis REQUIRED** | Change events from the primary to every node's replicas |
+| **Schema compatibility** | The primary and every replica MUST have identical schema |
+| **Data sync** | Writes go to the shared primary; each node applies the change events to its own replicas, so a replica never changes which database is the source of truth |
 | **Same schema version** | All nodes must run same application version |
 
 #### Mixed Mode Diagram
@@ -65692,53 +65703,41 @@ server:
 │                                                                     │
 │  ┌──────────┐        ┌──────────┐        ┌──────────┐             │
 │  │  Node 1  │        │  Node 2  │        │  Node 3  │             │
-│  │ (US-East)│        │ (EU-West)│        │(AP-South)│             │
+│  │(no repl.)│        │ (MariaDB │        │(PostgreSQL│            │
+│  │          │        │ replica) │        │ replica) │             │
 │  └────┬─────┘        └────┬─────┘        └────┬─────┘             │
-│       │                   │                   │                    │
 │       └───────────────────┼───────────────────┘                    │
-│                           │                                         │
 │                  ┌────────▼────────┐                               │
-│                  │  Valkey/Redis   │  ← Sync layer (REQUIRED)      │
-│                  │    Cluster      │                               │
+│                  │  Valkey/Redis   │  ← change events (REQUIRED)   │
 │                  └────────┬────────┘                               │
-│                           │                                         │
 └───────────────────────────┼─────────────────────────────────────────┘
-                            │
-        ┌───────────────────┼───────────────────┐
-        │                   │                   │
-        ▼                   ▼                   ▼
-┌──────────────┐   ┌──────────────┐   ┌──────────────┐
-│  PostgreSQL  │   │   MariaDB    │   │  PostgreSQL  │
-│  (US-East)   │   │  (EU-West)   │   │  (AP-South)  │
-└──────────────┘   └──────────────┘   └──────────────┘
+                            ▼
+                 ┌─────────────────────┐
+                 │ Shared primary DB   │  ← the one source of truth
+                 └─────────────────────┘
 ```
 
 #### Mixed Mode Sync via Valkey
 
-**All state changes are broadcast through Valkey/Redis:**
+**Every write goes to the shared primary; the change is then broadcast through Valkey/Redis:**
 
 ```
 Node 1 writes user record
          │
          ▼
-Local PostgreSQL INSERT
+Shared primary INSERT
          │
          ▼
 Publish to Valkey: "user.created" + payload
          │
          ├──────────────────────────────────────┐
-         │                                      │
          ▼                                      ▼
-Node 2 receives                          Node 3 receives
-         │                                      │
-         ▼                                      ▼
-Local MariaDB INSERT                     Local PostgreSQL INSERT
+Node 2 applies to its MariaDB replica   Node 3 applies to its PostgreSQL replica
 ```
 
 **The application handles:**
-- Publishing changes to Valkey after local writes
-- Subscribing to changes from other nodes
-- Applying remote changes to local database
+- Publishing changes to Valkey after the primary write
+- Subscribing to changes and applying them to the node's own replicas
 - Conflict resolution (last-write-wins by timestamp)
 
 ### Node Management
