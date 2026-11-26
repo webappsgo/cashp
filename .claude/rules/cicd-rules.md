@@ -50,7 +50,7 @@ GitHub Actions files (`.github/workflows/`):
 - `ci.yml` — push/PR to default branch + weekly cron for security jobs: lint, test+coverage, build, vuln-scan, secret-scan, workflow-policy, image-scan
 - `release.yml` — tag push (`v*`, `*.*.*`): production release, 8-platform matrix
 - `beta.yml` — push to `beta` branch: beta releases
-- `daily.yml` — 3am UTC daily + push to main/master: daily builds
+- `devel.yml` — 3am UTC daily + push to main/master: rolling development release
 - `docker.yml` — any branch push + version tags + 4am UTC daily: `build-standard` + `build-devel` (`:devel`) jobs
 - `docker-aio.yml` — any branch push + version tags: All-in-One image only
 
