@@ -6,13 +6,15 @@ reviewers. The catalogs are embedded in the Go package at
 
 ## Current status
 
-The repository contains seven locale catalogs: Arabic (`ar`), German (`de`),
-English (`en`), Spanish (`es`), French (`fr`), Japanese (`ja`), and Chinese
-(`zh`). Catalog lookup, language negotiation, formatting, and catalog
-integrity tests exist. The server, administration pages, CLI, and agent are
-not yet fully connected to this package, and the default server configuration
-currently enables only English. Do not advertise the other catalogs as
-available in the running application until that integration is complete.
+The package embeds seven locale catalogs: Arabic (`ar`), German (`de`), English
+(`en`), Spanish (`es`), French (`fr`), Japanese (`ja`), and Chinese (`zh`). It
+provides catalog lookup and fallback, request language negotiation, formatting,
+plural handling, accessibility helpers, and template functions. The current
+server page templates do not call those translation functions, and the server
+does not install the package's locale middleware. The server-rendered pages
+therefore still display their existing English strings; the catalogs should
+not be described as translated UI in the running application. The CLI and
+agent have language options, but their output is not wired to these catalogs.
 
 No individual translator names are recorded in the current locale metadata.
 The repository therefore credits zero named translators across seven locale
@@ -42,16 +44,18 @@ quotation, and numeral conventions.
 
 1. Copy `src/common/i18n/locales/en.json` to a lowercase BCP 47 filename such
    as `pt.json` or `pt-br.json`.
-2. Translate every value and fill the locale metadata. Add the locale to the
-   language registry and the server's supported-language configuration when
-   that integration is enabled.
+2. Translate every value and fill the locale metadata. The package discovers
+   embedded locale files; update its locale integrity expectations and
+   formatting rules when adding a locale. Runtime UI integration also needs
+   to pass the bundle's functions to the relevant templates and resolve a
+   locale for each request or command.
 3. Keep the translation key set, interpolation tokens, and required plural
    categories identical to the English catalog.
 4. Run `make test`; catalog tests check completeness, named tokens, plural
    rules, and that translations are not unchanged English copies.
-5. Review the application at 320, 768, and 1280 pixels once locale rendering
-   is wired through the pages. Check right-to-left layouts in their mirrored
-   direction.
+5. Review the translated UI at 320, 768, and 1280 pixels after locale
+   rendering is wired through the pages. Check right-to-left layouts in their
+   mirrored direction.
 6. Update the locale count and translator credits in this file and the README
    language list when that list is added.
 

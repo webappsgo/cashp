@@ -1,70 +1,42 @@
 # Admin Panel
 
-The current server mounts a server-rendered administration panel at
-`/server/{admin_path}`. The segment is configured by `server.admin_path` and
-defaults to `administration`. The panel uses a separate admin store and
-session-based authentication. It is still a foundation: several controls
-render settings or data that are not yet connected to the full product
-services.
+The server-rendered administration panel lives at
+`/server/{admin_path}`. `server.admin_path` selects the path segment; the
+default is `administration`. Panel pages use server-side Go templates and remain
+usable without JavaScript.
 
-## First run and login
+## First run and sign-in
 
-On first request, the panel initializes its bootstrap state and presents the
-setup flow. Follow the instructions shown by the running instance. After setup,
-sign in through the panel login form. Protected pages require an admin session;
-debug mode does not bypass authentication. Passwords and session credentials
-are not displayed in the panel.
+On first start, the server bootstraps the primary administrator if none exists.
+The one-time setup token is shown in the startup output and can be redeemed at
+`/server/{admin_path}/setup`. After setup, sign in at
+`/server/{admin_path}/`. Setup tokens are single-use. Protected panel pages
+require an administrator session, and state-changing forms require CSRF
+validation. Debug mode does not bypass authentication.
 
-## Current page groups
+## Panel pages
 
-The panel currently provides these route groups beneath
-`/server/{admin_path}`:
+The panel provides a dashboard, setup and sign-in flows, server settings,
+administrator account management, logs and audit history, server information,
+help, and administrator profile and preferences. Settings sections include
+branding, TLS, email, notifications, scheduler, backups, updates, maintenance,
+security, network services, moderation, invites, and cluster nodes. The
+running server's route list and settings schema are authoritative for the
+configured build.
 
-| Route | Purpose |
-|---|---|
-| `/` | Dashboard or login/setup entry point |
-| `/setup` | Initial administrator setup |
-| `/settings` | Core server settings |
-| `/branding`, `/ssl`, `/email`, `/notifications` | Identity, TLS, email, and notification settings |
-| `/scheduler`, `/backup`, `/updates`, `/maintenance` | Operations settings |
-| `/security/auth`, `/security/ratelimit`, `/security/firewall`, `/security/allowlist` | Security settings |
-| `/network/tor`, `/network/i2p`, `/network/geoip`, `/network/blocklists` | Network settings |
-| `/moderation/users`, `/users/invites`, `/cluster/add`, `/url` | Additional settings pages |
-| `/logs` | Log view and filtering |
-| `/logs/audit` | Audit log view |
-| `/logs/export` | Log export |
-| `/info` | Server information |
-| `/info/help` | Built-in help |
-| `/admins` | Administrator accounts |
-| `/security/tokens` | Admin API tokens |
-| `/cluster/nodes` | Cluster node view |
-| `/{admin}/profile` | Signed-in administrator profile |
-| `/{admin}/preferences` | Signed-in administrator preferences |
-| `/{admin}/notifications` | Signed-in administrator notifications |
+The panel's administrator list does not expose other administrators'
+credentials or private profile details. The primary administrator cannot be
+removed through the panel. Token plaintext is shown only when a token is
+created; the stored token is hashed.
 
-The admin package keeps some legacy `config/` strings internally, but its URL
-builder removes that grouping. The routes above use the public canonical
-paths. A rendered settings page does not imply that its associated service is
-fully implemented; consult the integration and API guides for runtime status.
+## Settings API
 
-The `/admins` page does not list other administrator accounts. An operator can
-invite an administrator, revoke a pending invitation, enable or disable a
-known username, or remove a non-primary administrator. Status changes require
-typing the username again; disabling an account revokes its active sessions.
-
-## API availability
-
-The panel does not currently expose a matching REST API for every page. The
-currently mounted machine API is listed in the [API reference](api.md) and the
-live OpenAPI document. The CLI's `--admin` command surface is also incomplete.
-
-## Product scope still in development
-
-The complete user, organization, custom-domain, hosting, billing, support,
-security, and integration administration flows described in the product
-specification are not yet available in this panel. Do not treat a settings
-label or a route in an older guide as proof that its backing feature is
-operational. See the [implementation backlog](https://github.com/webappsgo/cashp/blob/main/TODO.AI.md).
+Server Admin bearer tokens can read and update supported settings at
+`/api/{api_version}/server/{admin_path}/settings` using `GET` and `PATCH`.
+Responses omit password fields. PATCH accepts a JSON object and validates each
+field using the same setting definitions as the panel. The endpoint records
+successful changes in the audit log. The generated OpenAPI document describes
+the current request and response contract.
 
 ## Related
 

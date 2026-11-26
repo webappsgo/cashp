@@ -6,8 +6,10 @@ nobody has to install a toolchain on their workstation.
 
 ## Requirements
 
-The only hard requirement is **Docker**. The Go toolchain runs inside a
-container; you do not need Go installed on the host.
+Build and unit-test targets require **Docker and GNU Make**. The Go toolchain
+runs inside a container; you do not need Go installed on the host. The Incus
+binary integration suite and Python/MkDocs documentation tools are only needed
+for those specific checks.
 
 ```bash
 git clone https://github.com/webappsgo/cashp.git
@@ -15,11 +17,9 @@ cd cashp
 make local
 ```
 
-!!! warning "Never build on the host"
-    Every build and test target shells out to `casjaysdev/go:latest` through
-    Docker. Running `go build` directly on the host bypasses the pinned
-    toolchain and the shared module cache, and its output is not what CI
-    produces.
+!!! warning "Use the project toolchain"
+    Go builds, tests, and linters run inside `casjaysdev/go:latest` through
+    Docker. The full operating-system integration suite uses Incus separately.
 
 ## Repository layout
 
@@ -113,11 +113,11 @@ Tests run `go test -v -cover ./...` inside the container with a **60% coverage
 floor**. The target fails the build if total coverage drops below it, so a
 change that adds code without adding tests will not pass.
 
-`tests/run_tests.sh` runs only the basic Docker binary checks. The full
-systemd service lifecycle is a separate, explicit Incus run through
-`tests/incus.sh`; browser testing is separate as well through
-`tests/e2e.sh`. The test scripts accept `BINDIR` and `RELDIR` so their build
-artifacts can be directed to temporary output directories.
+`tests/run_tests.sh` runs the basic Docker binary checks. `tests/incus.sh`
+exercises the operating-system and service-manager integration in Incus.
+Browser tests are separate and on-demand through `tests/e2e.sh`; they are not
+part of `make test`. The test scripts accept `BINDIR` and `RELDIR` so their
+build artifacts can be directed to temporary output directories.
 
 Coverage profiles are written to a temporary directory under
 `$TMPDIR/{project_org}/{internal_name}-XXXXXX`, never into the repository.
@@ -132,6 +132,13 @@ image build — no pre-built binaries are needed.
 
 The target builds locally and does **not** push. Publishing to a registry is
 CI/CD's job, not a developer's laptop's.
+
+## CI/CD
+
+The repository carries workflows for GitHub Actions, GitLab CI, Gitea Actions,
+Forgejo Actions, and Jenkins. CI uses explicit toolchain commands rather than
+Make targets and runs build, test, lint, and security checks. Workflow changes
+must preserve the same required checks across providers.
 
 ## Documentation
 

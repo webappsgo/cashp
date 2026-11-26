@@ -1,32 +1,38 @@
 # Configuration
 
-The server reads `server.yml` from the configuration directory selected by the
-shared path resolver. The configuration model is defined in `src/config`; this
-guide summarizes the file shape and the settings currently consumed by the
-running server. Feature packages may define additional settings that are not
-yet connected to runtime behavior.
+The server reads `server.yml` from the resolved configuration directory. Its
+typed schema and defaults are in `src/config`; settings are grouped under the
+top-level `server`, `web`, and `tor` keys. Invalid values are reported during
+validation. A missing file is created from defaults; a legacy
+`server.yaml` is renamed to `server.yml` on startup.
 
-## File location and defaults
+## Paths
 
-The file name is `server.yml`. The default system and per-user paths are
-resolved by the process identity and operating system. Related data, cache,
-backup, and log directories use the same shared path rules. The server does
-not accept a `--config` command-line flag; see the [command reference](cli.md).
+Directory flags take precedence over their matching environment variables,
+which take precedence over operating-system defaults. The process chooses the
+system or per-user path set from its privileges at startup.
 
-If the file is missing, the config package starts from built-in defaults and
-creates the configuration file. Invalid setting values are replaced with
-defaults and reported as warnings. Unreadable or malformed YAML prevents
-startup.
+| Path | Flag | Environment | Linux system default | Linux user default |
+|---|---|---|---|---|
+| Configuration | `--config` | `CONFIG_DIR` | `/etc/webappsgo/cashp` | `~/.config/webappsgo/cashp` |
+| Data | `--data` | `DATA_DIR` | `/var/lib/webappsgo/cashp` | `~/.local/share/webappsgo/cashp` |
+| Cache | — | `CACHE_DIR` | `/var/cache/webappsgo/cashp` | `~/.cache/webappsgo/cashp` |
+| Logs | `--log` | `LOG_DIR` | `/var/log/webappsgo/cashp` | `~/.local/log/webappsgo/cashp` |
+| PID file | `--pid` | `PID_FILE` | `/var/run/webappsgo/cashp.pid` | under the data directory |
 
-## Main structure
+`DATABASE_DIR` selects the database directory and `BACKUP_DIR` selects the
+backup directory. In containers the SQLite directory defaults to
+`/data/db/sqlite`. Other operating systems use their platform's application
+data and support directories. See `src/common/paths` for the exact resolved
+paths.
 
-The configuration document has three top-level sections:
+## Main settings
 
 ```yaml
 server:
   mode: production
   address: "[::]"
-  port: 8080
+  port: 64580
   admin_path: administration
   api_version: v1
   database:
@@ -38,45 +44,41 @@ tor:
   enabled: false
 ```
 
-The exact accepted keys and default values are defined by the typed structs in
-`src/config/config.go` and `src/config/defaults_values.go`. The schema includes
-server identity and listeners, TLS, limits, trusted proxies, sessions, rate
-limits, security, privacy, database, logs, scheduler, backups, metrics, GeoIP,
-notifications, maintenance, feature flags, users, organizations, I2P, web UI,
-and CORS settings. A schema entry may exist before its feature is wired into
-the server.
+The schema includes listener and URL detection, TLS, request limits, trusted
+proxies, sessions, rate limits, security, privacy, database, logging,
+scheduler, backup, compliance, updates, metrics, GeoIP, notifications,
+maintenance, feature, user, organization, I2P, web UI, and CORS settings. The
+admin panel exposes field-driven server settings; restart-required values take
+effect after restart. Scheduler settings are loaded from persisted admin
+settings when the scheduler starts.
 
-## Settings consumed by the current server composition
+## Environment overrides
 
-The current main application reads these areas directly:
+These names are read by the config loader. Values marked **first run** are
+copied into a newly generated configuration and are not re-applied after
+`server.yml` exists. Runtime values override the file each time it is loaded.
 
-| Setting area | Runtime effect |
-|---|---|
-| `server.mode` | Selects runtime mode and debug behavior |
-| `server.address`, `server.port` | Bind HTTP/HTTPS listeners |
-| `server.baseurl`, `server.api_version`, `server.admin_path` | Configure routes and generated API documentation |
-| `server.branding` | Public page and documentation identity |
-| `server.ssl` | Configure HTTPS, certificate loading, redirects, and HSTS |
-| `server.limits`, `server.rate_limit` | Configure request timeouts and rate limiting |
-| `server.database` | Select and open the application database |
-| `server.metrics` | Enable metrics routes and registry options |
-| `server.notifications` | Initialize notification delivery |
-| `web.ui.theme` | Set the default rendered page theme |
-| `tor.enabled` | Configuration value; Tor service wiring is not complete |
+| Variable | When | Setting |
+|---|---|---|
+| `LISTEN` | First run | `server.address` |
+| `PORT` | First run | `server.port` |
+| `APPLICATION_NAME` | First run | `server.branding.title` |
+| `APPLICATION_TAGLINE` | First run | `server.branding.tagline` |
+| `DATABASE_DIR` | First run and path resolver | Database directory |
+| `BACKUP_DIR` | First run and path resolver | Backup directory |
+| `LOG_DIR` | First run and path resolver | Log directory |
+| `MODE` | Runtime | `server.mode` |
+| `DOMAIN` | Runtime | `server.fqdn` |
+| `DATABASE_DRIVER`, `DATABASE_URL` | Runtime | Database connection |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS` | Runtime | Outbound SMTP |
+| `SMTP_FROM_NAME`, `SMTP_FROM_EMAIL` | Runtime | SMTP sender identity |
 
-Consult the [API reference](api.md) and [integration status](integrations.md)
-before relying on settings for features not listed as active here.
+`COLOR` and `NO_COLOR` control terminal color handling. Directory environment
+variables such as `CONFIG_DIR`, `DATA_DIR`, `CACHE_DIR`, `LOG_DIR`, and
+`PID_FILE` are resolved by the shared path package rather than the YAML loader.
 
-## Environment variables
+## Related
 
-Environment overrides are implemented by the config package. The exact
-first-run and runtime override lists are in `src/config/env.go`; they are not
-repeated here because they change with the configuration implementation. Flags
-supported by the server are documented in the [CLI reference](cli.md#server-cashp).
-
-## Security
-
-Keep the configuration file and its containing directory restricted to the
-service account. Do not commit credentials or copy live secrets into issue
-reports. The project is not yet ready for production deployment; review the
-[security status](security.md) before exposing a development instance.
+- [Command-line reference](cli.md)
+- [Admin panel](admin.md)
+- [Integrations](integrations.md)

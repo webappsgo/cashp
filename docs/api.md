@@ -2,9 +2,9 @@
 
 The server exposes health and build metadata endpoints, optional metrics,
 client autodiscovery, account and organization APIs, tenant billing APIs,
-support APIs, generated OpenAPI, and GraphQL documentation routes. The generated
-OpenAPI document is built from the route set mounted by the running server.
-Hosting control APIs described in `IDEA.md` are not yet mounted.
+support APIs, administration settings, generated OpenAPI, and GraphQL
+documentation routes. The OpenAPI document is built from the routes mounted by
+the running server and is the authoritative API contract for that build.
 
 ## Server routes
 
@@ -15,6 +15,7 @@ Hosting control APIs described in `IDEA.md` are not yet mounted.
 | `GET` | `/server/livez` | Public | Liveness probe |
 | `GET` | `/server/version` | Public | Build identity |
 | `GET` | `/api/{api_version}/server/autodiscover` | Public | Client bootstrap information |
+| `GET` | `/api/{api_version}` | Public | Homepage content and instance API links |
 | `GET` | `/api/autodiscover` | Public | Unversioned autodiscovery alias |
 | `GET` | `/api/{api_version}/server/healthz` | Public | Versioned health alias |
 | `GET` | `/api/healthz` | Public | Unversioned health alias |
@@ -69,6 +70,16 @@ also enforce the role shown by the organization membership policy.
 | `GET`, `POST`, `DELETE` | `/api/{api_version}/orgs/{slug}/domains[/{domain}]` | Organization admin | Manage organization custom domains |
 | `POST` | `/api/{api_version}/orgs/{slug}/domains/{domain}/verify` | Organization admin | Verify an organization custom domain |
 
+## Server administration routes
+
+The server settings API is restricted to Server Admin bearer tokens. Password
+and secret values are omitted from GET responses; PATCH validates each field
+against the same schema as the server-rendered settings pages.
+
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| `GET`, `PATCH` | `/api/{api_version}/server/{admin_path}/settings` | Server Admin token | Read or update supported server settings |
+
 ## Billing routes
 
 Tenant billing endpoints are available below `/api/{api_version}/orgs/{slug}/billing`.
@@ -115,11 +126,6 @@ Use the configured API version instead of `v1` when it differs from the
 default. The documentation explorers are available at `/server/docs/swagger`
 and `/server/docs/graphql` on a running development instance.
 
-## Remaining API work
-
-The hosting, service orchestration, database, and full administration API
-surfaces described in `IDEA.md` are still under implementation. The
-administration panel currently exposes server-rendered pages; its complete
-REST API is not yet mounted. Client command names are not evidence that a
-corresponding API route is available. Consult the generated OpenAPI document
-for the actual live route set.
+The route list above groups the public API by feature. The generated OpenAPI
+document includes the complete method and path inventory registered by the
+running server.

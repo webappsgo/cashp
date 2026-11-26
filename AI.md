@@ -1272,6 +1272,7 @@ Quick reference: Accept `yes/no`, `true/false`, `1/0`, `on/off`, `enable/disable
 | `PLAN.AI.md` | Optional | Project plan — AI creates/updates. If it exists, this is THE plan |
 | `TODO.md` | Optional | Task list — human edits/owns. AI reads, interprets, executes, and marks items done in place. Never delete, empty, or restructure |
 | `TODO.AI.md` | Optional | Task list — AI creates/updates (3+ tasks only) |
+| `PROMPT.md` | Optional | Prompt/instructions file — human edits/owns. AI reads and follows it; never rewrite, delete or restructure |
 | `CLAUDE.local.md` | Optional | Personal Claude Code notes — gitignored |
 | `README.md` | ✓ | Public documentation |
 | `LICENSE.md` | ✓ | License file |
@@ -3141,6 +3142,7 @@ See IDEA.md for the full project breakdown.
 | **TODO.md** | Task tracking (human-owned) | AI may mark items done; never delete/empty |
 | **PLAN.AI.md** | Implementation plan (AI-owned) | Planning new features |
 | **PLAN.md** | Implementation plan (human-owned) | AI may mark items done; never rewrite |
+| **PROMPT.md** | Prompt/instructions (human-owned) | AI reads and follows it; never rewrite or delete |
 | **README.md** | User documentation | Usage changes |
 
 **Hierarchy:** SPEC.md > AI.md > global CLAUDE.md. If SPEC.md and AI.md conflict, SPEC.md wins — that is its purpose.
@@ -5094,6 +5096,7 @@ func gUBE(e string) (*U, error) {
 | **TODO.md** | Project repository | Task tracking (human-owned) | **MARK ITEMS DONE ONLY** (never delete/empty) |
 | **PLAN.AI.md** | Project repository | Implementation plan (AI-owned) | **YES** |
 | **PLAN.md** | Project repository | Implementation plan (human-owned) | **MARK ITEMS DONE ONLY** (never rewrite) |
+| **PROMPT.md** | Project repository | Prompt/instructions (human-owned) | **NEVER** (read and follow only) |
 
 ### Documentation Rules
 
@@ -5110,6 +5113,7 @@ AI.md (implementation spec - READ-ONLY)
 IDEA.md (project spec - update as needed)
     ├── PLAN.AI.md  (AI-owned plan, optional)
     ├── PLAN.md     (human-owned plan, optional - AI marks items done only)
+    ├── PROMPT.md   (human-owned prompt, optional - AI reads and follows, never rewrites)
     ├── TODO.AI.md  (AI-owned task tracking)
     └── TODO.md     (human-owned task tracking - AI marks items done only)
 ```
@@ -6232,6 +6236,7 @@ package main
 | **Per-record provenance** | When records come from several sources, every record or file carries a `source` key that names its entry in the third-party notices |
 | **Unknown or unusable terms** | Content with no stated license, a license that forbids redistribution, a site that forbids scraping, or an unknown origin is NOT embedded. The project asks the user instead of guessing |
 | **Generated content** | It counts as the project's own only when the user says so, and is never presented with an invented source |
+| **Project translations** | Strings translated for the project under the localization rule (by the AI or a human translator, I18N & A11Y → "Translating") are the project's own work and need no source record; a human translator's pull request is under the project license. A translation copied from another project, a service or a third-party catalogue is third-party content and follows every row above |
 
 ## License Compatibility Matrix
 
@@ -6513,6 +6518,7 @@ PROJECT_ORG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+
 ├── TODO.md                 # Task tracking (human-owned, optional - AI marks items done only)
 ├── PLAN.AI.md              # Implementation plan (AI-owned, optional)
 ├── PLAN.md                 # Implementation plan (human-owned, optional - AI marks items done only)
+├── PROMPT.md               # Prompt/instructions (human-owned, optional - AI never rewrites)
 ├── Jenkinsfile             # Jenkins pipeline
 ├── release.txt             # Local-build version (optional)
 └── site.txt                # Official site URL (optional)
@@ -7678,7 +7684,7 @@ func SafeResourcePath(input string) (string, error) {
 | `/../admin` | ✗ rejected | Path traversal |
 | `/server/admin/../secret` | ✗ rejected | Path traversal |
 | `/server/admin/..` | ✗ rejected | Path traversal |
-| `....` | ✗ rejected | Invalid chars |
+| `....` | ✗ rejected | Path traversal (any `..` in an identifier path is rejected) |
 | `/Admin` | ✗ rejected | Uppercase not allowed |
 | `/server/admin/<script>` | ✗ rejected | Invalid chars |
 
@@ -8744,7 +8750,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | `web.footer.custom_html` | `server.branding.content.footer` (format `html`, body: the old value) |
 | `server.pages.about.content`, `.privacy.content`, `.terms.content` | `server.branding.content.about`, `.privacy`, `.terms` (format `md`, body: the old value) |
 | `server.admin.email`, `server.admin.path` (legacy keys; `server.admin_path` is the only canonical key) | `server.contact.admin.email`, `server.admin_path` |
-| `server.admin.password`, `.token`, `.username`, `.two_factor.*` | removed (the operator token is `server.token`; there are no admin passwords) |
+| `server.admin.password`, `.token`, `.username`, `.two_factor.*` | removed (the operator token is `server.token`; there is no shared admin password in configuration, while each administrator account has its own password in the database) |
 | `server.https_port` | when `server.port` is a single number and `https_port` is greater than 0, folded into `server.port` as the quoted string `"{port},{https_port}"` ("Dual Port Support"); otherwise removed. An already-dual `server.port` is kept as written, and `server.ssl.enabled` is never changed by the migration |
 | `server.ssl.dns01.*`, `server.ssl.letsencrypt.provider`, `.credentials_encrypted` | `server.ssl.letsencrypt.dns_provider`, `server.ssl.letsencrypt.dns_credentials` (`validated_at`, `domain` and `domains` are removed) |
 | `server.security.installation_secret`, `.installation_secret_previous`, `.installation_secret_previous_expires`, `.encryption_key_previous`, `.encryption_key_previous_expires` | imported into the database `app_secrets` row of the same name when that row is missing (the legacy `..._previous_expires` keys become the canonical `{name}_previous_until` rows), then removed from the file (PART 11 → "Rotation contract") |
@@ -9204,6 +9210,7 @@ ENTRYPOINT [ "tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh" ]
 | `--maintenance update` | ⚠️ Check | Can write to binary path? | None (error) |
 | `--maintenance setup` | 🔐 Auth | Only first-run OR valid setup token | N/A |
 | `--maintenance mode` | 🔐 Auth | Requires admin auth OR root | N/A |
+| `--maintenance secret rotate <name>` | 🔐 Auth | Requires `server.token` OR root | N/A |
 | (normal start) | ❌ No | Adapts paths to current user | N/A |
 
 **Key insight:** After service install, the `{project_name}` user owns all data directories. However, sensitive operations require AUTHORIZATION, not just file access.
@@ -9217,6 +9224,7 @@ ENTRYPOINT [ "tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh" ]
 | `--maintenance setup` | Creates admin account | First-run only OR valid setup token |
 | `--maintenance restore` | Overwrites ALL data | Admin auth OR root OR empty database |
 | `--maintenance mode` | Changes server behavior | Admin auth OR root |
+| `--maintenance secret rotate installation_secret` / `encryption_key` | Rotates a root secret or the at-rest encryption key | `server.token` OR root + typed confirmation |
 
 **Setup authorization flow:**
 
@@ -15215,11 +15223,11 @@ func GetUserWithVersion(ctx context.Context, userID int, version int) (*User, er
 |--------------|---------------------|-------------|
 | Static assets with matching `?v=` build stamp | `public, max-age=31536000, immutable` | 1 year — URL changes every release, so this can never go stale |
 | Static assets without / with mismatched `?v=` | `no-cache` + `ETag` | Always revalidated — never trusted across updates |
-| HTML pages | `no-store` | Always fetch fresh. The service worker's Cache API copy is separate from the HTTP cache and follows "Offline copies are for public pages only" (PART 16) |
+| HTML pages (public) | `no-store` | Always fetch fresh; an authenticated page overrides this with the row below. The service worker's Cache API copy is separate from the HTTP cache and follows "Offline copies are for public pages only" (PART 16) |
 | `/sw.js` and `/manifest.json` | `no-cache` + `ETag` | Browser must see the new service worker on its next update check — never immutable |
 | API responses (public) | `public, max-age=60` | Short cache for CDN |
 | API responses (private) | `private, no-store` | User-specific data |
-| Authenticated pages | `private, no-store` | Never cache, and never put in the service worker cache: they never carry `X-Offline-Cache` |
+| Authenticated pages (override of the public HTML row) | `private, no-store` | Never cache, and never put in the service worker cache: they never carry `X-Offline-Cache` |
 | Error pages | `no-store` | Don't cache errors |
 
 ### Asset Version-Busting (REQUIRED)
@@ -15316,9 +15324,7 @@ Called from the HTML middleware only — never on static, API, or `/sw.js` respo
 func warmCache(ctx context.Context) error {
     // Warm on startup and periodically
 
-    // Configuration
-    config, _ := db.GetServerConfig()
-    cache.Set(ctx, "config:server", config, 1*time.Minute)
+    // Operator-editable configuration is never read from the database (PART 5): the merged config files are the only source, so warm derived runtime data only
 
     // Blocklists
     blocklist, _ := db.GetBlocklist()
@@ -16229,7 +16235,7 @@ When `DEBUG=true` is active and an error occurs, the canonical error body (PART 
 |------|-------------|
 | Path confinement | Reject absolute paths, `..`, empty names, drive-letter paths, and any extracted path that escapes the target directory |
 | Symlinks / special files | Reject symlinks, hard links, device files, named pipes, sockets, and setuid/setgid bits |
-| Size limits | Enforce all four before extracting and again while streaming. Defaults, all configurable under `restore.*`: max archive size `1G` (`restore.max_archive_size`), max total expanded size `4G` (`restore.max_expanded_size`), max file count `10000` (`restore.max_files`), max single file `512M` (`restore.max_file_size`) |
+| Size limits | Enforce all four size limits before extracting and again while streaming (the ratio guard in the next row is separate). Defaults, all configurable under `restore.*`: max archive size `1G` (`restore.max_archive_size`), max total expanded size `4G` (`restore.max_expanded_size`), max file count `10000` (`restore.max_files`), max single file `512M` (`restore.max_file_size`) |
 | Compression bombs | Abort and delete the partial output when the expanded-to-compressed ratio exceeds `100:1` (`restore.max_ratio`) or any size limit above is exceeded; count bytes and files while streaming, never trust archive headers |
 | Permissions | Normalize extracted file modes to safe defaults; never preserve executable bits unless the feature explicitly needs them |
 | Overwrite policy | Do not overwrite existing files outside an explicit replace flow |
@@ -19433,13 +19439,13 @@ server:
 ```yaml
 server:
   trusted_proxies:
-    # Additional IPs/CIDRs to trust (private ranges always trusted)
+    # Additional IPs/CIDRs to trust (the always-trusted ranges are never listed here)
     additional: []
     # Header that carries the client IP: auto, or one pinned header name (see "Client IP Detection")
     client_ip_header: auto
 ```
 
-**Used by `X-Forwarded-*` trust gate.** Every header-based detection chain in the spec — `BuildURL(r, ...)` (PART 8 → "Resolution Order"), CORS allow-list resolution (PART 16), CSP `connect-src` learning, domain-learning algorithm — only honors the following proxy headers when the **immediate peer's IP** is in `trusted_proxies` (private ranges + the `additional` allow-list):
+**Used by `X-Forwarded-*` trust gate.** Every header-based detection chain in the spec — `BuildURL(r, ...)` (PART 8 → "Resolution Order"), CORS allow-list resolution (PART 16), CSP `connect-src` learning, domain-learning algorithm — only honors the following proxy headers when the **immediate peer's IP** is in `trusted_proxies` (the always-trusted ranges in the table below, which include the configured listen address's `/24`, plus the `additional` allow-list):
 
 | Category | Trusted headers |
 |----------|----------------|
@@ -19800,6 +19806,7 @@ server:
 | `security` | `server.contact.security.email` (default `security@{fqdn}` per RFC 2142). If explicitly set to `""`, INTERNAL delivery (notifications, webhooks) falls back to `server.contact.admin.email`; security.txt and every public page then omit the `mailto:` line, so the admin address is never published. Same fallback for each webhook transport (security.webhooks.telegram → admin.webhooks.telegram). |
 | `abuse` | `server.contact.abuse.email` if set → else `server.contact.general.email` if set → else `server.contact.admin.email`. Same fallback chain for webhooks. Never defaults to `abuse@{fqdn}` automatically — RFC 2142 recommends that address, but the operator must opt in (an unprovisioned mailbox would bounce reports). |
 | `general` | `server.contact.general.email` if set → else `server.contact.admin.email`. Same fallback for webhooks. |
+| `dpo` | `server.contact.dpo.email` if set → else `server.contact.general.email` → else `server.contact.admin.email` for `privacy` submissions (internal delivery). The public DPO page uses only `dpo`, then `general`, and never shows the admin address. |
 
 **Effective recipient is computed once per dispatch, not cached across requests** — operator can change `general.email` and the next contact-form submission picks it up without restart.
 
@@ -19869,6 +19876,7 @@ if !subtle.ConstantTimeCompare([]byte(got), []byte(want)) {
 | `server.contact.security.email` | Public (security.txt `Contact: mailto:` line — the secondary/CC channel; GitHub private vulnerability reporting is primary) | Researchers need to reach you. Choose carefully. Suggest a role address (`security@{fqdn}`) over a personal one. |
 | `server.contact.abuse.email` | Public (contact page "Abuse Reports" section) when set | RFC 2142 role address (`abuse@{fqdn}`) recommended over a personal one. |
 | `server.contact.general.email` | Public only where the DPO page falls back to it | Same — role address recommended. |
+| `server.contact.dpo.email` | Public (DPO page and privacy policy) when set | Same — role address recommended. |
 | Any `webhooks.*` | NEVER public | URLs contain bearer tokens / chat IDs / etc. |
 
 ### Canonical Contact Keys Only
@@ -19879,6 +19887,7 @@ Use only the canonical contact keys in all new config, examples, docs, UI, and c
 - `server.contact.security.email`
 - `server.contact.abuse.email`
 - `server.contact.general.email`
+- `server.contact.dpo.email` (with the optional `server.contact.dpo.name`)
 
 The one other recipient key is `server.tor.contact_email`, the only address shown on Tor responses (PART 31).
 
@@ -23842,7 +23851,7 @@ Before proceeding, confirm you understand:
 | TLS-ALPN-01 | TLS-based challenge (requires port 443) |
 | DNS-01 | DNS TXT record challenge (wildcard certs, no port requirements) |
 
-**Challenge listeners:** the server never opens a socket of its own for a challenge. HTTP-01 is answered on the server's HTTP listener and TLS-ALPN-01 on its HTTPS listener, so both are bound by the startup steps that determine and bind the server's ports (only `server.port`, `server.address` and `server.daemonize` are read early). The CA reaches them on ports 80 and 443, so the usual setup is `server.port: "80,443"` (the privileged ports are bound while root, before the drop), or a reverse proxy or port mapping that forwards 80 and 443 to the listener; on any other arrangement use DNS-01.
+**Challenge listeners:** the server never opens a socket of its own for a challenge. HTTP-01 is answered on the server's HTTP listener and TLS-ALPN-01 on its HTTPS listener, so both are bound by the startup steps that determine and bind the server's ports (the early read covers only `server.port`, `server.address`, `server.daemonize` and `server.pidfile`). The CA reaches them on ports 80 and 443, so the usual setup is `server.port: "80,443"` (the privileged ports are bound while root, before the drop), or a reverse proxy or port mapping that forwards 80 and 443 to the listener; on any other arrangement use DNS-01.
 
 ### DNS-01 Provider Configuration
 
@@ -39332,7 +39341,7 @@ Every backup is verified **immediately after creation** - backups must be 100% w
 
 ### Backup Files Created (Single Task at 02:00)
 
-**The backup task creates TWO files each run:**
+**The backup task creates the full backup each run and, except on the first run (no previous full exists), the daily incremental as the second file:**
 
 | File | Description | Retention |
 |------|-------------|-----------|
@@ -44382,7 +44391,7 @@ jobs:
       - name: Run tests with coverage
         run: |
           mkdir -p "/tmp/${{ github.repository_owner }}"
-          COVDIR=$(mktemp -d "/tmp/${{ github.repository_owner }}/$(basename "${{ github.repository }}")-XXXXXX")
+          COVDIR=$(mktemp -d "/tmp/${{ github.repository_owner }}/${{ env.INTERNAL_NAME }}-XXXXXX")
           echo "COVDIR=$COVDIR" >> "$GITHUB_ENV"
           mkdir -p "$COVDIR/data"
           go test -cover ./... -args -test.gocoverdir="$COVDIR/data"
@@ -44493,6 +44502,7 @@ permissions:
 
 env:
   PROJECT_NAME: {project_name}
+  INTERNAL_NAME: {internal_name}
 
 jobs:
   build:
@@ -44730,6 +44740,7 @@ permissions:
 
 env:
   PROJECT_NAME: {project_name}
+  INTERNAL_NAME: {internal_name}
 
 jobs:
   version:
@@ -44954,6 +44965,7 @@ permissions:
 
 env:
   PROJECT_NAME: {project_name}
+  INTERNAL_NAME: {internal_name}
 
 jobs:
   version:
@@ -45208,6 +45220,7 @@ concurrency:
 
 env:
   PROJECT_NAME: {project_name}
+  INTERNAL_NAME: {internal_name}
   REGISTRY: ghcr.io
 
 jobs:
@@ -45433,6 +45446,7 @@ concurrency:
 
 env:
   PROJECT_NAME: {project_name}
+  INTERNAL_NAME: {internal_name}
   REGISTRY: ghcr.io
 
 jobs:
@@ -45655,7 +45669,7 @@ jobs:
       - name: Run tests with coverage
         run: |
           mkdir -p "/tmp/${{ gitea.repository_owner }}"
-          COVDIR=$(mktemp -d "/tmp/${{ gitea.repository_owner }}/$(basename "${{ gitea.repository }}")-XXXXXX")
+          COVDIR=$(mktemp -d "/tmp/${{ gitea.repository_owner }}/${{ env.INTERNAL_NAME }}-XXXXXX")
           echo "COVDIR=$COVDIR" >> "$GITEA_ENV"
           mkdir -p "$COVDIR/data"
           go test -cover ./... -args -test.gocoverdir="$COVDIR/data"
@@ -45746,6 +45760,7 @@ permissions:
 
 env:
   PROJECT_NAME: {project_name}
+  INTERNAL_NAME: {internal_name}
 
 jobs:
   build:
@@ -45971,6 +45986,7 @@ permissions:
 
 env:
   PROJECT_NAME: {project_name}
+  INTERNAL_NAME: {internal_name}
 
 jobs:
   version:
@@ -46184,6 +46200,7 @@ permissions:
 
 env:
   PROJECT_NAME: {project_name}
+  INTERNAL_NAME: {internal_name}
 
 jobs:
   version:
@@ -46404,6 +46421,7 @@ concurrency:
 
 env:
   PROJECT_NAME: {project_name}
+  INTERNAL_NAME: {internal_name}
 
 jobs:
   build-standard:
@@ -46652,6 +46670,7 @@ concurrency:
 
 env:
   PROJECT_NAME: {project_name}
+  INTERNAL_NAME: {internal_name}
 
 jobs:
   build-aio:
@@ -46845,6 +46864,7 @@ All `$CI_*` variables are auto-populated by GitLab (works with self-hosted).
 
 variables:
   PROJECT_NAME: "{project_name}"
+  INTERNAL_NAME: "{internal_name}"
   PROJECT_ORG: "{project_org}"
   CGO_ENABLED: "0"
   GOOS: linux
@@ -47137,7 +47157,7 @@ test:
   stage: test
   script:
     - mkdir -p "/tmp/${CI_PROJECT_NAMESPACE}"
-    - COVDIR=$(mktemp -d "/tmp/${CI_PROJECT_NAMESPACE}/${CI_PROJECT_NAME}-XXXXXX")
+    - COVDIR=$(mktemp -d "/tmp/${CI_PROJECT_NAMESPACE}/${INTERNAL_NAME}-XXXXXX")
     - mkdir -p "$COVDIR/data"
     - go test -v -cover ./... -args -test.gocoverdir="$COVDIR/data"
     - go tool covdata textfmt -i="$COVDIR/data" -o="$COVDIR/coverage.out"
@@ -48412,7 +48432,7 @@ pipeline {
                 // Coverage gate, the same 60% as the other providers: the profile goes to a temp dir, never into the workspace
                 sh '''
                     mkdir -p "/tmp/${PROJECT_ORG}"
-                    COVDIR=$(mktemp -d "/tmp/${PROJECT_ORG}/${PROJECT_NAME}-XXXXXX")
+                    COVDIR=$(mktemp -d "/tmp/${PROJECT_ORG}/${INTERNAL_NAME}-XXXXXX")
                     docker run --rm -v ${WORKSPACE}:/app -v ${COVDIR}:/cov -v ${GO_CACHE}:/usr/local/share/go/pkg/mod -v ${GO_BUILD}:/usr/local/share/go/cache -w /app casjaysdev/go:latest sh -c 'mkdir -p /cov/data && go test -cover ./... -args -test.gocoverdir=/cov/data && go tool covdata textfmt -i=/cov/data -o=/cov/coverage.out'
                     PCT=$(docker run --rm -v ${WORKSPACE}:/app -v ${COVDIR}:/cov -w /app casjaysdev/go:latest go tool cover -func=/cov/coverage.out | awk '/^total:/ {gsub("%","",$3); print int($3)}')
                     rm -rf "$COVDIR"
@@ -49615,7 +49635,7 @@ test:
     - name: Run tests with coverage
       run: |
         mkdir -p "/tmp/${{ github.repository_owner }}"
-        COVDIR=$(mktemp -d "/tmp/${{ github.repository_owner }}/$(basename "${{ github.repository }}")-XXXXXX")
+        COVDIR=$(mktemp -d "/tmp/${{ github.repository_owner }}/${{ env.INTERNAL_NAME }}-XXXXXX")
         echo "COVDIR=$COVDIR" >> "$GITHUB_ENV"
         mkdir -p "$COVDIR/data"
         go test -cover ./... -args -test.gocoverdir="$COVDIR/data"
@@ -51097,7 +51117,7 @@ docker run --rm \
 
 The web frontend (PART 16) is verified end to end by driving the real frontend in a real headless browser. This suite is the project's beta-testing harness: it is built alongside the frontend and run **on demand** — when the user asks for beta testing, before a release, or after major frontend work. It is **NOT part of the commit gate** (`make test` does not run it). When it does run, every requirement in this section is non-negotiable: route unit tests and `curl` smoke tests are not a substitute for verifying what a user actually sees and does, with and without JavaScript.
 
-**Engine:** `github.com/chromedp/chromedp` driving headless Chromium over CDP — pure Go, no Node toolchain. Test code lives in `tests/e2e/` behind the `e2e` build tag, so `make test` never sees it; the entry point is `./tests/e2e.sh`, which Docker-wraps `go test -tags e2e ./tests/e2e/...` and joins the existing manual `./tests/*.sh` script family (this PART → "Testing Strategy"). No new Makefile target — the six-target set is fixed. Everything runs inside Docker like every other test (this PART → "Host System Safety Applies to All Testing & Debugging").
+**Engine:** `github.com/chromedp/chromedp` driving headless Chromium over CDP — pure Go, no Node toolchain. Test code lives in `tests/e2e/` behind the `e2e` build tag, so `make test` never sees it; the entry point is `./tests/e2e.sh`, which Docker-wraps `go test -tags e2e ./tests/e2e/...` and joins the existing manual `./tests/*.sh` script family (this PART → "Testing Strategy"). No new Makefile target — the target set is fixed. Everything runs inside Docker like every other test (this PART → "Host System Safety Applies to All Testing & Debugging").
 
 ### Three Mandatory Tiers
 
@@ -55456,7 +55476,7 @@ Because the PROXY header is sent on every connection, the `HiddenServicePort` ta
 | **App Shutdown** | Terminate Tor process gracefully | Unix: SIGTERM; Windows: TerminateProcess |
 | **App Crash** | Tor process should terminate (child process dies with parent) | All platforms |
 | **Shutdown signal** | Graceful shutdown: stop Tor, then exit | Unix: SIGTERM/SIGINT; Windows: CTRL_C_EVENT |
-| **Reload signal** | Reload config, restart Tor if settings changed | Unix: SIGHUP; Windows: N/A (use API) |
+| **Config change** | The file watcher reloads the configuration; restart Tor if the Tor settings changed ("Tor Restart Triggers") | All platforms. SIGHUP is ignored (PART 8 signal table), never a reload trigger |
 
 ### Tor Restart Triggers
 
@@ -68159,7 +68179,8 @@ project_org:     {project_org}
 internal_name:   {project_name}
 internal_org:    {project_org}
 app_name:        {project_name}
-official_site:   https://{fqdn}
+# Optional: set only when the user gives the real URL; omit this line otherwise (never invented)
+# official_site: {full URL with scheme}
 # Defaults to project_org if unset
 maintainer_name: {maintainer_name}
 # Optional — used only if set

@@ -1,65 +1,60 @@
 # Installation and First Run
 
-CasHp is in active development and does not yet have a supported production
-installation or release process. The repository currently provides a source
-build for local evaluation. Several advertised management features, including
-service installation and complete first-run account setup, are not implemented
-end to end yet.
+CasHp is built from Go source using the project toolchain container. Docker
+and GNU Make are required for the documented build targets.
 
 ## Build from source
 
-Use Docker with the Go toolchain image required by the project. From the
-repository root:
-
 ```sh
+git clone https://github.com/webappsgo/cashp.git
+cd cashp
 make local
 ```
 
-This creates `cashp`, `cashp-cli`, and `cashp-agent` in `binaries/`. To build
-release artifacts for all supported target pairs:
+`make local` builds `cashp`, `cashp-cli`, and `cashp-agent` for the local
+platform into `binaries/`. `make build` cross-compiles the three binaries for
+Linux, macOS, Windows, and FreeBSD on amd64 and arm64. The server manages Linux
+hosts, as specified in [IDEA.md](https://github.com/webappsgo/cashp/blob/main/IDEA.md).
 
-```sh
-make build
-```
+`make docker` invokes Docker Buildx for Linux amd64 and arm64. The target does
+not push the resulting build to a registry.
 
-The release build covers Linux, macOS, Windows, and FreeBSD on amd64 and arm64.
-The server is presently intended to run on Linux; cross-compilation alone does
-not establish that a target has been integration-tested.
-
-## Run the server for evaluation
+## Start the server
 
 Run the server in the foreground:
 
 ```sh
-./binaries/cashp -mode development
+./binaries/cashp
 ```
 
-The binary reads `server.yml` from the detected configuration directory. The
-configuration package supplies defaults and can create the file when needed.
-Current server command-line options are `-color`, `-debug`, `-mode`, `-v`, and
-`-version`; see the [command reference](cli.md#server-cashp). Configure the
-listen address and ports in `server.yml` rather than relying on undocumented
-flags.
+On first start, CasHp creates `server.yml` in the resolved configuration
+directory and initializes its runtime data. The startup output provides the
+one-time setup token and setup URL for creating the primary administrator.
+Keep the token private and redeem it once. See [Configuration](configuration.md)
+for path resolution, environment variables, and server flags.
 
-The HTTP server currently mounts the public server-rendered pages, admin panel,
-health/readiness/version endpoints, metrics, and API documentation endpoints.
-Account, organization, billing, support, and hosting workflows are not yet
-fully connected. Do not expose this development build as a production service.
+The default listener is dual-stack at `[::]`; the first-run port is selected
+from the configured default range and persisted in `server.yml`. Configure
+`server.address`, `server.port`, and, when needed, `server.baseurl` before
+exposing the service.
 
-## Configuration and data
+## Persistent data
 
-Configuration defaults and detected file locations are documented in the
-[configuration guide](configuration.md). Review the generated `server.yml`
-before starting the server. Do not place credentials in source control.
+The configuration, database, logs, backups, and cache use the directories
+resolved by the shared path package. SQLite stores server data in
+`server.db` and user data in `users.db`. Container deployments use
+`/data/db/sqlite` for SQLite by default. Mount persistent storage for the
+configured data and backup directories.
 
-## Current limitations
+## Agent service
 
-- There is no supported package installation, published binary release, or
-  verified production Docker deployment yet.
-- The service-management options described by older documentation are not
-  available in the current server binary.
-- Building a target binary does not verify service integration on that OS.
-- Feature names shown by `cashp-cli` do not imply that their server APIs are
-  already implemented; see the [API reference](api.md).
+`cashp-agent` supports service installation and lifecycle operations on the
+platforms handled by its service package. Run `cashp-agent --help` on the
+target host to see the supported operations and privilege requirements. Agent
+enrollment uses a server URL, token, and optional organization slug.
 
-See the [development guide](development.md) for build and contributor details.
+## Related
+
+- [Configuration](configuration.md)
+- [Command-line reference](cli.md)
+- [Integrations](integrations.md)
