@@ -14209,6 +14209,7 @@ volumes:
 | Rule | Description |
 |------|-------------|
 | Never show | `0.0.0.0`, `127.0.0.1`, `localhost` |
+| Exception | Developer commands for a LOCAL debug session (pprof, a Docker try-out) run on the developer's own machine and may use `localhost` with the real port; each is labelled as a local command. The server's output, links, emails and user-facing documentation never show it |
 | Always show | Valid FQDN, host, or IP |
 | Show only | One address, the most relevant |
 
@@ -14240,7 +14241,7 @@ Raw machine values belong to JSON/API responses, Prometheus metrics, and logs on
 
 | Rule | Description |
 |------|-------------|
-| **NEVER hardcode** | `localhost`, `127.0.0.1`, `0.0.0.0`, `[::1]`, any static host/IP |
+| **NEVER hardcode** | `localhost`, `127.0.0.1`, `0.0.0.0`, `[::1]`, any static host/IP, in code and in anything the server prints (the labelled local debug commands of the Display Rules are the only exception) |
 | **NEVER display** | `GET /api/`, `POST /api/` without full URL |
 | **ALWAYS use** | `{proto}://{fqdn}:{port}/path` format |
 | **ALWAYS detect** | `{proto}`, `{fqdn}`, `{port}` from request context |
