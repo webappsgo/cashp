@@ -3918,9 +3918,9 @@ logging:
 |----------|----------|
 | **App needs debian packages** | Use `debian:latest` base image |
 | **App needs specific runtime** | Add to Dockerfile, document in IDEA.md |
-| **App has unique requirements** | Declare the exception in the project's SPEC.md (it outranks AI.md); IDEA.md only states the product reason and never waives a requirement |
+| **App has unique requirements** | Propose the exception to the user; only with the user's explicit approval is it written to the project's SPEC.md (it outranks AI.md, and an AI never adds one on its own). IDEA.md only states the product reason and never waives a requirement |
 
-**Rule:** If a spec requirement would genuinely break the app's core functionality, declare the exception in SPEC.md (SPEC.md > AI.md) and state the product reason in IDEA.md. IDEA.md alone never waives a requirement.
+**Rule:** If a spec requirement would genuinely break the app's core functionality, stop and propose the exception to the user. Only with the user's explicit approval is it written to SPEC.md (SPEC.md > AI.md; an AI never adds one on its own), and the product reason is stated in IDEA.md. IDEA.md alone never waives a requirement.
 
 ## Post-Migration Checklist
 
@@ -49661,11 +49661,13 @@ verify_all_endpoints_tested
 ```bash
 # Go unit tests (fast)
 1. make test
-# Integration tests (slower, full coverage)
+# Basic integration tier (Docker only; ./tests/incus.sh is the explicit full-app check)
 2. ./tests/run_tests.sh
 ```
 
 ### Integration Testing Strategy
+
+This strategy is the developer's explicit full-app check (`tests/incus.sh`, or `tests/docker.sh` where Incus is not available). `tests/run_tests.sh` is the Docker-only basic tier and never selects Incus.
 
 **Preferred: Incus with Debian** (if available)
 - Full systemd support
@@ -49705,7 +49707,7 @@ docker run --rm --name "${PROJECT_NAME}-$(tr -dc 'a-z0-9' </dev/urandom | head -
   -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false \
   casjaysdev/go:latest go build -buildvcs=false -trimpath -ldflags "-s -w" -o /app/binaries/{project_name} ./src
 
-# 2. Test (prefer Incus, fallback to Docker)
+# 2. Full-app check run by the developer (prefer Incus, fallback to Docker; tests/run_tests.sh itself is Docker-only)
 if command -v incus &>/dev/null; then
   # PREFERRED: Full OS test in Incus (debian + systemd)
   # Use latest Debian stable (currently 13/trixie)
