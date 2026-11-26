@@ -2190,11 +2190,11 @@ See the single authoritative table earlier in this file (search: `### Allowed Ro
 | Placeholder | Linux/BSD Default | macOS Default | Windows Default |
 |-------------|-------------------|---------------|-----------------|
 | `{config_dir}` | `/etc/{internal_org}/{internal_name}` | `/Library/Application Support/{internal_org}/{internal_name}` | `%PROGRAMDATA%\{internal_org}\{internal_name}` |
-| `{data_dir}` | `/var/lib/{internal_org}/{internal_name}` | `/Library/Application Support/{internal_org}/{internal_name}/data` | `%PROGRAMDATA%\{internal_org}\{internal_name}` |
+| `{data_dir}` | `/var/lib/{internal_org}/{internal_name}` | `/Library/Application Support/{internal_org}/{internal_name}/data` | `%PROGRAMDATA%\{internal_org}\{internal_name}\data` |
 | `{db_dir}` | `{data_dir}/db/` | `{data_dir}/db/` | `{data_dir}\db\` |
 | `{log_dir}` | `/var/log/{internal_org}/{internal_name}` | `/Library/Logs/{internal_org}/{internal_name}` | `%PROGRAMDATA%\{internal_org}\{internal_name}\logs` |
 | `{cache_dir}` | `/var/cache/{internal_org}/{internal_name}` | `/Library/Caches/{internal_org}/{internal_name}` | `%PROGRAMDATA%\{internal_org}\{internal_name}\cache` |
-| `{backup_dir}` | `/mnt/Backups/{internal_org}/{internal_name}` | `/Library/Backups/{internal_org}/{internal_name}` | `%PROGRAMDATA%\{internal_org}\{internal_name}\backups` |
+| `{backup_dir}` | `/mnt/Backups/{internal_org}/{internal_name}` | `/Library/Backups/{internal_org}/{internal_name}` | `%PROGRAMDATA%\Backups\{internal_org}\{internal_name}` |
 | `{pid_file}` | `/var/run/{internal_org}/{internal_name}/{internal_name}.pid` | `/var/run/{internal_org}/{internal_name}/{internal_name}.pid` | N/A (Windows uses SCM) |
 
 **Note:** In Docker containers, `{db_dir}` is `/data/db/sqlite` (see Docker paths section).
@@ -9147,12 +9147,13 @@ ENTRYPOINT [ "tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh" ]
    }
    ```
 
-4. **Auto-escalate for service operations:**
+4. **Service operations escalate only to manage a SYSTEM service:**
    ```go
-   // --service --install/--uninstall/start/stop require escalation
-   if serviceCmd != "" && !isElevated() {
+   // A service operation on a system service asks for escalation; a caller who cannot or will not escalate
+   // gets the USER service path instead (the table above): never an error
+   if serviceCmd != "" && !isElevated() && systemServiceTarget(serviceCmd) {
        if err := handleEscalation("Service management"); err != nil {
-           return err
+           return useUserService(serviceCmd)
        }
    }
    ```
@@ -11086,7 +11087,7 @@ func GetThemePalette(themeMode string) ThemePalette {
 
 ### Banner Package
 
-**This package serves the client, TUI and GUI binaries. The SERVER binary prints its banner with `src/server/banner.PrintServerStartupBanner(appName, version, appMode, urls, forceColor, lang)` ("Responsive Startup Banner"), a separate package that is not built on `common/banner`.**
+**This package serves the client, TUI and GUI binaries. The SERVER binary prints its banner with `src/server/banner.PrintServerStartupBanner(info ServerBannerInfo)` ("Responsive Startup Banner"), a separate package that is not built on `common/banner`.**
 
 ```go
 // src/common/banner/banner.go
@@ -11576,7 +11577,7 @@ func EnsurePIDFile(path string, isRoot bool) error {
 
 **Two PID files, never one:** the server's OWN PID file is `/var/run/{internal_org}/{internal_name}/{internal_name}.pid` (steps 11-12 of the startup). A service manager that needs a PID file of its own (OpenRC `pidfile` with `command_background=true`, FreeBSD `daemon -P`, SysV `start-stop-daemon --make-pidfile`) uses a DIFFERENT path, `/var/run/{internal_org}-{internal_name}.pid`; sharing the path makes the server read the supervisor's PID as its own and exit "already running".
 
-**Containers: no PID file.** When `isContainer()` is true, skip PID file creation and checking entirely (the `pidfile: true` config default is ignored). Outside containers `server.pidfile: false` skips the PID file steps (11 and 12) entirely, so a second instance is then not detected by PID. The container runtime supervises the process, and PIDs are namespace-local - a PID file on a mounted volume read from the host or another container points at the wrong process or produces a false "already running".
+**Containers and Windows: no PID file.** On Windows the Service Control Manager tracks the process, so the PID file steps are skipped there too (`--status` on Windows asks the Service Control Manager for the service state and the health endpoint for health). When `isContainer()` is true, skip PID file creation and checking entirely (the `pidfile: true` config default is ignored). Outside containers `server.pidfile: false` skips the PID file steps (11 and 12) entirely, so a second instance is then not detected by PID. The container runtime supervises the process, and PIDs are namespace-local - a PID file on a mounted volume read from the host or another container points at the wrong process or produces a false "already running".
 
 ```go
 // CheckPIDFile checks if PID file exists and if the process is still running
@@ -11881,7 +11882,7 @@ PHASE 5: Server startup (actual server start)
     ├─ Set default log level (info)
     └─ Log "Server starting, version X.Y.Z"
 
-11. Check PID file (skipped when `server.pidfile` is false, read by the early peek of step 8e, and in a container; root: /var/run/{internal_org}/{internal_name}/{internal_name}.pid, user: {data_dir}/{internal_name}.pid):
+11. Check PID file (skipped when `server.pidfile` is false, read by the early peek of step 8e, in a container and on Windows; root: /var/run/{internal_org}/{internal_name}/{internal_name}.pid, user: {data_dir}/{internal_name}.pid):
     ├─ PID file exists AND process running → exit 1 "already running"
     ├─ PID file exists AND process dead → remove stale PID, continue
     └─ No PID file → continue
@@ -11989,8 +11990,8 @@ PHASE 5: Server startup (actual server start)
     ├─ Resolve {app_mode} via GetAppModeString()
     ├─ Resolve {startup_datetime} = the current time at this step in the server's timezone (`TZ`, default `America/New_York`), human-readable as `%B %d, %Y at %H:%M:%S %Z` ("Human-Readable Values (Frontend)")
     └─ Build `urls` from the resolved {proto}/{fqdn}/{port} and call
-       PrintServerStartupBanner(appName, version, appMode, urls,
-       forceColor, lang) — the banner's "Listening on" line ALWAYS shows the
+       PrintServerStartupBanner(info) with a
+       ServerBannerInfo built from the resolved placeholders — the banner's "Listening on" line ALWAYS shows the
        resolved {fqdn}, never the raw bind {address} (see "Banner
        Placeholders (Must Be Defined)" for the full placeholder list)
 
@@ -13726,6 +13727,9 @@ CREATE INDEX IF NOT EXISTS idx_trusted_devices_expires ON trusted_devices(expire
 -- Cleanup expired trusted devices (run via scheduler)
 -- DELETE FROM trusted_devices WHERE expires_at < strftime('%s', 'now');
 ```
+
+**`audit_log` is a queryable mirror, `audit.log` is the authoritative record ("Audit Logging"):** every event is appended to the append-only `audit.log` FIRST (ULID `id`, hash chain, fsync), then inserted into `audit_log` on a best-effort basis; the entry's ULID is kept inside `details` as `audit_id` and the table `id` is only a local row number. A failed insert is logged (`audit.mirror_failed`) and never blocks or drops the event. Rotation of the file deletes no rows, rows are removed only by the retention cleanup, and the file is never edited from the table. When the two disagree the file wins; the table may be dropped at any time and refills from new events.
+
 
 **Example Config Data (Cluster Mode only: the `srv_config` table of the remote database; values are JSON text; only settings of the synced area files live here, because `server.yml` and `secrets.yml` are node-local, PART 5):**
 
@@ -17448,7 +17452,7 @@ web:
 
 | Rule | Detail |
 |------|--------|
-| Credential | The existing `Authorization: Bearer ...` header, exactly as for every other API route. **There is no MCP token, no MCP-specific scope and no MCP-specific setting that grants access; the Bearer token's own `read`, `read-write` or `global` scope still filters which tools it may call** |
+| Credential | The existing `Authorization: Bearer ...` header, exactly as for every other API route. **There is no MCP token, no MCP-specific scope and no MCP-specific setting that grants access; the Bearer token's own `read`, `read-write` or `global` scope still filters which tools it may call. A client uses whichever token the project already issues (an owner token in an API project, a user or system token where the project has accounts); no project issues anything extra for MCP** |
 | Validation | Run through the SAME token validation function and middleware as the API — one code path, not a copy |
 | Cookies | Ignored. Like every `/api/...` route, the MCP endpoint accepts the `Authorization` header only — no ambient authority |
 | No token | **Rejected.** Every MCP request carries `Authorization: Bearer ...`; without a valid token the endpoint answers `401` (with `WWW-Authenticate: Bearer`, PART 8 → "Auth Token Presentation") and a JSON-RPC error, and `tools/list` is never served. The public REST API is different: its ordinary operations work without a token (a route marked Bearer-protected still needs its token), and a token only links what the caller creates to its owner and unlocks MCP |
@@ -21126,8 +21130,9 @@ type SelfHealingInfo struct {
     Enabled     bool   `json:"enabled"`
     Exhausted   bool   `json:"exhausted"`
     Attempts    int    `json:"attempts"`
-    LastAttempt string `json:"last_attempt,omitempty"`
-    NextAttempt string `json:"next_attempt,omitempty"`
+    // always present; null before the first attempt (last_attempt) and once the attempts are exhausted (next_attempt)
+    LastAttempt *string `json:"last_attempt"`
+    NextAttempt *string `json:"next_attempt"`
 }
 
 // FeaturesInfo - PUBLIC features only (no /server/metrics - PART 21 is internal)
@@ -21877,7 +21882,7 @@ When not in cluster mode:
 | `status` | healthy, degraded, unhealthy, restart_required, maintenance, shutting_down (see Health Status Values & HTTP Codes) |
 | `pending_restart` | Present (`true`) only when a config change requires a restart |
 | `restart_reason` | Settings that changed (only with `pending_restart`) |
-| `maintenance` | Present only while `status` is `maintenance`, right after the restart fields: `reason`, `message`, `since` (RFC 3339 UTC) and `self_healing` (`enabled`, `exhausted`, `attempts`, `last_attempt`, `next_attempt`); the shape of the maintenance example in PART 5 |
+| `maintenance` | Present only while `status` is `maintenance`, right after the restart fields: `reason`, `message`, `since` (RFC 3339 UTC) and `self_healing` (`enabled`, `exhausted`, `attempts`, and `last_attempt` / `next_attempt`, always present and `null` before the first attempt and once the attempts are exhausted); the shape of the maintenance example in PART 5 |
 | `version` | The version `--version` reports: SemVer for a release, `YYYYMMDDHHMMSS-beta` for a beta, the short commit id for a devel build (`devel` only for a local build outside git that has no release, beta or commit identity, "Health Output Invariants") |
 | `mode` | production, development, debug |
 | `uptime` | Compact uptime `{d}d {h}h {m}m` (zero leading units dropped, `45s` under a minute); the frontend shows `format.Duration()` |
@@ -23172,7 +23177,7 @@ func renderNoJSHTML(w http.ResponseWriter, data interface{}) {
 | **Optional routes** | The embedded build-time spec is the full SUPERSET of routes, and every route that depends on a flag or a setting (the `/debug/*` routes, `/metrics`, the root aliases, optional well-known files) carries `x-mounted-when` naming its condition (for example `--debug` or `server.metrics.root.enabled`). At startup the server derives the SERVED spec from the embedded one by removing every operation whose condition is false for this run, so the spec a client reads always matches the routes that are actually mounted. The drift test compares the superset with the route table |
 | **JSON only** | OpenAPI spec uses JSON format only (NO YAML) |
 | **Source of truth** | AI.md defines the TEMPLATE routes and the `### API routes` inventory in IDEA.md defines EVERY project-defined route, including any native or compatibility API of the project; together they are the API CONTRACT: routes, methods, auth and shapes. AI.md never enumerates project routes. The code and its annotations implement that contract, and the specs are GENERATED from the code, so they are artifacts, never edited by hand. Drift is detected by a test with three legs: the generated OpenAPI route and method list, the router's registered routes, and the union of the AI.md template routes and the IDEA.md `### API routes` inventory. A route present in one leg and missing from another fails the build, naming the route and the missing place; a project whose IDEA.md has no `### API routes` subsection fails with that message instead of passing vacuously. A deliberate change is made in AI.md or IDEA.md first, then the code, then the specs are regenerated |
-| **Template route inventory** | The template leg of the drift test is read from the project's own `AI.md` at test time, deterministically: a template route is a Markdown table row whose first cell is exactly one backticked path starting with `/` and whose second cell lists one or more HTTP methods (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`) separated by `/` or `,` (each method of the path is its own route); a first cell with an alias lists each path as its own route; optional-segment brackets such as `/metrics[/{service}]` expand to two routes, the path without and the path with the bracketed segment. A row in a fenced code block or in a table introduced as an illustrative example (for example the generic REST row `/api/{api_version}/{resource}`) is not a template route. `{api_version}` is the API version in use, `{admin_path}` the configured admin path, any other `{name}` segment matches a path parameter. A row under a section marked OPTIONAL counts only when the project enables that feature (its `x-mounted-when` condition). A route table in any other form is not a route inventory: a new template route is added to AI.md in this form, and nothing is copied into a project |
+| **Template route inventory** | The template leg of the drift test is read from the project's own `AI.md` at test time, deterministically: a template route is a row of a Markdown table whose header row has a path column (`Endpoint` or `Path`) and a method column (`Method` or `Methods`), in any order and with any other columns (rows are read by those headers, never by column position): the path cell is exactly one backticked path starting with `/` and the method cell lists one or more HTTP methods, and the method is always explicit (a row without one is not a route) (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`) separated by `/` or `,` (each method of the path is its own route); a path cell with an alias lists each path as its own route; optional-segment brackets such as `/metrics[/{service}]` expand to two routes, the path without and the path with the bracketed segment. A row in a fenced code block or in a table introduced as an illustrative example (for example the generic REST row `/api/{api_version}/{resource}`) is not a template route. `{api_version}` is the API version in use, `{admin_path}` the configured admin path, any other `{name}` segment matches a path parameter. A row under a section marked OPTIONAL counts only when the project enables that feature (its `x-mounted-when` condition). A route table in any other form is not a route inventory: a new template route is added to AI.md in this form, and nothing is copied into a project |
 | **Match site theme** | Both UIs styled to match site theme (light/dark/auto) |
 | **Standardized locations** | ALWAYS `src/swagger/` and `src/graphql/` (NEVER in root `.`) |
 
@@ -24325,7 +24330,28 @@ import (
     "golang.org/x/term"
 )
 
-func PrintServerStartupBanner(appName, version, appMode string, urls []string, forceColor *bool, lang string) {
+// ServerBannerInfo is everything the server banner shows; the startup flow fills it from the resolved placeholders
+// ("Banner Placeholders (Must Be Defined)") and nothing else is read by the banner.
+type ServerBannerInfo struct {
+    AppName         string
+    Version         string
+    AppMode         string
+    // "Server started on" value, localized timestamp ("%B %d, %Y at %H:%M:%S %Z")
+    StartupDatetime string
+    URLs            []string
+    // empty when the overlay is not enabled and running
+    OnionAddress    string
+    I2PAddress      string
+    // empty when SMTP is not configured
+    SMTPAddress     string
+    // first-run setup token, shown ONCE; empty after the first run
+    SetupToken      string
+    ForceColor      *bool
+    Lang            string
+}
+
+func PrintServerStartupBanner(info ServerBannerInfo) {
+    appName, version, appMode, urls, forceColor, lang := info.AppName, info.Version, info.AppMode, info.URLs, info.ForceColor, info.Lang
     width, _, _ := term.GetSize(int(os.Stdout.Fd()))
     if width == 0 {
         // Default
@@ -34046,7 +34072,7 @@ Admin Panel Header:
 
 | Setting | Control | Default | Restart | Description |
 |---------|---------|---------|---------|-------------|
-| `port` | Number | `64580` | ⚠️ Yes | Server listen port |
+| `port` | Text | random `64000-64999` saved at the first run (`80` in a container) | ⚠️ Yes | Listen port: one port or `"http,https"`; the saved value is shown, and `64580` in the examples is only an example |
 | `mode` | Dropdown | `production` | ⚠️ Yes | `production` / `development` / `debug` |
 | `fqdn` | Text | (auto) | No | Fully qualified domain name |
 | `address` | Text | `[::]` | ⚠️ Yes | Listen address (`[::]` dual-stack, `0.0.0.0` IPv4 only) |
@@ -47811,6 +47837,7 @@ docker:build-devel:
         -t $CI_REGISTRY_IMAGE:devel \
         --push \
         .
+  # Never on tags. A scheduled pipeline on main also has CI_COMMIT_BRANCH == "main", so the daily schedule runs this job through the same rule
   rules:
     - if: $CI_COMMIT_TAG
       when: never
@@ -47898,7 +47925,7 @@ Jenkins provides equivalent functionality to GitHub Actions, Gitea Actions, and 
 | Main | `when { branch 'main' }` | `devel.yml` |
 | Scheduled | `triggers { cron('0 3 * * *') }` | `devel.yml` schedule |
 | All branches | Default (no `when`) | `docker.yml` |
-| Devel image | `triggers { cron('0 4 * * *') }` + `when { not { buildingTag() } }` | `docker.yml` `build-devel` job |
+| Devel image | `triggers { cron('0 4 * * *') }` + `when { branch 'main' }`; it runs in every `main` build (push, 3am and 4am) | `docker.yml` `build-devel` job |
 
 ## Jenkinsfile
 
@@ -48823,6 +48850,7 @@ pipeline {
         }
 
         // Docker Devel - matches docker.yml build-devel job (main push + daily 4am cron, never tags)
+        // Guarded only by branch 'main': every main build runs it, the push and both cron times (3am and 4am), so :devel is also refreshed at 3am
         // Dedicated stage, never folded into Docker/Docker AIO — no :devel-aio (Dockerfile.dev.aio does not exist)
         stage('Docker Devel') {
             agent { label 'amd64' }
@@ -62103,8 +62131,8 @@ src/
 
 | Feature | Client | Agent |
 |---------|------------|-------|
-| **Discovery** | Background `/api/autodiscover` | On connect `/api/autodiscover` |
-| **Auto-update** | Updates `cli.yml` with discovered nodes | Updates `agent.yml` with discovered nodes |
+| **Discovery** | Background read of the health response (`cluster.primary`, `cluster.nodes`); `/api/autodiscover` carries only the update versions | On connect, the same health response; `/api/autodiscover` only for `agent_versions` |
+| **Node list update** | Updates `cli.yml` with the nodes read from the health response | Updates `agent.yml` with the nodes read from the health response |
 | **Failover** | Silent failover to cluster nodes | Automatic failover to cluster nodes |
 | **Recovery** | Uses primary when available | Switches back to primary when recovered |
 

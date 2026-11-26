@@ -9,12 +9,18 @@ reviewers. The catalogs are embedded in the Go package at
 The package embeds seven locale catalogs: Arabic (`ar`), German (`de`), English
 (`en`), Spanish (`es`), French (`fr`), Japanese (`ja`), and Chinese (`zh`). It
 provides catalog lookup and fallback, request language negotiation, formatting,
-plural handling, accessibility helpers, and template functions. The current
-server page templates do not call those translation functions, and the server
-does not install the package's locale middleware. The server-rendered pages
-therefore still display their existing English strings; the catalogs should
-not be described as translated UI in the running application. The CLI and
-agent have language options, but their output is not wired to these catalogs.
+plural handling, accessibility helpers, and template functions. The HTTP server
+resolves `?lang=`, the language cookie, and `Accept-Language`, and public pages
+emit the selected `lang` and `dir` metadata. Most page text still comes from
+English literals, and the auth, admin, support, billing, hosting, database,
+and orchestrator templates do not yet use translation keys. The CLI and agent
+send the resolved language with API requests, but their human-readable output
+is not wired to these catalogs. The current implementation is therefore
+language negotiation and metadata support, not complete translated UI.
+
+The catalog set is also short of the AI.md minimum: Italian (`it`) is required
+but has no locale file. The seven existing catalogs are complete relative to
+English; their count does not make Italian optional.
 
 No individual translator names are recorded in the current locale metadata.
 The repository therefore credits zero named translators across seven locale

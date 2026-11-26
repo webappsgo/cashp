@@ -190,5 +190,6 @@ Open an issue at
 <https://github.com/webappsgo/cashp/issues> with the output of `cashp
 --version`, the operating system and version, and the steps to reproduce.
 
-For **security** vulnerabilities, do not open a public issue — follow
-[the reporting process](security.md#reporting-a-vulnerability) instead.
+For **security** vulnerabilities, do not open a public issue — use the
+[private vulnerability reporting page](https://github.com/webappsgo/cashp/security/advisories/new)
+instead.
