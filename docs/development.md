@@ -105,11 +105,19 @@ mismatched UID makes `go build` fail inside the container.
 
 ```bash
 make test
+./tests/run_tests.sh
+./tests/incus.sh
 ```
 
 Tests run `go test -v -cover ./...` inside the container with a **60% coverage
 floor**. The target fails the build if total coverage drops below it, so a
 change that adds code without adding tests will not pass.
+
+`tests/run_tests.sh` runs only the basic Docker binary checks. The full
+systemd service lifecycle is a separate, explicit Incus run through
+`tests/incus.sh`; browser testing is separate as well through
+`tests/e2e.sh`. The test scripts accept `BINDIR` and `RELDIR` so their build
+artifacts can be directed to temporary output directories.
 
 Coverage profiles are written to a temporary directory under
 `$TMPDIR/{project_org}/{internal_name}-XXXXXX`, never into the repository.

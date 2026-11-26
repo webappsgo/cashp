@@ -6195,6 +6195,20 @@ package main
 | Mixing incompatible licenses | Legal conflicts | Verify compatibility |
 | No automation | Manual errors | Use CI checks |
 
+## Embedded Datasets and Content (Provenance Before Embedding)
+
+**Any third-party dataset or content a project embeds or ships (word lists, quote or joke collections, place and postal data, images, fonts, icons, translations, GeoIP-style databases) needs documented provenance BEFORE it is embedded.**
+
+| Required | Rule |
+|----------|------|
+| **Source** | The exact origin: URL or publisher, version, and retrieval date |
+| **Terms** | The license or terms of use. They MUST allow redistribution inside a project released under the project's license, checked against the License Compatibility Matrix below |
+| **Attribution** | The notice the terms require (author, license, link, changes made) |
+| **Record** | In the project's third-party notices (`LICENSE.md`, "Third-Party Licenses") and on the attribution surface (`/server/about`, or the README when the project has no web page) |
+| **Per-record provenance** | When records come from several sources, every record or file carries a `source` key that names its entry in the third-party notices |
+| **Unknown or unusable terms** | Content with no stated license, a license that forbids redistribution, a site that forbids scraping, or an unknown origin is NOT embedded. The project asks the user instead of guessing |
+| **Generated content** | It counts as the project's own only when the user says so, and is never presented with an invented source |
+
 ## License Compatibility Matrix
 
 | Project License | Can Use Dependencies Licensed As |
@@ -9732,7 +9746,7 @@ Before proceeding, confirm you understand:
 
 `server.debug.*` holds the debug settings (pprof, query logging, profiling rates), not the flag. The flag has no `server.yml` source by design: debug is an explicit opt-in per run, so a committed or copied config file can never turn it on.
 
-**`debug` mode:** `--mode debug` / `MODE=debug` selects debug mode — explicit opt-in only, NEVER implied or auto-enabled. It defaults the debug flag to on; an explicit `--debug` flag or `DEBUG` env var still wins — `MODE=debug DEBUG=false` runs debug mode with the `/debug/*` endpoints off.
+**`debug` mode:** `--mode debug` / `MODE=debug` selects debug mode — explicit opt-in only, NEVER implied or auto-enabled. It defaults the debug flag to on; an explicit `--debug` flag or a non-empty `DEBUG` env var still wins (a set-but-empty `DEBUG` counts as unset) — `MODE=debug DEBUG=false` runs debug mode with the `/debug/*` endpoints off.
 
 ## Six Operational States
 
@@ -47108,6 +47122,7 @@ test:
     - if: $CI_COMMIT_TAG =~ /^v?\d+\.\d+\.\d+/
     - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_TAG =~ /^\d{14}-beta$/
+    - if: $CI_PIPELINE_SOURCE == "schedule"
 
 # =============================================================================
 # RELEASE (GitLab Release)
@@ -53768,9 +53783,8 @@ func sendWelcomeEmail(user User, lang string) {
 |----------|--------|---------|
 | 1 | `--lang` flag | `--lang es` |
 | 2 | Config file | `lang: es` (in `server.yml`, `cli.yml`, or `agent.yml`) |
-| 3 | `LANG` / `LC_ALL` env var | `LANG=es_ES.UTF-8` |
-| 4 | Auto-detect | System locale |
-| 5 | Default | `en` (English) |
+| 3 | `LANG` / `LC_ALL` env var (the system locale) | `LANG=es_ES.UTF-8` |
+| 4 | Default | `en` (English) |
 
 ```go
 func getLanguage(flagLang string) string {
@@ -68947,7 +68961,7 @@ make docker
 - [ ] All server API operations accessible via CLI
 - [ ] Cluster failover support:
   - [ ] `server.primary` and `server.cluster` in cli.yml
-  - [ ] Auto-discover nodes from `/api/autodiscover`
+  - [ ] Read the cluster node list from the health response (`cluster.primary`, `cluster.nodes`), not from autodiscover
   - [ ] Auto-update cli.yml with discovered nodes
   - [ ] Automatic failover to next node if primary fails
 
@@ -68966,7 +68980,7 @@ make docker
   - [ ] **Bidirectional**: Agent both sends data AND receives commands
 - [ ] Cluster failover support:
   - [ ] `server.primary` and `server.cluster` in agent.yml
-  - [ ] Auto-discover nodes from `/api/autodiscover`
+  - [ ] Read the cluster node list from the health response (`cluster.primary`, `cluster.nodes`), not from autodiscover
   - [ ] Auto-update agent.yml with discovered nodes
   - [ ] Automatic failover to next node if primary fails
 
