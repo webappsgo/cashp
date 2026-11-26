@@ -21,6 +21,24 @@ Let's Encrypt certificate lifecycle operations. HTTP-01 challenges are
 handled by the HTTP listener. See `server.ssl` in
 [Configuration](configuration.md) before enabling TLS.
 
+## Public discovery and protocol endpoints
+
+- `/api/{api_version}/server/autodiscover` provides client bootstrap data;
+  `/api/autodiscover` is its unversioned alias.
+- `/api/{api_version}/server/swagger` and `/api/swagger` serve generated
+  OpenAPI JSON. `/server/docs/swagger` is the browser explorer.
+- `/api/{api_version}/server/graphql` and `/api/graphql` expose the GraphQL
+  endpoint; `/server/docs/graphql` is the browser explorer.
+- `/.well-known/security.txt` provides vulnerability reporting details and
+  `/.well-known/llms.txt` describes the public site for language-model
+  clients. These are the two generated well-known files; other well-known
+  paths are not enabled by this server.
+- Health and readiness endpoints are listed in the [API reference](api.md).
+
+The generated OpenAPI document is the complete route inventory for the
+running configuration. The documentation host is separate from a CasHp
+instance; use a configured instance URL when following these runtime paths.
+
 ## Notifications and scheduling
 
 The notification service loads channel configuration from `server.yml` and

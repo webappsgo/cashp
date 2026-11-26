@@ -35,6 +35,14 @@ information can be configured under `server.contact`. For a vulnerability in
 CasHp, use the [private vulnerability reporting page](https://github.com/webappsgo/cashp/security/advisories/new)
 instead of filing a public issue.
 
+The public security surface also includes `/.well-known/llms.txt`,
+`/server/security`, and `/server/security/policy`. The server exposes public
+health probes at `/server/healthz`, `/server/readyz`, and `/server/livez`, with
+versioned and unversioned API aliases documented in the [API reference](api.md).
+Only `security.txt` and `llms.txt` are generated under `/.well-known/`; unknown
+entries return 404. Operators can provide override files for these two entries
+under `{data_dir}/web/.well-known/`.
+
 ## Related
 
 - [Configuration](configuration.md)

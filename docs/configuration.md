@@ -2,7 +2,8 @@
 
 The server reads `server.yml` from the resolved configuration directory. Its
 typed schema and defaults are in `src/config`; settings are grouped under the
-top-level `server`, `web`, and `tor` keys. Invalid values are reported during
+top-level `server`, `web`, and optional `data` keys. Tor and I2P settings are
+under `server.tor` and `server.i2p`. Invalid values are reported during
 validation. A missing file is created from defaults; a legacy
 `server.yaml` is renamed to `server.yml` on startup.
 
@@ -37,12 +38,23 @@ server:
   api_version: v1
   database:
     driver: sqlite
+  tor:
+    binary: ""
+    expose: false
+    use_network: false
+    startup_timeout: 60
+    bootstrap_timeout: 180
+  i2p:
+    enabled: false
+    expose: false
 web:
   ui:
     theme: dark
-tor:
-  enabled: false
 ```
+
+Tor has no enable toggle: a detected Tor binary starts the hidden service.
+I2P is opt-in on bare metal and virtual machines and defaults on in a
+container. The example above explicitly disables I2P.
 
 The schema includes listener and URL detection, TLS, request limits, trusted
 proxies, sessions, rate limits, security, privacy, database, logging,

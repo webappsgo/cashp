@@ -1,25 +1,34 @@
 # CasHp
 
 [![CI](https://github.com/webappsgo/cashp/actions/workflows/ci.yml/badge.svg)](https://github.com/webappsgo/cashp/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/webappsgo/cashp)](https://github.com/webappsgo/cashp/releases)
 [![License](https://img.shields.io/github/license/webappsgo/cashp)](LICENSE.md)
-[![Documentation](https://readthedocs.org/projects/webappsgo-cashp/badge/?version=latest)](https://webappsgo-cashp.readthedocs.io/en/latest/)
+[![Docs](https://readthedocs.org/projects/webappsgo-cashp/badge/?version=latest)](https://webappsgo-cashp.readthedocs.io/en/latest/)
 
-CasHp is a self-hosted hosting control panel for web hosting, applications,
-containers, virtual machines, email, DNS, databases, security, and support.
-The server is written in Go and serves a server-rendered web interface. The
-project also builds `cashp-cli` and the optional `cashp-agent` for remote
-machines. [IDEA.md](IDEA.md) defines the product; [AI.md](AI.md) is the
-read-only implementation specification.
+## About
 
-The server composition includes configuration and database startup and health,
-administrator and account authentication, billing and support services,
-notifications, scheduling, metrics, GeoIP, update checks, TLS handling,
-server-rendered public and admin pages, and versioned HTTP APIs. OpenAPI and
-GraphQL documentation are generated from registered routes. See the
-[API reference](docs/api.md) for route families and the live OpenAPI document
-for the exact contract of a running build.
+CasHp is a self-hosted hosting control panel for websites, applications,
+containers, virtual machines, email, DNS, databases, security, backups,
+monitoring, and support. It includes the `cashp` server, the required
+`cashp-cli` companion, and the optional `cashp-agent` for remote machines.
+Product scope and behavior are defined in [IDEA.md](IDEA.md); [AI.md](AI.md)
+is the read-only implementation specification.
 
-## Build and start
+The server renders public, account, and administration pages with Go
+templates. Pages work without JavaScript, with browser scripts used only for
+progressive enhancement. The running server exposes versioned APIs and
+generates its OpenAPI contract from registered routes.
+
+## Features
+
+- Server-rendered public, account, and administration pages
+- User, organization, and API-token management
+- Hosting, database, workload, billing, and support management
+- Scheduling, backups, notifications, metrics, GeoIP, and updates
+- Tor hidden-service support and optional I2P hosting
+- Static server, client, and optional remote-agent binaries
+
+## Production
 
 Requirements: Docker and GNU Make. The Go toolchain runs inside
 `casjaysdev/go:latest`.
@@ -31,40 +40,62 @@ make local
 ./binaries/cashp
 ```
 
-The server creates its default `server.yml` on first run, chooses and persists
-an available port in the 64000–64999 range when no port is configured, and
-prints a one-time administrator setup token. Redeem the token at the setup URL
-shown in startup output. See the [installation](docs/installation.md) and
-[configuration](docs/configuration.md) guides.
+The server creates its default `server.yml` on first run, selects and persists
+an available port in the configured range when no port is set, and prints a
+one-time administrator setup token. Redeem it at the setup URL shown in
+startup output. See [installation](docs/installation.md) and
+[configuration](docs/configuration.md).
 
-## Binaries
+For a container image, use `make docker`. Persistent application data belongs
+in the configured data and backup directories; see the installation guide
+before deploying.
 
-| Binary | Role |
-|---|---|
-| `cashp` | Server and web application |
-| `cashp-cli` | Command-line client for the server API |
-| `cashp-agent` | Optional remote agent that connects outbound to the server |
+## Client
 
-`make local` builds all three binaries for the local platform. `make build`
-cross-compiles them for Linux, macOS, Windows, and FreeBSD on amd64 and arm64.
-The server manages Linux hosts, as specified in [IDEA.md](IDEA.md).
+`cashp-cli` is the command-line companion for interacting with a CasHp server.
+`cashp-agent` is an optional service for remote machines and connects outbound
+to the configured server. `make local` builds all three binaries for the local
+platform. See the [CLI reference](docs/cli.md) and run each binary with
+`--help` for its supported commands and options.
 
-## Documentation
+## Configuration
 
-- [Installation and first run](docs/installation.md)
-- [Configuration](docs/configuration.md)
-- [API reference](docs/api.md)
-- [Command-line reference](docs/cli.md)
+The server reads `server.yml` from its resolved configuration directory.
+Command-line directory options and environment variables can override the
+default paths. See the [configuration guide](docs/configuration.md) for path
+precedence, environment variables, and settings.
+
+## API
+
+The server includes health and readiness probes, client autodiscovery,
+account and organization APIs, billing and support APIs, and administration
+endpoints. The running server's generated OpenAPI document is the exact route
+contract. See the [API reference](docs/api.md).
+
+## Other
+
 - [Admin panel](docs/admin.md)
 - [Security](docs/security.md)
 - [Integrations](docs/integrations.md)
-- [Development](docs/development.md)
 - [Translation and accessibility](docs/translating.md)
+- [Development](docs/development.md)
 
 ## Development
 
+Build and run the unit coverage gate with:
+
 ```sh
 make test
+```
+
+Phase-2 endpoint checks run against an already-running server and do not build
+or start one. They read the live OpenAPI document and exercise every
+advertised API method and path, including the JSON, plain-text, and HTML
+content-negotiation requests for GET routes, alongside the explicit public,
+admin, metrics, and static-route checks:
+
+```sh
+CASHP_BASE_URL=http://localhost:64580 ./tests/test_endpoints.sh
 ```
 
 The browser end-to-end suite is separate and runs on demand in Docker:
@@ -73,8 +104,25 @@ The browser end-to-end suite is separate and runs on demand in Docker:
 ./tests/e2e.sh
 ```
 
-See [docs/development.md](docs/development.md) for build, verification,
-documentation, and contribution instructions.
+See the [development guide](docs/development.md) for build, verification, and
+contribution instructions.
+
+## Disclaimer
+
+This software is provided "as is" without warranty of any kind. Use at your
+own risk.
+
+- **No Warranty**: The authors are not responsible for damages, data loss, or
+  issues arising from use of this software.
+- **Not Professional Advice**: This software does not constitute legal,
+  financial, medical, or other professional advice.
+- **Third-Party Services**: External APIs and services have separate terms of
+  service.
+- **Security**: No software is guaranteed to be free of vulnerabilities.
+- **Production Use**: Evaluate thoroughly before deploying in production.
+
+By using this software, you acknowledge that you have read and understood this
+disclaimer.
 
 ## License
 

@@ -1,7 +1,38 @@
 # Installation and First Run
 
-CasHp is built from Go source using the project toolchain container. Docker
-and GNU Make are required for the documented build targets.
+CasHp can run in Docker or as a native binary. Building from source requires
+Docker and GNU Make; the Go toolchain runs in the project's container.
+
+## Docker
+
+The published image includes the server and Tor. This command publishes the
+HTTP listener on the host loopback interface and keeps application data in a
+named volume:
+
+```sh
+docker run -d \
+  --name cashp \
+  -p 127.0.0.1:64580:80 \
+  -v cashp-data:/data \
+  ghcr.io/webappsgo/cashp:latest
+```
+
+Place a TLS reverse proxy in front of the loopback listener when serving
+clearnet traffic. The image's default health check reports server readiness.
+
+## Binary
+
+Download the release binary for the target operating system and architecture
+from the [GitHub releases page](https://github.com/webappsgo/cashp/releases),
+then mark it executable and run it:
+
+```sh
+chmod +x cashp-linux-amd64
+./cashp-linux-amd64
+```
+
+Use the matching release artifact for other supported platforms. Run
+`cashp --help` to see runtime options.
 
 ## Build from source
 
