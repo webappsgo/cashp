@@ -5540,7 +5540,7 @@ sudo mv {project_name}-cli-linux-amd64 /usr/local/bin/{project_name}-cli
 Configuration is auto-generated on first run. Edit via admin panel at `{proto}://{fqdn}/server/{admin_path}` (admin_path defaults to "administration").
 
 Key settings:
-- `server.port` - Listen port (default: random 64xxx)
+- `server.port` - Listen port (default: random 64xxx). `0` is NOT a valid value: it is replaced like any invalid port, and there is no OS-assigned-port mode
 - `server.mode` - production or development
 
 ## API
@@ -33810,8 +33810,8 @@ Admin Panel Header:
 | `/server/{admin_path}/maintenance` | Maintenance | Maintenance mode |
 | `/server/{admin_path}/updates` | Updates | Check/apply updates |
 | `/server/{admin_path}/info` | Server Info | Version, environment, deps |
-| `/server/{admin_path}/cluster/nodes` | Nodes | Cluster node management |
-| `/server/{admin_path}/cluster/add` | Add Node | Generate join token |
+| `/server/{admin_path}/nodes` | Nodes | Cluster node management (add, remove, settings and `/nodes/{node}` live under it, PART 34) |
+| `/server/{admin_path}/nodes/add` | Add Node | Generate join token |
 | `/server/{admin_path}/pages/help` | Help | Edit help page content (matches the `{admin_path}/pages/help` API route below and the `/server/{admin_path}/pages` grouping used by About/Privacy/Contact/Terms) |
 
 **Auth and body format — these WEB routes are NOT the same handler as the API mirror below.** Every route in this table is session-cookie authenticated (admin login session, see "Authentication Methods by Route Family" above) and its mutations (`Save`, `Create`, `Delete`, etc.) are plain HTML `<form method="post" enctype="application/x-www-form-urlencoded">` submissions — never JSON-only (no `ShouldBindJSON`-only handler), per PART 16 "No-JS-first": the admin panel MUST be fully usable with JavaScript disabled. The separate `/api/{api_version}/server/{admin_path}/{section}/*` routes are the machine-readable mirror: JSON body, `Authorization: Bearer adm_*` token, no session cookie. Do not point a WEB form at the Bearer-only API route or reuse one handler for both — a browser form POST has no `Authorization` header and will 401 against a Bearer-only endpoint.
@@ -36892,6 +36892,7 @@ server:
 | `@monthly` | `@monthly` | First day of month at 00:00 |
 | `@every Xm` | `@every 5m` | Every X minutes |
 | `@every Xh` | `@every 2h` | Every X hours |
+| `@every Xs` | `@every 30s` | Every X seconds (10 or more): the cluster heartbeat and other pollers that run more often than every minute |
 
 ### Scheduler State (Persistent)
 
