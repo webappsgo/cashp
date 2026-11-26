@@ -3023,7 +3023,7 @@ fi
 | Modifying `<html>` tag | Use `lang="{{.Lang}}" dir="{{.Dir}}"` — never hardcoded `lang="en"` |
 
 **After adding, changing or removing translation keys, AI MUST:**
-1. Add the key to the Spanish (`es.json`) example in PART 31 with proper translation
+1. Add the key to the project's own Spanish locale file (`es.json` in the embedded `locales/` directory, PART 31) with proper translation; this edits project files, never the `AI.md` copy
 2. Add a best-effort translation of the key to EVERY other locale file (`fr`, `de`, `it`, `ar`, and every translator-added language) in the same change — likewise update the translation when the English text changes, and remove the key from every file when it is removed. The AI translates the strings itself in every language it is fluent in; human translators can fix wording later. Never leave a key changed in `en.json` alone so the files drift apart
 3. Ensure the key exists in the English base file (`en.json`)
 
@@ -5775,7 +5775,7 @@ curl -L https://api.example.com/server/healthz
 | **No AI/ML** | Smart logic only, no machine learning |
 | **Concise Responses** | Short, descriptive, and helpful |
 | **Everything Configurable** | ALL settings MUST be configurable via admin WebUI |
-| **Live Reload** | Configuration changes apply without restart (file-watch hot-reload), except the restart-required settings of "Smart Config Reload" (listen port and address, `server.ssl.*`, `server.database.*`, `server.daemonize`, `server.pidfile`), which the admin panel reports and which apply at the next start |
+| **Live Reload** | Configuration changes apply without restart (file-watch hot-reload), except the restart-required settings of "Smart Config Reload" (listen port and address, `server.ssl.*` (the TLS listener keys, not `server.ssl.letsencrypt.*`), `server.database.*`, `server.daemonize`, `server.pidfile`), which the admin panel reports and which apply at the next start |
 | **Built-in Scheduler** | NEVER use cron, Task Scheduler, or external schedulers (PART 19) |
 
 ### Admin WebUI Configuration
@@ -5821,7 +5821,7 @@ Not every project needs admin UI extensions - it depends on the project's nature
 | **Hot reload** | Application watches for config changes and reloads |
 | **Graceful** | In-flight requests complete before new config applies |
 | **Feedback** | User sees confirmation that changes are active |
-| **Exceptions** | The restart-required settings of "Smart Config Reload" (`server.port`, `server.address`, `server.ssl.*`, `server.daemonize`, `server.pidfile`, `server.database.*`) apply at the next start, with a clear warning; the graceful-reload settings apply without downtime |
+| **Exceptions** | The restart-required settings of "Smart Config Reload" (`server.port`, `server.address`, `server.ssl.*` (the TLS listener keys, not `server.ssl.letsencrypt.*`), `server.daemonize`, `server.pidfile`, `server.database.*`) apply at the next start, with a clear warning; the graceful-reload settings apply without downtime |
 
 **What MUST live reload:**
 - Branding (title, tagline, description)
@@ -5837,7 +5837,7 @@ Not every project needs admin UI extensions - it depends on the project's nature
 
 **What requires restart (with warning), exactly the "Requires Restart" list of "Smart Config Reload":**
 - Listen address and port number
-- `server.ssl.*` (the TLS listener)
+- `server.ssl.*` (the TLS listener keys: `enabled`, `cert`, `key`, `min_version`; the `server.ssl.letsencrypt.*` settings apply without a restart, the ACME client reads them at its next issuance or renewal)
 - `server.daemonize`
 - `server.pidfile` (PID file creation and checking)
 - `server.database.*` (connection pool and driver)
@@ -6844,7 +6844,8 @@ cd /path/to/project && docker build -f docker/Dockerfile .
 | OS | Required |
 |----|----------|
 | Linux | YES |
-| BSD (FreeBSD, OpenBSD, etc.) | YES |
+| FreeBSD | YES (amd64 and arm64 are the required build targets) |
+| OpenBSD, NetBSD | No required build: the BSD paths and `doas` rules apply to a build someone makes for them, and no architecture is required |
 | macOS (Intel and Apple Silicon) | YES |
 | Windows | YES |
 
@@ -11266,7 +11267,7 @@ One table for every binary and script of every project. Codes `65`-`78` are the 
 | `69` | `EX_UNAVAILABLE` | A service or capability the command needs is unavailable | server unreachable, a port that cannot be bound, a required tool or hypervisor that is missing |
 | `74` | `EX_IOERR` | I/O error on a file or device | disk full, unreadable database file |
 | `75` | `EX_TEMPFAIL` | Temporary failure; a retry or a restart will help | a staged update waiting for the privileged restart |
-| `77` | `EX_NOPERM` | Permission denied or authentication failed | not root for `--service --install`, an invalid token |
+| `77` | `EX_NOPERM` | Permission denied or authentication failed | an invalid token, or a `--service` action on a system service by a caller who is not root (a non-root `--service --install` is not an error: it installs a user service, PART 23) |
 | `78` | `EX_CONFIG` | Configuration is invalid or missing | a bad `server.yml`, a failing `--config-test` |
 
 | Rule | Requirement |
@@ -12708,7 +12709,7 @@ The app automatically watches config files and hot-reloads what it can. Settings
 |---------|-----|
 | `server.port` | Bound socket cannot change |
 | `server.address` | Bound socket cannot change |
-| `server.ssl.*` | TLS listener must be recreated |
+| `server.ssl.*` except `server.ssl.letsencrypt.*` | TLS listener must be recreated |
 | `server.daemonize` | Process mode cannot change |
 | `server.pidfile` | The PID file steps run once at start, before the full configuration loads |
 | `server.database.*` | Connection pool must be recreated |
@@ -13263,6 +13264,7 @@ CREATE TABLE IF NOT EXISTS scheduler_tasks (
 
 CREATE TABLE IF NOT EXISTS scheduler_history (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- Logical foreign key to scheduler_tasks.id: no database constraint (an existing table cannot gain one without a rebuild)
     task_id     TEXT NOT NULL,
     started_at  INTEGER NOT NULL,
     finished_at INTEGER,
@@ -13792,13 +13794,16 @@ On startup, merge all sources. ConfigManager watches server.yml, yaml.d/ and sec
 
 ```go
 // Settings that require restart — prefix-matched, so trailing-dot
-// entries cover their whole section (ssl.*, database.*)
+// entries cover their whole section (ssl.enabled, database.*)
 var restartRequiredSettings = []string{
     "server.port",
     "server.address",
     "server.daemonize",
     "server.pidfile",
-    "ssl.",
+    "ssl.enabled",
+    "ssl.cert",
+    "ssl.key",
+    "ssl.min_version",
     "database.",
 }
 
@@ -14979,6 +14984,7 @@ Error with structured context (validation, etc.):
 | `2FA_REQUIRED` | 401 | "Two-factor authentication required" |
 | `2FA_INVALID` | 401 | "Invalid 2FA code" |
 | `FORBIDDEN` | 403 | "Permission denied" |
+| `CSRF_FAILED` | 403 | "CSRF token validation failed" |
 | `ACCOUNT_LOCKED` | 403 | "Account locked" |
 | `NOT_FOUND` | 404 | "Resource not found" |
 | `METHOD_NOT_ALLOWED` | 405 | "Method not allowed" |
@@ -14996,6 +15002,8 @@ type APIResponse struct {
     Data    any             `json:"data,omitempty"`
     Error   string          `json:"error,omitempty"`
     Message string          `json:"message,omitempty"`
+    // The canonical error object carries "details" (PART 14); empty when the error has none
+    Details map[string]any  `json:"details,omitempty"`
 }
 
 // SendAPIResponseOK sends success response
@@ -15488,7 +15496,7 @@ func (u *User) SetDisplayName(name string) {
 
 ### Canonical Column Renames (names this specification defines)
 
-**When this specification renames one of its own columns to the canonical name (for example the scheduler tables: in `scheduler_tasks`, `task_id` becomes `id` and `task_name` becomes `name`; in `scheduler_history`, `ran_at` becomes `started_at` while its `task_id` stays, being the foreign key to `scheduler_tasks.id`), a database created with the old name is upgraded in place by the schema step.** The step runs `ALTER TABLE ... RENAME COLUMN old TO new` only when the table's column list shows the old name and not the new one, so it is idempotent. SQLite, libSQL, PostgreSQL and MySQL 8 / MariaDB 10.5 and later support `RENAME COLUMN` (SQL Server uses `sp_rename`); the column list comes from `PRAGMA table_info` on SQLite and libSQL and from `information_schema.columns` on the other databases. Data is kept, nothing is dropped and no alias or duplicate column remains, so "Canonical Terms Only" (PART 0) and "Never destructive" both hold. A column that is missing after the rename (for example `finished_at` on an old history table) is added with the plain `ADD COLUMN` rule. This exception covers only columns whose canonical name this specification defines; a project's own columns follow "Handling Column Renames".
+**When this specification renames one of its own columns to the canonical name (for example the scheduler tables: in `scheduler_tasks`, `task_id` becomes `id` and `task_name` becomes `name`; in `scheduler_history`, `ran_at` becomes `started_at` while its `task_id` stays, being the logical foreign key to `scheduler_tasks.id`), a database created with the old name is upgraded in place by the schema step.** The step runs `ALTER TABLE ... RENAME COLUMN old TO new` only when the table's column list shows the old name and not the new one, so it is idempotent. SQLite, libSQL, PostgreSQL and MySQL 8 / MariaDB 10.5 and later support `RENAME COLUMN` (SQL Server uses `sp_rename`); the column list comes from `PRAGMA table_info` on SQLite and libSQL and from `information_schema.columns` on the other databases. Data is kept, nothing is dropped and no alias or duplicate column remains, so "Canonical Terms Only" (PART 0) and "Never destructive" both hold. A column that is missing after the rename (for example `finished_at` on an old history table) is added with the plain `ADD COLUMN` rule. This exception covers only columns whose canonical name this specification defines; a project's own columns follow "Handling Column Renames".
 
 **A primary key is never converted by the schema step.** `admins.id` is `INTEGER PRIMARY KEY AUTOINCREMENT` from the first release of a project built on this template, so there is no type to migrate; the schema step never rebuilds a table, which keeps "Never destructive" true. An existing table keeps its key, and code treats `admins.id` as an opaque value it only compares. The ONLY exception to "No migration files" is a one-time adoption step for an installation that predates this template: the adopting project writes it in its own code (never in this template), the maintainer runs it ONCE, by hand, before the first start on the new binary (it is not part of startup, not versioned and never repeated), and it adopts the canonical key like this: a backup first, then one transaction that creates the new table, copies every row with its references remapped, swaps the tables and re-checks the foreign keys (`PRAGMA foreign_key_check`).
 
@@ -15525,7 +15533,7 @@ if err != nil && !isColumnExistsError(err) {
 | Rolling upgrade | Each node applies schema updates on startup |
 | First node | Creates tables, adds columns |
 | Subsequent nodes | Statements succeed (idempotent) or ignored |
-| Version mismatch | Older nodes may lack new columns (app handles gracefully) |
+| Version mismatch | Tolerated while a rolling upgrade runs (older nodes may lack new columns, the app handles it gracefully); a NEW node joins only at the same version as the node it joins through (the join request carries `version`; otherwise `409 CONFLICT`) |
 
 **Upgrade order doesn't matter** - schema changes are additive, so:
 - New nodes can read old data (new columns have defaults)
@@ -15581,7 +15589,7 @@ Agents are NEVER cluster nodes; they don't share the DB; they don't get `app_sec
 | Heartbeat timeout | 90 seconds | 3 missed heartbeats = node considered unresponsive |
 | Degraded threshold | 90 seconds | Node marked as `degraded` |
 | Offline threshold | 5 minutes | Node marked as `offline` |
-| Removal threshold | Manual | Offline nodes require manual removal |
+| Removal threshold | Manual | A node removes only itself; an offline node stays listed until it returns and removes itself or the cluster is rebuilt |
 
 **Node States:**
 
@@ -15590,7 +15598,8 @@ Agents are NEVER cluster nodes; they don't share the DB; they don't get `app_sec
 | `healthy` | Heartbeat received within 90 seconds | Normal operation |
 | `degraded` | No heartbeat for 90 seconds to 5 minutes | Logged, monitoring continues |
 | `offline` | No heartbeat for 5+ minutes | Node excluded from load balancing |
-| `removed` | Manually removed by admin | Node record deleted |
+| `stale` | Alive (heartbeat within 90 seconds) but its `app_secrets` versions lag the database | Not rotated into, excluded from rotation quorum; returns to `healthy` once its next 30 s poll has fetched the current versions |
+| `removed` | The node removed itself | Node record deleted (never a stored state) |
 
 **Failure Detection Flow:**
 
@@ -15648,12 +15657,12 @@ Admin manually removes dead nodes via:
 
 ### Removed-Node Local Cleanup
 
-**When a node is manually removed via `/server/{admin_path}/cluster → Remove Node`, the database record is deleted, but the node's local on-disk state may still contain valid copies of `app_secrets` (it had them while it was in the cluster). The removal flow MUST handle both sides:**
+**When a node removes itself via `/server/{admin_path}/cluster → Remove Node` (a node can only remove itself, PART 34), the database record is deleted, but the node's local on-disk state may still contain valid copies of `app_secrets` (it had them while it was in the cluster). The removal flow MUST handle both sides:**
 
 | Side | Action |
 |------|--------|
 | **Server-side** (from the removing node) | Delete the row from `nodes` table. Record each `app_secrets` version that was valid for that node as a row `(name, version, node_id)` in `app_secret_revocations` so audit can see the removal happened mid-rotation if applicable. Emit `cluster.node_removed` audit event. |
-| **Removed-node-side** (when the removed node next attempts to heartbeat) | Heartbeat returns `403 NODE_REMOVED`. The binary on the removed node MUST: (1) wipe `{config_dir}/security/pgp.priv.asc.enc` if present (PGP keys are cluster-shared and the removed node has lost permission to participate); (2) wipe its `app_secrets` cache and the cluster-shared keys in `secrets.yml` (the encryption key with its version, the database password); (3) leave `server.yml` minus the cluster section; (4) log `cluster.removed_self_cleanup` to local `audit.log`; (5) refuse to serve requests until re-joined. The binary does NOT delete logs, data files, or user content — those stay on the removed host for forensic / audit purposes. |
+| **Removed-node-side** (immediately, in the same self-removal flow; or, when its row turns out to be gone, at its next heartbeat: PART 34 heartbeats are direct database updates, so there is no HTTP status, and an `UPDATE` of its own `nodes` row that affects 0 rows means the row is gone) | The binary on the removed node MUST: (1) wipe `{config_dir}/security/pgp.priv.asc.enc` if present (PGP keys are cluster-shared and the removed node has lost permission to participate); (2) wipe its `app_secrets` cache and the cluster-shared keys in `secrets.yml` (the encryption key with its version, the database password); (3) leave `server.yml` minus the cluster section; (4) log `cluster.removed_self_cleanup` to local `audit.log`; (5) refuse to serve requests until re-joined. The binary does NOT delete logs, data files, or user content — those stay on the removed host for forensic / audit purposes. |
 | **If the removed node is offline at removal time** | The cleanup happens whenever the removed node next attempts to communicate. Until then, it's running with stale secrets — but per the secret-version-mismatch flow above, its requests would already fail because `installation_secret` may have rotated. A node can only remove ITSELF (PART 34), so an operator removes a node from ITS OWN page while it is still running and stops it afterwards. A node that is already dead cannot be removed by another: it ages to `offline` and stays listed until it comes back and removes itself, or the cluster is rebuilt, and the Caveat below applies (rotate the secrets it held). The admin panel surfaces this guidance. |
 
 **Caveat:** removed-node cleanup is best-effort. A truly compromised host that's been removed cannot be trusted to wipe its own secrets — assume the secrets it had ARE in attacker hands. Always rotate `installation_secret` and `server.security.encryption_key` (the two manual rotations, run from any live node with `--maintenance secret rotate {name}`) after removing a compromised node, and change the admin password (that also rotates `csrf_token_secret`; `cookie_signing_key` follows its 90-day schedule); rotate the project PGP keypair as PART 11 defines. Rotation is a separate operator action on a live node, never part of the removal, because the removed or compromised node cannot trigger it: the Remove Node dialog lists these steps and has no rotate button.
@@ -18174,7 +18183,7 @@ server:
 | `event` | String | Event type (e.g., `admin.login`) |
 | `category` | String | Event category (e.g., `authentication`) |
 | `severity` | String | `info`, `warn`, `error`, `critical` |
-| `actor` | Object | Who performed the action: `type` (`owner`, `operator`, `anonymous` or `system`), `id` (the owner id, or `server` or `scheduler`) and `ip` when the event arrived over the network. Autonomous events (startup, shutdown, backups, scheduler tasks) have `type: system` and no `ip` |
+| `actor` | Object | Who performed the action: `type` (`owner`, `operator`, `anonymous` or `system`), `id` (the owner id; omitted for `system` and `anonymous` actors, never a placeholder such as `server` or `scheduler`) and `ip` when the event arrived over the network. Autonomous events (startup, shutdown, backups, scheduler tasks) have `type: system` and no `ip` |
 | `result` | String | `success` or `failure` |
 | `prev` | String | Lowercase hex SHA-256 of the previous entry's line (hash chain, see "Audit Log Integrity") |
 
@@ -23119,7 +23128,7 @@ func renderNoJSHTML(w http.ResponseWriter, data interface{}) {
 | Rule | Description |
 |------|-------------|
 | **Sync with project** | Both MUST reflect current project API at all times |
-| **Sync with each other** | Both describe the same API: GraphQL is query-only (reads, per the route contract), so every read operation a client may call appears in both, while write operations (POST, PUT, PATCH, DELETE) exist in REST and Swagger only. Not every read is a GraphQL field: a route declared `Binary` (an image or a file, which a GraphQL response cannot carry) appears as its metadata and URL only, and the `service`-auth and INTERNAL-ONLY routes (metrics, debug) are in neither GraphQL nor MCP |
+| **Sync with each other** | Both describe the same API: GraphQL is query-only (reads, per the route contract), so every read operation a client may call appears in both, while write operations (POST, PUT, PATCH, DELETE) exist in REST and Swagger only. Not every read is a GraphQL field: a route declared `Binary` (an image or a file, which a GraphQL response cannot carry) appears as its metadata and URL only, and the `service`-auth routes and the routes with `Internal` set (metrics, debug) are in neither GraphQL nor MCP |
 | **Auto-generated** | Both specs generated from code (annotations, comments, or schema) |
 | **Never manual** | NEVER manually edit OpenAPI JSON or GraphQL schema |
 | **Build-time generation** | Specs regenerated on every build |
@@ -28497,8 +28506,10 @@ type Route struct {
     Auth string
     // Listed in llms.txt and Swagger (public and authenticated routes; never operator-only or service ones). Listed does NOT limit MCP:
     // the MCP tool list is generated from the registry for every route the caller's token may call, and the operator token also sees
-    // the operator-only tools (never the service and INTERNAL-ONLY routes)
+    // the operator-only tools (never the service routes and the routes with `Internal` set)
     Listed bool
+    // Internal-only (the debug and diagnostics routes of the debug flag, PART 6): in neither llms.txt, Swagger, GraphQL nor MCP, whatever Listed and Auth say; registered only while the debug flag is on
+    Internal bool
     // Request and response models; the response struct's declared field order is the text output order
     Request, Response any
     // Name of the response field returned bare in text output; empty means none
@@ -28827,7 +28838,7 @@ func RecoverMiddleware(next http.Handler) http.Handler {
 // It MUST NOT depend on the template engine, theme system, or any state
 // that could itself panic or fail — plain strings only.
 // It is the ONE page exempt from the shared page shell and chrome (PART 16 "Same chrome everywhere"):
-// a constant with no header, footer, consent banner or theme, used only when the themed page cannot be
+// a constant with no header, footer, consent banner or theme, and no translation lookup (its text is fixed English, `http.StatusText` and "Home", because it runs when the template and i18n machinery itself failed), used only when the themed page cannot be
 // rendered. It is still valid HTML: a doctype, a title, one main and one h1, and a link home.
 func renderFallbackError(w http.ResponseWriter, r *http.Request, status int) {
 	if strings.Contains(r.Header.Get("Accept"), "application/json") {
@@ -34621,6 +34632,8 @@ Response for `GET /api/{api_version}/server/{admin_path}/network/blocklists/chec
 | Security | Auth failures, blocked IPs |
 | Debug | Debug output (dev mode) |
 
+**Clear Logs** truncates the selected file and is offered for every log type except Audit: `audit.log` is append-only and is removed only by rotation (PART 11), so the button is not rendered while Audit is selected and the API route refuses it.
+
 ### Keyboard Shortcuts
 
 | Shortcut | Action |
@@ -36678,7 +36691,7 @@ User Notification Preferences (/users/settings/notifications)
 | Server Admin | `admin_preferences` table | `admin_id` |
 | Regular User | `user_preferences` table | `user_id` |
 
-**Preference Schema:**
+**Preference Schema (the event names are the template names of "Email Templates"; the "Notification vs Email Decision Matrix" gives each event's default and `server.notifications.email.events.*` sets the server-wide email default; a user's preference overrides it):**
 ```json
 {
   "notifications": {
@@ -36686,14 +36699,14 @@ User Notification Preferences (/users/settings/notifications)
       "backup_complete": true,
       "backup_failed": true,
       "ssl_expiring": true,
-      "admin_login": true
+      "login_alert": true
     },
     "email": {
       "backup_complete": false,
       "backup_failed": true,
       "ssl_expiring": true,
       "ssl_renewal_failed": true,
-      "admin_login": false
+      "login_alert": true
     }
   }
 }
@@ -37042,15 +37055,16 @@ In cluster mode, tasks are distributed to prevent duplicate execution:
 - `geoip_update`
 - `blocklist_update`
 - `cve_update`
-- `backup_daily`
 - `update_check` (the check and notification run once; with `auto_install: true` the install is rolled out node-by-node — never all nodes at once, so the cluster stays available)
 
 **Local Tasks (run on each node):**
+- `backup_daily` and `backup_hourly` (every node keeps its own local backups, "Cluster Backup Rules"; the task lock is per node, its key includes the node id, so the nodes never wait on one another)
 - `session_cleanup`
 - `token_cleanup`
 - `log_rotation`
 - `healthcheck_self`
 - `tor_health`
+- `i2p_health`
 - `cluster_heartbeat`
 
 ### Task Locking (Cluster Mode)
@@ -39118,7 +39132,7 @@ groups:
 |--------|---------|
 | Algorithm | AES-256-GCM |
 | Key Derivation | Argon2id (password → encryption key) |
-| Encrypted archive format | A cleartext header, then the AES-256-GCM ciphertext. Header, in this fixed order and encoding: magic `BKUP1` (5 bytes), `salt` (16 random bytes, new for every archive), `m`, `t`, `p` (each a uint32, big-endian: memory in KiB, iterations, parallelism), the 12-byte `nonce`, `key_id` (8 ASCII lowercase hex characters), then `base_len` (uint16, big-endian; 0 for a full backup) followed by `base_len` bytes of the base file's name (UTF-8, at most 255 bytes, no path separators). The header is exactly the concatenation of these fields (55 bytes plus the name), and a reader rejects a `base_len` above 255 or a header that ends early before it derives any key. Retention and base protection use only this header and the file names, never a password. The whole header is bound to the ciphertext as AES-GCM additional data, so any change to it fails decryption. It holds no password and no key material |
+| Encrypted archive format | A cleartext header, then the AES-256-GCM ciphertext. Header, in this fixed order and encoding: magic `BKUP1` (5 bytes), `salt` (16 random bytes, new for every archive), `m`, `t`, `p` (each a uint32, big-endian: memory in KiB, iterations, parallelism), the 12-byte `nonce`, `key_id` (8 ASCII lowercase hex characters), then `base_len` (uint16, big-endian; 0 for a full backup) followed by `base_len` bytes of the base file's name (UTF-8, at most 255 bytes, no path separators). The header is exactly the concatenation of these fields (55 bytes plus the name), and a reader rejects a `base_len` above 255 or a header that ends early before it derives any key. Retention and base protection use only this header and the file names, never a password. The whole header is bound to the ciphertext as AES-GCM additional data, so any change to it fails decryption. It holds no password and no key material. `m`, `t` and `p` are attacker-controlled until the archive authenticates, so a reader enforces ceilings BEFORE it derives any key: `m` from 8192 to 1048576 KiB, `t` from 1 to 10, `p` from 1 to 16 (and `m` at least `8 × p`); a value outside them rejects the archive as corrupt without running Argon2id. The writer uses `m` = 65536, `t` = 3, `p` = 4 |
 | `key_id` | The first 8 hex characters of `HMAC-SHA256(derived_key, "key-id")`, where `derived_key` is Argon2id over the password with THAT archive's own salt and parameters. The same password gives the same `key_id` only when derived with the same salt, so comparing against another archive means re-deriving with that archive's salt and parameters |
 | File Extension | `.tar.gz` (unencrypted) or `.tar.gz.enc` (encrypted) |
 | Password Storage | Kept only so scheduled backups can run unattended: encrypted at rest with `server.security.encryption_key` (AES-256-GCM), never hashed (it is key material, not a login verifier), never written to a log, manifest or archive, and never returned by any API. Restore never reads it: the admin supplies the password |
@@ -41193,7 +41207,7 @@ dscl . -create /Users/{internal_name} UniqueID {id}
 dscl . -create /Users/{internal_name} PrimaryGroupID {id}
 dscl . -create /Users/{internal_name} UserShell /usr/bin/false
 dscl . -create /Users/{internal_name} RealName "{internal_name} service account"
-dscl . -create /Users/{internal_name} NFSHomeDirectory /usr/local/var/{internal_org}/{internal_name}
+dscl . -create /Users/{internal_name} NFSHomeDirectory /Library/Application Support/{internal_org}/{internal_name}/data
 dscl . -create /Users/{internal_name} Password "*"
 
 # Hide user from login window
@@ -41223,22 +41237,22 @@ dscl . -create /Users/{internal_name} IsHidden 1
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/var/log/{internal_org}/{internal_name}/stdout.log</string>
+    <string>/Library/Logs/{internal_org}/{internal_name}/stdout.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/var/log/{internal_org}/{internal_name}/stderr.log</string>
+    <string>/Library/Logs/{internal_org}/{internal_name}/stderr.log</string>
 </dict>
 </plist>
 ```
 
-**macOS Directory Structure:**
+**macOS Directory Structure (the privileged paths of "Privileged (root/sudo)" above, the one canonical set; the service account's home is the data directory):**
 
 | Directory | Path | Purpose |
 |-----------|------|---------|
 | Binary | `/usr/local/bin/{project_name}` | Executable |
-| Config | `/usr/local/etc/{internal_org}/{internal_name}/` | Configuration files |
-| Data | `/usr/local/var/{internal_org}/{internal_name}/` | Application data |
-| Logs | `/usr/local/var/log/{internal_org}/{internal_name}/` | Log files |
+| Config | `/Library/Application Support/{internal_org}/{internal_name}/` | Configuration files |
+| Data | `/Library/Application Support/{internal_org}/{internal_name}/data/` | Application data |
+| Logs | `/Library/Logs/{internal_org}/{internal_name}/` | Log files |
 | launchd plist | `/Library/LaunchDaemons/{plist_name}.plist` | Service definition |
 
 **Go Implementation (macOS):**
@@ -56439,7 +56453,7 @@ Tor Hidden Service: Connected
 **Key Architecture Points:**
 - **Opt-in outside containers, on by default in a container** — when disabled there is no eepsite, no port, no `i2pd.conf` and no SAM session.
 - **Server binary owns the provider** — Model A: full i2pd process lifecycle; Model B: the SAM session lifecycle.
-- **Dedicated backend port** — the eepsite maps `.b32.i2p:{virtual_port}` → `127.0.0.1:{i2p_backend_port}`, a random-unused loopback port. **Unlike Tor, there is no PROXY-protocol header** (SAM/i2pd do not prepend one), so the backend is a **plain loopback listener**, separate from the clearnet port.
+- **Dedicated backend port** — the eepsite maps `.b32.i2p:{virtual_port}` → `127.0.0.1:{i2p_backend_port}`, a random-unused loopback port. SAM `STREAM FORWARD` takes only the backend `PORT`: the router forwards every incoming stream to it whatever destination port the client names, so `virtual_port` only fixes the port shown in the address and URL (default 80, the port a client uses by convention). **Unlike Tor, there is no PROXY-protocol header** (SAM/i2pd do not prepend one), so the backend is a **plain loopback listener**, separate from the clearnet port.
 - **Destination identity persists** — the key lives under `{data_dir}/i2p/site/` (one SAM `PRIV` line, written by the app for both models); the `.b32.i2p` address survives restarts. `i2pd.conf` is derived state, regenerated each run.
 - **Server enforces permissions** — creates all dirs/files with correct owner/group/perms (0700 dirs, 0600 keys).
 
@@ -57135,7 +57149,7 @@ func loadOrCreateDestination(conn net.Conn, r *bufio.Reader, keysPath string, si
         return "", fmt.Errorf("DEST GENERATE returned an unusable key")
     }
     tmp := keysPath + ".tmp"
-    if err := os.WriteFile(tmp, []byte(priv+"\n"), 0600); err != nil {
+    if err := os.WriteFile(tmp, []byte(priv), 0600); err != nil {
         return "", err
     }
     if err := os.Rename(tmp, keysPath); err != nil {
@@ -65802,7 +65816,9 @@ Generate Token                              │
 NEW NODE                                    EXISTING NODE
     │                                            │
     │  1. POST /api/{api_version}/server/{admin_path}/nodes/join   │
-    │     Body: { "token": "node_xxx" }          │
+    │     Body: { "token": "node_xxx",           │
+    │             "version": "{version}",        │
+    │             "hostname": "{hostname}" }     │
     │─────────────────────────────────────────►  │
     │                                            │
     │                                            ▼
@@ -65811,6 +65827,11 @@ NEW NODE                                    EXISTING NODE
     │                                      - Not expired (15 min)?
     │                                      - Not already used?
     │                                      - Not in 90-day lockout?
+    │                                      - version equals this
+    │                                        node's? (else 409 CONFLICT,
+    │                                        token stays unused)
+    │                                      - hostname not already
+    │                                        in nodes?
     │                                            │
     │                                            ▼
     │                                   3. Mark token as used
@@ -65840,8 +65861,8 @@ NEW NODE                                    EXISTING NODE
     │                                            │
     ▼                                            │
 8. Register self in nodes table                  │
-   - node_id: {hostname}                         │
-   - status: online                              │
+   - id: {hostname}                              │
+   - status: healthy                             │
    - joined_at: now()                            │
     │                                            │
     ▼                                            │

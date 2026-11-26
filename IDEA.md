@@ -609,3 +609,154 @@ returns a file export.
 | `/api/{api_version}/support/admin/agents` | POST | Support administrator | Manage support agents | Agent fields → agent |
 | `/api/{api_version}/support/admin/canned-responses` | POST | Support administrator | Manage canned responses | Response fields → response |
 | `/api/{api_version}/support/admin/reports/{name}` | GET | Support administrator | Read report | Period/filter query → report data |
+
+#### Hosting and workload endpoints
+
+| `/api/{api_version}/orgs/{slug}/apps` | GET | Organization member or above | Read apps resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/apps` | POST | Organization member or above | Create or operate on apps resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/apps/{id}` | DELETE | Organization member or above | Delete apps resource | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/apps/{id}` | GET | Organization member or above | Read apps resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/apps/{id}` | PATCH | Organization member or above | Update apps resource | Changed fields → updated resource |
+| `/api/{api_version}/orgs/{slug}/apps/{id}/deploy` | POST | Organization member or above | Create or operate on apps resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/apps/{id}/env` | GET | Organization member or above | Read apps resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/apps/{id}/env/{key}` | DELETE | Organization member or above | Delete apps resource | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/apps/{id}/env/{key}` | PUT | Organization member or above | Set apps configuration | Configuration value → updated resource |
+| `/api/{api_version}/orgs/{slug}/apps/{id}/logs` | GET | Organization member or above | Read apps resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/apps/{id}/releases` | GET | Organization member or above | Read apps resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/apps/{id}/rollback` | POST | Organization member or above | Create or operate on apps resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/apps/{id}/scale` | POST | Organization member or above | Create or operate on apps resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/apps/{id}/start` | POST | Organization member or above | Create or operate on apps resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/apps/{id}/stop` | POST | Organization member or above | Create or operate on apps resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/dns/records/{id}` | DELETE | Organization member or above | Delete dns resource | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/dns/records/{id}` | GET | Organization member or above | Read dns resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/dns/records/{id}` | PATCH | Organization member or above | Update dns resource | Changed fields → updated resource |
+| `/api/{api_version}/orgs/{slug}/dns/zones` | GET | Organization member or above | Read dns resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/dns/zones` | POST | Organization member or above | Create or operate on dns resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/dns/zones/{id}` | DELETE | Organization member or above | Delete dns resource | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/dns/zones/{id}` | GET | Organization member or above | Read dns resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/dns/zones/{id}` | PATCH | Organization member or above | Update dns resource | Changed fields → updated resource |
+| `/api/{api_version}/orgs/{slug}/dns/zones/{id}/file` | GET | Organization member or above | Read dns resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/dns/zones/{id}/records` | GET | Organization member or above | Read dns resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/dns/zones/{id}/records` | POST | Organization member or above | Create or operate on dns resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/mail/aliases/{id}` | DELETE | Organization member or above | Delete mail resource | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/mail/domains` | GET | Organization member or above | Read mail resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/mail/domains` | POST | Organization member or above | Create or operate on mail resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/mail/domains/{id}` | DELETE | Organization member or above | Delete mail resource | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/mail/domains/{id}` | GET | Organization member or above | Read mail resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/mail/domains/{id}/aliases` | GET | Organization member or above | Read mail resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/mail/domains/{id}/aliases` | POST | Organization member or above | Create or operate on mail resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/mail/domains/{id}/dns` | GET | Organization member or above | Read dns resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/mail/domains/{id}/mailboxes` | GET | Organization member or above | Read mail resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/mail/domains/{id}/mailboxes` | POST | Organization member or above | Create or operate on mail resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/mail/mailboxes/{id}` | DELETE | Organization member or above | Delete mail resource | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/mail/mailboxes/{id}` | PATCH | Organization member or above | Update mail resource | Changed fields → updated resource |
+| `/api/{api_version}/orgs/{slug}/mail/mailboxes/{id}/password` | POST | Organization member or above | Create or operate on mail resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/mail/mailboxes/{mailboxID}/messages` | GET | Organization member or above | Read mail resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/mail/mailboxes/{mailboxID}/messages` | POST | Organization member or above | Create or operate on mail resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/mail/mailboxes/{mailboxID}/messages/{id}` | DELETE | Organization member or above | Delete mail resource | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/mail/mailboxes/{mailboxID}/messages/{id}` | GET | Organization member or above | Read mail resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/mail/mailboxes/{mailboxID}/security` | GET | Organization member or above | Read mail resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/sites` | GET | Organization member or above | Read sites resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/sites` | POST | Organization member or above | Create or operate on sites resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/sites/{id}` | DELETE | Organization member or above | Delete sites resource | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/sites/{id}` | GET | Organization member or above | Read sites resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/sites/{id}` | PATCH | Organization member or above | Update sites resource | Changed fields → updated resource |
+| `/api/{api_version}/orgs/{slug}/sites/{id}/deploy` | POST | Organization member or above | Create or operate on sites resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/sites/{id}/disable` | POST | Organization member or above | Create or operate on sites resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/sites/{id}/enable` | POST | Organization member or above | Create or operate on sites resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/sites/{id}/releases` | GET | Organization member or above | Read sites resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/sites/{id}/rollback` | POST | Organization member or above | Create or operate on sites resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/sites/{id}/transfer-accounts` | GET | Organization member or above | Read sites resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/sites/{id}/transfer-accounts` | POST | Organization member or above | Create or operate on sites resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/sites/{id}/transfer-accounts/{accountID}` | DELETE | Organization member or above | Delete sites resource | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/sites/{id}/transfer-accounts/{accountID}` | GET | Organization member or above | Read sites resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/sites/{id}/usage` | GET | Organization member or above | Read sites resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/usage` | GET | Organization member or above | Read usage resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/workloads` | GET | Organization member or above | Read workloads resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/workloads` | POST | Organization member or above | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/workloads/events` | GET | Organization member or above | Read workloads resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/workloads/images` | POST | Organization member or above | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/workloads/{name}` | DELETE | Organization member or above | Delete workloads resource | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/workloads/{name}` | GET | Organization member or above | Read workloads resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/workloads/{name}/exec` | POST | Organization member or above | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/workloads/{name}/logs` | GET | Organization member or above | Read workloads resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/workloads/{name}/restart` | POST | Organization member or above | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/workloads/{name}/snapshots` | GET | Organization member or above | Read workloads resource | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/workloads/{name}/snapshots` | POST | Organization member or above | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/workloads/{name}/snapshots/{snapshot}/restore` | POST | Organization member or above | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/workloads/{name}/start` | POST | Organization member or above | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/workloads/{name}/stop` | POST | Organization member or above | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/apps` | GET | Authenticated tenant | Read apps resource | Query parameters → requested resource |
+| `/api/{api_version}/users/apps` | POST | Authenticated tenant | Create or operate on apps resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/apps/{id}` | DELETE | Authenticated tenant | Delete apps resource | Confirmation → success |
+| `/api/{api_version}/users/apps/{id}` | GET | Authenticated tenant | Read apps resource | Query parameters → requested resource |
+| `/api/{api_version}/users/apps/{id}` | PATCH | Authenticated tenant | Update apps resource | Changed fields → updated resource |
+| `/api/{api_version}/users/apps/{id}/deploy` | POST | Authenticated tenant | Create or operate on apps resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/apps/{id}/env` | GET | Authenticated tenant | Read apps resource | Query parameters → requested resource |
+| `/api/{api_version}/users/apps/{id}/env/{key}` | DELETE | Authenticated tenant | Delete apps resource | Confirmation → success |
+| `/api/{api_version}/users/apps/{id}/env/{key}` | PUT | Authenticated tenant | Set apps configuration | Configuration value → updated resource |
+| `/api/{api_version}/users/apps/{id}/logs` | GET | Authenticated tenant | Read apps resource | Query parameters → requested resource |
+| `/api/{api_version}/users/apps/{id}/releases` | GET | Authenticated tenant | Read apps resource | Query parameters → requested resource |
+| `/api/{api_version}/users/apps/{id}/rollback` | POST | Authenticated tenant | Create or operate on apps resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/apps/{id}/scale` | POST | Authenticated tenant | Create or operate on apps resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/apps/{id}/start` | POST | Authenticated tenant | Create or operate on apps resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/apps/{id}/stop` | POST | Authenticated tenant | Create or operate on apps resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/dns/records/{id}` | DELETE | Authenticated tenant | Delete dns resource | Confirmation → success |
+| `/api/{api_version}/users/dns/records/{id}` | GET | Authenticated tenant | Read dns resource | Query parameters → requested resource |
+| `/api/{api_version}/users/dns/records/{id}` | PATCH | Authenticated tenant | Update dns resource | Changed fields → updated resource |
+| `/api/{api_version}/users/dns/zones` | GET | Authenticated tenant | Read dns resource | Query parameters → requested resource |
+| `/api/{api_version}/users/dns/zones` | POST | Authenticated tenant | Create or operate on dns resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/dns/zones/{id}` | DELETE | Authenticated tenant | Delete dns resource | Confirmation → success |
+| `/api/{api_version}/users/dns/zones/{id}` | GET | Authenticated tenant | Read dns resource | Query parameters → requested resource |
+| `/api/{api_version}/users/dns/zones/{id}` | PATCH | Authenticated tenant | Update dns resource | Changed fields → updated resource |
+| `/api/{api_version}/users/dns/zones/{id}/file` | GET | Authenticated tenant | Read dns resource | Query parameters → requested resource |
+| `/api/{api_version}/users/dns/zones/{id}/records` | GET | Authenticated tenant | Read dns resource | Query parameters → requested resource |
+| `/api/{api_version}/users/dns/zones/{id}/records` | POST | Authenticated tenant | Create or operate on dns resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/mail/aliases/{id}` | DELETE | Authenticated tenant | Delete mail resource | Confirmation → success |
+| `/api/{api_version}/users/mail/domains` | GET | Authenticated tenant | Read mail resource | Query parameters → requested resource |
+| `/api/{api_version}/users/mail/domains` | POST | Authenticated tenant | Create or operate on mail resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/mail/domains/{id}` | DELETE | Authenticated tenant | Delete mail resource | Confirmation → success |
+| `/api/{api_version}/users/mail/domains/{id}` | GET | Authenticated tenant | Read mail resource | Query parameters → requested resource |
+| `/api/{api_version}/users/mail/domains/{id}/aliases` | GET | Authenticated tenant | Read mail resource | Query parameters → requested resource |
+| `/api/{api_version}/users/mail/domains/{id}/aliases` | POST | Authenticated tenant | Create or operate on mail resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/mail/domains/{id}/dns` | GET | Authenticated tenant | Read dns resource | Query parameters → requested resource |
+| `/api/{api_version}/users/mail/domains/{id}/mailboxes` | GET | Authenticated tenant | Read mail resource | Query parameters → requested resource |
+| `/api/{api_version}/users/mail/domains/{id}/mailboxes` | POST | Authenticated tenant | Create or operate on mail resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/mail/mailboxes/{id}` | DELETE | Authenticated tenant | Delete mail resource | Confirmation → success |
+| `/api/{api_version}/users/mail/mailboxes/{id}` | PATCH | Authenticated tenant | Update mail resource | Changed fields → updated resource |
+| `/api/{api_version}/users/mail/mailboxes/{id}/password` | POST | Authenticated tenant | Create or operate on mail resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/mail/mailboxes/{mailboxID}/messages` | GET | Authenticated tenant | Read mail resource | Query parameters → requested resource |
+| `/api/{api_version}/users/mail/mailboxes/{mailboxID}/messages` | POST | Authenticated tenant | Create or operate on mail resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/mail/mailboxes/{mailboxID}/messages/{id}` | DELETE | Authenticated tenant | Delete mail resource | Confirmation → success |
+| `/api/{api_version}/users/mail/mailboxes/{mailboxID}/messages/{id}` | GET | Authenticated tenant | Read mail resource | Query parameters → requested resource |
+| `/api/{api_version}/users/mail/mailboxes/{mailboxID}/security` | GET | Authenticated tenant | Read mail resource | Query parameters → requested resource |
+| `/api/{api_version}/users/sites` | GET | Authenticated tenant | Read sites resource | Query parameters → requested resource |
+| `/api/{api_version}/users/sites` | POST | Authenticated tenant | Create or operate on sites resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/sites/{id}` | DELETE | Authenticated tenant | Delete sites resource | Confirmation → success |
+| `/api/{api_version}/users/sites/{id}` | GET | Authenticated tenant | Read sites resource | Query parameters → requested resource |
+| `/api/{api_version}/users/sites/{id}` | PATCH | Authenticated tenant | Update sites resource | Changed fields → updated resource |
+| `/api/{api_version}/users/sites/{id}/deploy` | POST | Authenticated tenant | Create or operate on sites resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/sites/{id}/disable` | POST | Authenticated tenant | Create or operate on sites resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/sites/{id}/enable` | POST | Authenticated tenant | Create or operate on sites resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/sites/{id}/releases` | GET | Authenticated tenant | Read sites resource | Query parameters → requested resource |
+| `/api/{api_version}/users/sites/{id}/rollback` | POST | Authenticated tenant | Create or operate on sites resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/sites/{id}/transfer-accounts` | GET | Authenticated tenant | Read sites resource | Query parameters → requested resource |
+| `/api/{api_version}/users/sites/{id}/transfer-accounts` | POST | Authenticated tenant | Create or operate on sites resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/sites/{id}/transfer-accounts/{accountID}` | DELETE | Authenticated tenant | Delete sites resource | Confirmation → success |
+| `/api/{api_version}/users/sites/{id}/transfer-accounts/{accountID}` | GET | Authenticated tenant | Read sites resource | Query parameters → requested resource |
+| `/api/{api_version}/users/sites/{id}/usage` | GET | Authenticated tenant | Read sites resource | Query parameters → requested resource |
+| `/api/{api_version}/users/usage` | GET | Authenticated tenant | Read usage resource | Query parameters → requested resource |
+| `/api/{api_version}/users/workloads` | GET | Authenticated tenant | Read workloads resource | Query parameters → requested resource |
+| `/api/{api_version}/users/workloads` | POST | Authenticated tenant | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/workloads/events` | GET | Authenticated tenant | Read workloads resource | Query parameters → requested resource |
+| `/api/{api_version}/users/workloads/images` | POST | Authenticated tenant | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/workloads/{name}` | DELETE | Authenticated tenant | Delete workloads resource | Confirmation → success |
+| `/api/{api_version}/users/workloads/{name}` | GET | Authenticated tenant | Read workloads resource | Query parameters → requested resource |
+| `/api/{api_version}/users/workloads/{name}/exec` | POST | Authenticated tenant | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/workloads/{name}/logs` | GET | Authenticated tenant | Read workloads resource | Query parameters → requested resource |
+| `/api/{api_version}/users/workloads/{name}/restart` | POST | Authenticated tenant | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/workloads/{name}/snapshots` | GET | Authenticated tenant | Read workloads resource | Query parameters → requested resource |
+| `/api/{api_version}/users/workloads/{name}/snapshots` | POST | Authenticated tenant | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/workloads/{name}/snapshots/{snapshot}/restore` | POST | Authenticated tenant | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/workloads/{name}/start` | POST | Authenticated tenant | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/users/workloads/{name}/stop` | POST | Authenticated tenant | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
