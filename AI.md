@@ -149,6 +149,8 @@ IDEA.md is the project PLAN. AI.md (this file) is the authoritative template bas
 
 **IDEA.md says WHAT the product is (features, data, business rules, audience, non-goals). AI.md says HOW every project is built and is the authority on every implementation and baseline requirement. When they disagree, AI.md wins and IDEA.md is corrected.**
 
+**A feature IDEA.md defines that AI.md has no contract for** (for example operator-level billing or federation) is built from IDEA.md under the full AI.md baseline: security, authentication, database, API conventions, configuration, audit, i18n and every PART the feature touches. AI.md defines no protocol for it and forbids nothing about it. The project's SPEC.md states the feature's technical contract (data, endpoints, signatures, retries, conflict handling) and is the only place that does; the feature never loosens a baseline rule, and a baseline rule it cannot meet is a SPEC.md exception (PART 0).
+
 | IDEA.md MAY | IDEA.md MAY NOT |
 |-------------|-----------------|
 | Define the product's features, data models, business rules and audience, and its API surface: the `### API routes` inventory of what callers can do (method, path, auth, purpose, request/response summary), never how a handler is written | Remove, weaken or waive a mandatory AI.md requirement (server baseline, configuration, security, health, build, CI/CD, i18n, accessibility, documentation, testing) |
@@ -858,7 +860,7 @@ CI workflows reference the image directly: `container: image: casjaysdev/go:late
 - `image-scan` (Trivy) — conditional on Dockerfile present; builds its own image first (host-runner job, no `needs`)
 
 **GitHub Actions job ordering (`needs:`):**
-- `ci.yml`: `lint`, `test`, `secret-scan`, `workflow-policy`, `vuln-scan` in parallel → `build` (needs lint + test) → `coverage`, `upload-artifacts` (need build); `image-scan` has no `needs` (it builds its own image, so the weekly schedule still runs it); every job except `secret-scan` and `image-scan` runs inside `container: image: casjaysdev/go:latest` (those two are host-runner jobs: they need the host Docker daemon); security jobs also run on weekly schedule via `if:` conditions
+- `ci.yml`: `lint`, `test`, `secret-scan`, `workflow-policy`, `vuln-scan` in parallel → `build` (needs lint + test) → `upload-artifacts` (needs build); coverage collection and the 60% enforcement are steps of the `test` job, never a separate job; `image-scan` has no `needs` (it builds its own image, so the weekly schedule still runs it); every job except `secret-scan` and `image-scan` runs inside `container: image: casjaysdev/go:latest` (those two are host-runner jobs: they need the host Docker daemon); security jobs also run on weekly schedule via `if:` conditions
 - `release.yml`: `build` → `release` (needs: build); all build jobs run inside `container: image: casjaysdev/go:latest`
 - Cross-workflow ordering via branch protection; never `workflow_run`
 
@@ -23036,6 +23038,7 @@ func renderNoJSHTML(w http.ResponseWriter, data interface{}) {
 | **Optional routes** | The embedded build-time spec is the full SUPERSET of routes, and every route that depends on a flag or a setting (the `/debug/*` routes, `/metrics`, the root aliases, optional well-known files) carries `x-mounted-when` naming its condition (for example `--debug` or `server.metrics.root.enabled`). At startup the server derives the SERVED spec from the embedded one by removing every operation whose condition is false for this run, so the spec a client reads always matches the routes that are actually mounted. The drift test compares the superset with the route table |
 | **JSON only** | OpenAPI spec uses JSON format only (NO YAML) |
 | **Source of truth** | AI.md defines the TEMPLATE routes and the `### API routes` inventory in IDEA.md defines EVERY project-defined route, including any native or compatibility API of the project; together they are the API CONTRACT: routes, methods, auth and shapes. AI.md never enumerates project routes. The code and its annotations implement that contract, and the specs are GENERATED from the code, so they are artifacts, never edited by hand. Drift is detected by a test with three legs: the generated OpenAPI route and method list, the router's registered routes, and the union of the AI.md template routes and the IDEA.md `### API routes` inventory. A route present in one leg and missing from another fails the build, naming the route and the missing place; a project whose IDEA.md has no `### API routes` subsection fails with that message instead of passing vacuously. A deliberate change is made in AI.md or IDEA.md first, then the code, then the specs are regenerated |
+| **Template route inventory** | The template leg of the drift test is read from the project's own `AI.md` at test time, deterministically: a template route is a Markdown table row whose first cell is exactly one backticked path starting with `/` and whose second cell is exactly one HTTP method (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`); a first cell with an alias lists each path as its own route. `{api_version}` is the API version in use, `{admin_path}` the configured admin path, any other `{name}` segment matches a path parameter. A row under a section marked OPTIONAL counts only when the project enables that feature (its `x-mounted-when` condition). A route table in any other form is not a route inventory: a new template route is added to AI.md in this form, and nothing is copied into a project |
 | **Match site theme** | Both UIs styled to match site theme (light/dark/auto) |
 | **Standardized locations** | ALWAYS `src/swagger/` and `src/graphql/` (NEVER in root `.`) |
 
@@ -30839,7 +30842,7 @@ web:
 | Attacker steals a CSRF token via XSS and submits a forged request | ✗ No (XSS bypasses CSRF — the attacker is now running in our origin). XSS defense is CSP + escaping. |
 | Attacker steals the session cookie via XSS | ✗ No (CSRF can't help — session theft is its own problem). Defense is `HttpOnly` cookie + CSP. |
 | Attacker submits a request with a stolen Bearer token | ✗ No (Bearer auth bypasses CSRF by design). Defense is token rotation, scoping, and rate limiting. |
-| Public endpoint POST'd to from anywhere | n/a (no auth, nothing to abuse) |
+| Public BACKEND endpoint (`/api/**`, no auth) POST'd to from anywhere | n/a (backend is outside CSRF scope, nothing to abuse). A public FRONTEND form (contact, guest preferences) is NOT exempt: it carries the token and a missing or invalid one is `403` |
 | Browser-issued report to `/api/{api_version}/server/reports/*` | n/a (PART 14 reports are deliberately public; rate-limited per-IP) |
 
 ## Footer Customization
@@ -41711,7 +41714,7 @@ func (ws *windowsService) Execute(args []string, r <-chan svc.ChangeRequest, s c
 - **NEVER guess or assume** - must be explicitly created by the user, and never written by AI
 - Canonical single-line official site source when present
 - If `site.txt` exists, it wins over `IDEA.md`, README, env vars, CI secrets, and other fallbacks
-- `IDEA.md` `official_site` only resolves the `{official_site}` placeholder in README and docs; it is NOT an operational source. The embedded `OfficialSite` and the CLI's default server come only from `site.txt`, `OFFICIAL_SITE` or CI secrets, so with none of them the CLI requires `--server` even when IDEA.md has a value. When both exist, `IDEA.md` should match `site.txt`; `site.txt` is the easy-to-update operational override
+- `IDEA.md` `official_site` only resolves the `{official_site}` placeholder in README and docs; it is NOT an operational source. The placeholder resolves in the same order as the operational value: `site.txt` first, then IDEA.md `official_site`. A populated `site.txt` therefore also supplies the README and docs URL examples when IDEA.md omits `official_site`; with neither, the placeholder is unset and the examples use relative paths. The embedded `OfficialSite` and the CLI's default server come only from `site.txt`, `OFFICIAL_SITE` or CI secrets, so with none of them the CLI requires `--server` even when IDEA.md has a value. When both exist, `IDEA.md` should match `site.txt`; `site.txt` is the easy-to-update operational override
 - If not present, CLI/Agent users must always specify `--server` flag
 - Sources checked in order:
   1. File: `site.txt` in project root
@@ -44323,7 +44326,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: govulncheck ./...
 
-  # Additional container jobs follow the pattern above: workflow-policy, coverage (needs: test), upload-artifacts (needs: build).
+  # Additional container jobs follow the pattern above: workflow-policy, upload-artifacts (needs: build). Coverage is a step of the test job.
   # image-scan is the other host-runner job (no container:, no needs)
   secret-scan:
     runs-on: ubuntu-26.04
@@ -44353,7 +44356,7 @@ jobs:
           extra_args: --results=${{ steps.scope.outputs.results }} --exclude-paths=.github/trufflehog-exclude.txt
 ```
 
-> **Note:** Security jobs (`secret-scan`, `workflow-policy`, `vuln-scan`, `image-scan`) are defined within `ci.yml`. They run on push, PR, and weekly schedule (`cron: '0 6 * * 1'`). Add `if: github.event_name != 'schedule'` to build/test/coverage/artifact jobs to skip non-security work on scheduled runs. Secret scanning is mandatory on every public repo via truffleHog (Apache-2.0). Use `github.event.before` / `github.event.after` for the scan range — never `default_branch`, which after a push resolves to the same commit as HEAD and silently skips the scan.
+> **Note:** Security jobs (`secret-scan`, `workflow-policy`, `vuln-scan`, `image-scan`) are defined within `ci.yml`. They run on push, PR, and weekly schedule (`cron: '0 6 * * 1'`). Add `if: github.event_name != 'schedule'` to build/test/artifact jobs to skip non-security work on scheduled runs. Secret scanning is mandatory on every public repo via truffleHog (Apache-2.0). Use `github.event.before` / `github.event.after` for the scan range — never `default_branch`, which after a push resolves to the same commit as HEAD and silently skips the scan.
 
 ### Secret Scan Job (truffleHog)
 
@@ -45597,7 +45600,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: govulncheck ./...
 
-  # Additional container jobs follow the pattern above: workflow-policy, coverage (needs: test), upload-artifacts (needs: build).
+  # Additional container jobs follow the pattern above: workflow-policy, upload-artifacts (needs: build). Coverage is a step of the test job.
   # image-scan is the other host-runner job (no container:, no needs)
   secret-scan:
     runs-on: ubuntu-26.04
