@@ -863,7 +863,7 @@ CI workflows reference the image directly: `container: image: casjaysdev/go:late
 - `image-scan` (Trivy) — conditional on Dockerfile present; builds its own image first (host-runner job, no `needs`)
 
 **GitHub Actions job ordering (`needs:`):**
-- `ci.yml`: `lint`, `test`, `secret-scan`, `workflow-policy`, `vuln-scan` in parallel → `build` (needs lint + test) → `upload-artifacts` (needs build); coverage collection and the 60% enforcement are steps of the `test` job, never a separate job; `image-scan` has no `needs` (it builds its own image, so the weekly schedule still runs it); every job except `secret-scan` and `image-scan` runs inside `container: image: casjaysdev/go:latest` (those two are host-runner jobs: they need the host Docker daemon); security jobs also run on weekly schedule via `if:` conditions
+- `ci.yml`: `lint`, `test`, `secret-scan`, `workflow-policy`, `vuln-scan` in parallel → `build` (needs lint + test); coverage collection and the 60% enforcement are steps of the `test` job, never a separate job; `image-scan` has no `needs` (it builds its own image, so the weekly schedule still runs it); every job except `secret-scan` and `image-scan` runs inside `container: image: casjaysdev/go:latest` (those two are host-runner jobs: they need the host Docker daemon); security jobs also run on weekly schedule via `if:` conditions
 - `release.yml`: `build` → `release` (needs: build); all build jobs run inside `container: image: casjaysdev/go:latest`
 - Cross-workflow ordering via branch protection; never `workflow_run`
 
@@ -4167,11 +4167,11 @@ Enter choice [a-d]:
 ## Final Migration Verification
 
 ```bash
-# AI should run these checks and report results:
+# AI should run these checks and report results. The binary never runs on the host: each command runs inside a container
 
 # 1. Verify CLI
-./binaries/{project_name} --help
-./binaries/{project_name} --version
+docker run --rm --name "{project_name}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" -v "$PWD/binaries:/app:ro" alpine:latest /app/{project_name} --help
+docker run --rm --name "{project_name}-$(head -c6 /dev/urandom | od -An -tx1 | tr -d ' \n' | cut -c1-8)" -v "$PWD/binaries:/app:ro" alpine:latest /app/{project_name} --version
 
 # 2. Verify build
 make clean && make build
@@ -20321,8 +20321,6 @@ server:
         decline: "Decline"
         accept: "I Agree"
 
-      # Banner position: bottom, top
-      position: bottom
 
       # Show "Manage Preferences" link for granular control
       show_preferences: true
@@ -20373,7 +20371,7 @@ server:
 
 | Keys | Role |
 |------|------|
-| `consent.*` (banner message, buttons, position, `show_preferences`), `cookies.*.enabled` | Behavior only: they change what the server does, they do not add page text. `cookies.*.enabled` decides only whether a category is offered to the visitor; the consent state is the visitor's own `cookie_consent` cookie, and without it every non-essential category is off |
+| `consent.*` (banner message, buttons, `show_preferences`; the banner is always fixed to the bottom of the viewport), `cookies.*.enabled` | Behavior only: they change what the server does, they do not add page text. `cookies.*.enabled` decides only whether a category is offered to the visitor; the consent state is the visitor's own `cookie_consent` cookie, and without it every non-essential category is off |
 | `data.sold` | Behavior AND page: picks the banner message, the CCPA opt-out and the Data Usage text |
 | `data.stored_on_server`, `data.sharing`, `retention.*`, `cookies.*.description`, `third_party.services` | Page content only: they fill the Data Storage, Data Retention, Cookie Policy and Third Parties sections of `/server/privacy` |
 
@@ -20511,8 +20509,6 @@ type ConsentConfig struct {
         Decline string `yaml:"decline"`
         Accept  string `yaml:"accept"`
     } `yaml:"buttons"`
-    // top or bottom
-    Position string `yaml:"position"`
 }
 
 // CookieCategories with dynamic description suffixes
@@ -20633,7 +20629,6 @@ type PrivacyTemplateData struct {
 | `policy.version` | `"1"` | Policy version recorded in every `compliance.consent_updated` event |
 | `buttons.decline` | "Decline" | Decline button label |
 | `buttons.accept` | "I Agree" | Accept button label |
-| `position` | `bottom` | Banner position (top/bottom) |
 | `show_preferences` | `true` | Show "Manage Preferences" link |
 
 ### Cookie Categories
@@ -20710,7 +20705,6 @@ func GetConsentConfig() ConsentConfig {
         PolicyURL:       cfg.Policy.URL,
         DeclineText:     cfg.Buttons.Decline,
         AcceptText:      cfg.Buttons.Accept,
-        Position:        cfg.Position,
         ShowPreferences: cfg.ShowPreferences,
         PreferencesText: cfg.PreferencesText,
     }
@@ -44373,7 +44367,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: govulncheck ./...
 
-  # Additional container jobs follow the pattern above: workflow-policy, upload-artifacts (needs: build). Coverage is a step of the test job.
+  # Additional container jobs follow the pattern above: workflow-policy. Coverage is a step of the test job.
   # image-scan is the other host-runner job (no container:, no needs)
   secret-scan:
     runs-on: ubuntu-26.04
@@ -45646,7 +45640,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: govulncheck ./...
 
-  # Additional container jobs follow the pattern above: workflow-policy, upload-artifacts (needs: build). Coverage is a step of the test job.
+  # Additional container jobs follow the pattern above: workflow-policy. Coverage is a step of the test job.
   # image-scan is the other host-runner job (no container:, no needs)
   secret-scan:
     runs-on: ubuntu-26.04
@@ -52196,7 +52190,9 @@ cd {project_name}
 make build
 ```
 
-## Run Locally
+## Run Locally (a person's own command)
+
+**This is the operator's or developer's own command on their own machine. AI work never runs the binary on the host: it uses Docker, Incus or the Phase 2 scripts ("No Host Toolchain or Binary Execution").**
 
 ```bash
 ./binaries/{project_name} --config server.yml --debug
