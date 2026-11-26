@@ -8707,7 +8707,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | **Keys** | Only these, for every one the project has: `server.token`; `server.security.encryption_key` and `server.security.encryption_key_version`; `server.notifications.email.smtp.password`; `server.cache.password`; `server.database.password` and `server.database.token`; `server.database.url` and `server.cache.url` (each only while the URL carries a credential); `server.pages.contact.captcha_secret_key`; `server.ssl.letsencrypt.dns_credentials`; `data.cve.api_key`; `server.backup.encryption_password`; `server.metrics.auth.tokens.*`; every webhook URL and its `_secret` under `server.contact.{role}.webhooks`; `server.auth.ldap.providers[].bind_password`; `server.auth.oidc.providers[].client_secret` (each written as an entry that holds the provider's `name` and the secret field; "Drop-in Config Directory" → Merge joins it to the provider by `name`). `server.tokens.*` is token policy, not a secret. Every other key stays in its area file |
 | **Generated** | When one of these keys is empty or missing at start, the server generates it BEFORE it serves anything, writes it to `secrets.yml` (atomic, `0600`) and records `config.secret_generated` (the key name only) in `audit.log`: `server.token`; `server.security.encryption_key` (with `encryption_key_version: 1`); `server.metrics.auth.tokens.prometheus`, `.grafana` and `.loki`; and a `server.contact.{role}.webhooks.{transport}_secret` whenever its webhook URL `server.contact.{role}.webhooks.{transport}` is set. `server.token` is an `adm_` token and each metrics token an `mtr_` token, each plus 32 random base62 characters ("Token Catalogue") and the encryption key is 32 random bytes. Only `server.token` is printed, once, to the console at first creation ("First-start disclosure") and never logged; every other value is read from `secrets.yml` |
 | **Never generated** | Credentials that someone else issues stay empty until the operator sets them: `server.notifications.email.smtp.password`, `server.cache.password`, `server.database.password` and `server.database.token`, `server.database.url` and `server.cache.url` with a credential in them, `server.pages.contact.captcha_secret_key`, `server.ssl.letsencrypt.dns_credentials`, `data.cve.api_key`, `server.backup.encryption_password`, the LDAP bind password, the OIDC client secret and the webhook URLs |
-| **Rotation** | Blank a generated key in `secrets.yml` and restart: a new value is generated. `--maintenance secret rotate {name}` rotates the encryption key and the HMAC secrets with their grace periods (PART 11) |
+| **Rotation** | Blank a generated key in `secrets.yml` and restart: a new value is generated. `--maintenance secret rotate {name}` rotates `installation_secret` or the encryption key with their grace periods (PART 11); those are the only two with a manual rotation, while `cookie_signing_key` and `csrf_token_secret` rotate automatically and any other name is rejected with a usage error |
 | **Written by** | The server writes generated, rotated and moved secrets to `secrets.yml` and ONLY there, never to `server.yml` and never to a drop-in (this limits what the server writes; an operator may still hand-write a value elsewhere, see "Operator-set values"): the first-run `server.token`, `server.security.encryption_key` with its version, and every rotation (`--maintenance secret rotate encryption_key`) |
 | **Operator-set values** | An operator MAY write a secret key in `server.yml` or a drop-in (for example from configuration management). The automatic migration moves it to `secrets.yml` at the next start ("Area Files and Automatic Migration"), where it wins over any other file. A value may also be an environment reference such as `${DB_PASSWORD}`, which is moved like any other value. A plaintext DNS credential is rewritten as `enc:v1:` in the file that holds it. So `secrets.yml` is where a secret lives at rest, and a secret in `server.yml` or a drop-in is a hand-off that ends at the next start |
 | **Migration** | At start, if `server.token` or `server.security.encryption_key` is found in `server.yml` and `secrets.yml` does not hold it, the server writes `secrets.yml` first (atomic, `0600`, fsynced) and only then rewrites `server.yml` without those keys, so a secret is never in both files and never lost |
@@ -12820,7 +12820,18 @@ All projects use SQLite with two database files:
 CREATE TABLE IF NOT EXISTS app_secrets (
     name       TEXT PRIMARY KEY,
     value      TEXT NOT NULL,
+    -- monotonic: bumped by every rotation; the cluster heartbeat compares it (PART 10)
+    version    INTEGER NOT NULL DEFAULT 1,
     updated_at TEXT NOT NULL
+);
+
+-- audit history only: one row per secret version a removed node had loaded
+CREATE TABLE IF NOT EXISTS app_secret_revocations (
+    name       TEXT NOT NULL,
+    version    INTEGER NOT NULL,
+    node_id    TEXT NOT NULL,
+    revoked_at TEXT NOT NULL,
+    PRIMARY KEY (name, version, node_id)
 );
 ```
 
@@ -15572,7 +15583,7 @@ Admin manually removes dead nodes via:
 
 | Side | Action |
 |------|--------|
-| **Server-side** (from the removing node) | Delete the row from `nodes` table. Mark `app_secrets` versions valid for that node as `revoked_for_node = node_id` so audit can see the removal happened mid-rotation if applicable. Emit `cluster.node_removed` audit event. |
+| **Server-side** (from the removing node) | Delete the row from `nodes` table. Record each `app_secrets` version that was valid for that node as a row `(name, version, node_id)` in `app_secret_revocations` so audit can see the removal happened mid-rotation if applicable. Emit `cluster.node_removed` audit event. |
 | **Removed-node-side** (when the removed node next attempts to heartbeat) | Heartbeat returns `403 NODE_REMOVED`. The binary on the removed node MUST: (1) wipe `{config_dir}/security/pgp.priv.asc.enc` if present (PGP keys are cluster-shared and the removed node has lost permission to participate); (2) wipe its `app_secrets` cache and the cluster-shared keys in `secrets.yml` (the encryption key with its version, the database password); (3) leave `server.yml` minus the cluster section; (4) log `cluster.removed_self_cleanup` to local `audit.log`; (5) refuse to serve requests until re-joined. The binary does NOT delete logs, data files, or user content — those stay on the removed host for forensic / audit purposes. |
 | **If the removed node is offline at removal time** | The cleanup happens whenever the removed node next attempts to communicate. Until then, it's running with stale secrets — but per the secret-version-mismatch flow above, its requests would already fail because `installation_secret` may have rotated. Operators removing a node SHOULD power down or `systemctl stop {internal_name}` first, then remove. The admin panel surfaces this guidance. |
 
@@ -21142,7 +21153,7 @@ type StatsInfo struct {
 | **Stable keys** | `{kind}_{id}` is a stable snake_case identifier — NEVER a file path, URL, or filename (public-safe; see Security) |
 | **Order** | Core checks first (`database`, `cache`, `disk`, `scheduler`), then `tor`, `i2p`, then dataset checks in registration order. JSON emits keys in exactly this order (custom marshaller — never an unordered map) |
 | **Cost** | `/server/healthz` reads CACHED results. The scheduler re-runs dataset checks at most every 60 seconds and after every data-set reload/update; a request NEVER triggers a disk scan, parse, or network fetch |
-| **Freshness** | Each data set declares a `max_age` (e.g. 21 days for GeoIP, 72 hours for every blocklist source, fixed, no per-source field; the GeoIP update itself runs weekly, so 21 days is three missed runs, and the timestamp that drives it is `{data_dir}/security/geoip/.last_updated`); the check compares last successful load/update against it |
+| **Freshness** | Each data set declares a `max_age` (e.g. 21 days for GeoIP, 72 hours for every blocklist source, fixed, not configurable per source (each source's own last-update time is a stored `{id}.last_updated` file, PART 17); the GeoIP update itself runs weekly, so 21 days is three missed runs, and the timestamp that drives it is `{data_dir}/security/geoip/.last_updated`); the check compares last successful load/update against it |
 | **Public-safe** | `ok` / `degraded` / `error` only — no paths, URLs, sizes, record counts, versions, or error text |
 
 **Frontend labels:** the Component Status table shows one row per check. Labels come from i18n keys `health.check.{key}`; a key with no translation uses the translated generic label `health.check.unknown` ("Check: {key}") with the stable key as the `{key}` value (`blocklist_ads` → "Check: blocklist_ads"); the key is data, so no English label is ever built or humanized in code. Dataset rows follow the core rows, grouped under their kind.
@@ -33294,7 +33305,7 @@ On first run, a one-time setup token is generated and displayed in console. Admi
 | Setting | Default | Recommended | Description |
 |---------|---------|-------------|-------------|
 | Backup encryption password | (none) | **SET ONE** | Encrypts all backups (AES-256-GCM) |
-| Enable 2FA for this admin | No | Yes | Adds TOTP to admin account |
+| Enable 2FA for this admin | No | Yes | Adds TOTP to the admin account. Choosing Yes opens the enrollment panel in the wizard, the same flow and routes as the profile security page: `POST .../{admin_username}/profile/security/totp/setup` returns the secret and QR payload, the admin enters the 6-digit code, `POST .../totp/enable` verifies it, enables TOTP and returns the recovery keys ONCE (shown with an acknowledgment checkbox before the wizard continues). TOTP is never active before the code is verified; an unverified enrollment leaves 2FA off |
 
 **Step 5: Optional Services**
 | Setting | Description |
@@ -34109,13 +34120,11 @@ Admin Panel Header:
 
 **Transmission-style IP/domain blocklist management. Download, parse, and enforce external blocklists from configurable URLs.**
 
-**Supported Formats:**
+**Supported Formats** (detected from the content; the PART 19 line format is the only one: one IP, CIDR or hostname per line. Range formats such as PeerGuardian P2P and eMule DAT, and lists whose lines are not one entry (DShield's block.txt, URL lists such as URLhaus), are not supported):
 
 | Format | Extension | Example | Description |
 |--------|-----------|---------|-------------|
-| **P2P (PeerGuardian)** | `.p2p`, `.txt` | `Description:1.2.3.0-1.2.3.255` | Range-based, most common |
 | **CIDR** | `.txt`, `.netset` | `1.2.3.0/24` | Standard CIDR notation, one per line |
-| **DAT (eMule)** | `.dat` | `001.002.003.000 - 001.002.003.255 , 100 , Description` | Legacy eMule format |
 | **Plain IP** | `.txt` | `1.2.3.4` | One IP per line |
 | **Compressed** | `.gz` | Any of above, gzipped | Auto-decompressed on download |
 
@@ -34160,18 +34169,17 @@ server:
 |------|-----|--------|
 | `spamhaus_drop` | `https://www.spamhaus.org/drop/drop.txt` | `cidr` |
 | `blocklist_de` | `https://lists.blocklist.de/lists/all.txt` | `plain` |
-| `abuse_ch_urlhaus` | `https://urlhaus.abuse.ch/downloads/text/` | `plain` |
-| `dshield` | `https://www.dshield.org/block.txt` | `cidr` |
 
 **Data Model:**
 
 ```go
 // BlocklistSource represents a configured blocklist URL
 type BlocklistSource struct {
-    Name        string    `yaml:"name" json:"name"`
+    // the config fields of PART 19: id, type, url, enabled (the list format is detected from the content, never a field)
+    ID          string    `yaml:"id" json:"id"`
+    // ip or domain
+    Type        string    `yaml:"type" json:"type"`
     URL         string    `yaml:"url" json:"url"`
-    // auto, p2p, cidr, dat, plain
-    Format      string    `yaml:"format" json:"format"`
     Enabled     bool      `yaml:"enabled" json:"enabled"`
     // number of IP ranges/CIDRs parsed
     RuleCount   int       `json:"rule_count"`
@@ -34198,16 +34206,12 @@ type BlocklistStats struct {
 **Blocklist Parsing:**
 
 ```go
-// ParseBlocklist auto-detects format and returns IP ranges
-func ParseBlocklist(reader io.Reader, format string) ([]netip.Prefix, error) {
+// ParseBlocklist reads an `ip` source in the PART 19 line format and returns its prefixes; a `domain` source is read into the domain set instead
+func ParseBlocklist(reader io.Reader) ([]netip.Prefix, error) {
     // If .gz, wrap reader in gzip.NewReader first
-    // If format == "auto", detect from first non-comment line:
-    //   - Contains ":" before IP → P2P format (Description:Start-End)
-    //   - Contains "/" → CIDR format
-    //   - Contains " - " with commas → DAT format
-    //   - Otherwise → plain IP (convert to /32)
-    // Parse all lines, skip comments (#) and blanks
-    // Convert all formats to []netip.Prefix for uniform lookup
+    // One entry per line: blank lines and lines starting with # or ; are skipped, anything after the first whitespace or ; is ignored
+    // A line containing "/" is a CIDR, any other line is a plain IP (converted to /32 or /128)
+    // A line that does not parse is handled as PART 19 defines
 }
 
 // BlocklistLookup uses a radix tree for O(log n) IP matching
@@ -34637,7 +34641,7 @@ The admin panel MUST include a scheduler section with:
 | `/api/{api_version}/server/{admin_path}/setup/account` | POST | Create admin account (Step 1) |
 | `/api/{api_version}/server/{admin_path}/setup/token` | POST | Generate API token (Step 2) |
 | `/api/{api_version}/server/{admin_path}/setup/config` | POST | Save server config (Step 3) |
-| `/api/{api_version}/server/{admin_path}/setup/security` | POST | Security settings (Step 4) |
+| `/api/{api_version}/server/{admin_path}/setup/security` | POST | Security settings (Step 4: the backup password and the 2FA choice; TOTP enrollment itself uses the profile security routes) |
 | `/api/{api_version}/server/{admin_path}/setup/services` | POST | Configure services (Step 5) |
 | `/api/{api_version}/server/{admin_path}/setup/complete` | POST | Complete setup wizard (Step 6) |
 | `/api/{api_version}/server/{admin_path}/settings` | GET | Get server settings |
@@ -39327,7 +39331,7 @@ retention:
   keep_yearly: 1
 ```
 ```
-Backups on disk (January 15, 2025):
+Backups on disk (January 15, 2025, first month of use, so no December 2024 archive exists):
   myapp_backup_2025-01-15.tar.gz.enc    ← Today's run (daily full at T0)
   myapp_backup_2025-01-12.tar.gz.enc    ← Last Sunday (weekly)
   myapp_backup_2025-01-01.tar.gz.enc    ← 1st of Jan 2025 (yearly; a backup fills exactly one category, so the monthly slot stays empty until the next 1st)
@@ -39387,7 +39391,7 @@ nothing in the backup dir matching the app's naming is ever exempt from pruning.
    (only 1 exists); hourly incremental likewise
 8. If max_total_size > 0: after all count-based pruning, if total size of
    all backup files still exceeds the cap, delete oldest files first until
-   total is under the cap (size cap overrides all count limits)
+   total is under the cap (the size cap overrides all count limits, with ONE exception: a full that is the `base_backup` of the retained incremental is never deleted by the cap. If the cap is still exceeded after every other file is pruned, the run logs a WARN `backup.cap_exceeded_protected_base` and keeps the pair; the next run replaces the incremental, which frees the base and lets the cap apply)
 
 Note: the categories never overlap (e.g., Jan 1st 2025 on a Sunday is a yearly
 backup only: highest priority wins, and it consumes no monthly, weekly or daily slot)
@@ -48501,6 +48505,12 @@ pipeline {
         // Docker - matches docker.yml (main, version tags and *-beta tags)
         stage('Docker') {
             agent { label 'amd64' }
+            when {
+                anyOf {
+                    branch 'main'
+                    buildingTag()
+                }
+            }
             steps {
                 script {
                     def tags = "-t ${REGISTRY}:${COMMIT_ID}"
@@ -48570,6 +48580,12 @@ pipeline {
         // AIO uses same repo with -aio tag suffix: {repo}:{tag}-aio
         stage('Docker AIO') {
             agent { label 'amd64' }
+            when {
+                anyOf {
+                    branch 'main'
+                    buildingTag()
+                }
+            }
             steps {
                 script {
                     def tags = "-t ${REGISTRY}:${COMMIT_ID}-aio"
@@ -48758,7 +48774,7 @@ REGISTRY = "ghcr.io/${PROJECT_ORG}/${INTERNAL_NAME}"
 | Stable | `release.yml` (tag push) | `BUILD_TYPE == 'release'` (tag) |
 | Beta | `beta.yml` (`*-beta` tag) | `BUILD_TYPE == 'beta'` (`*-beta` tag) |
 | Devel | `devel.yml` (schedule + main) | `BUILD_TYPE == 'devel'` (cron + main) |
-| Docker | `docker.yml` (main, version and beta tags) | Docker stage (always runs) |
+| Docker | `docker.yml` (main, version and beta tags) | Docker stage (main and tags) |
 
 ---
 
@@ -67088,15 +67104,12 @@ Does your app serve public-facing content for users?
 
 ## Feature Configuration
 
-**Enable custom domains in `server.yml`:**
+**Configure custom domains in `server.yml`** (the feature itself is activated by the project's SPEC.md declaration, never by a flag; these keys only set limits and rules):
 
 ```yaml
 server:
   features:
     custom_domains:
-      # Enable custom domain support
-      enabled: false
-
       # Limit per user (0 = unlimited)
       max_domains_per_user: 5
 
@@ -67138,7 +67151,6 @@ server:
 **Environment variable override:**
 
 ```bash
-{PROJECT_NAME}_CUSTOM_DOMAINS_ENABLED=true
 {PROJECT_NAME}_CUSTOM_DOMAINS_MAX_PER_USER=5
 {PROJECT_NAME}_CUSTOM_DOMAINS_MAX_PER_ORG=20
 ```
