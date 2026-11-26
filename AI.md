@@ -16265,7 +16265,7 @@ When `DEBUG=true` is active and an error occurs, the canonical error body (PART 
 | Default | Why |
 |---------|-----|
 | HTTPS preferred everywhere — `http://` upgrade on first visit | One config (cert) and TLS just works (PART 15 → Let's Encrypt) |
-| CSRF on by default with `SameSite=Strict` cookies | No knobs to flip. Backend (`/api/**`), compatibility-layer, Bearer, public, and exempt paths are never checked (PART 16 → CSRF) |
+| CSRF on by default with `SameSite=Strict` cookies | No knob weakens it: the token size, cookie name and header name are fixed. The only settings are `server.csrf.secure`, `server.csrf.exempt_paths` (frontend paths only) and `server.csrf.enabled`, which is `false` ONLY for a deployment with no browser forms at all. Backend (`/api/**`), compatibility-layer, Bearer, public, and exempt paths are never checked (PART 16 → CSRF) |
 | CSP on by default with sensible per-directive allow-list | "Just works" for typical apps; auto-detects own domain (PART 11 → CSP) |
 | CORS on by default, credential-aware | "Just works" for public APIs and authenticated apps (PART 16 → CORS) |
 | Rate limit on by default | Per-IP + per-identifier on auth endpoints; configurable but non-zero by default |
@@ -16319,7 +16319,7 @@ The root secret all other derived material hangs off. Without it, in-flight HMAC
 | Secret | Length | Storage | Purpose | Rotation |
 |--------|--------|---------|---------|----------|
 | `cookie_signing_key` | 32 bytes (HMAC-SHA256) | `server.db` row `app_secrets.cookie_signing_key` | Signs session cookies to detect tampering. | Auto-rotated every 90 days; previous key valid for 7 days. |
-| `csrf_token_secret` | 32 bytes | `server.db` row `app_secrets.csrf_token_secret` | HMAC base for CSRF tokens (double-submit pattern, PART 16 → CSRF). | Auto-rotated on every admin password change + every 180 days. |
+| `csrf_token_secret` | 32 bytes | `server.db` row `app_secrets.csrf_token_secret` | HMAC base for CSRF tokens (double-submit pattern, PART 16 → CSRF). | Auto-rotated on every admin password change + every 180 days. The previous value stays valid for 1 hour (`csrf_token_secret_previous` and its `_until` row); a second rotation inside that hour replaces the previous value, and a token signed by an older secret simply fails validation, so the form is reloaded (a CSRF token is a per-form value, never a credential). |
 
 **Pre-existing key (defined in PART 11 → "Server Encryption Key"):**
 
@@ -30887,14 +30887,11 @@ Credentials (`Access-Control-Allow-Credentials: true`) are sent only when the re
 ### Configuration
 
 ```yaml
-web:
+server:
   csrf:
-    # default: true. Set false ONLY for API-only deployments (no browser forms at all).
+    # default: true. Set false ONLY for a deployment with no browser forms at all (API-only); the default-security contract assumes true.
+    # FIXED, not settings: the token is 32 bytes, the cookie is `csrf_token`, the header is `X-CSRF-Token`.
     enabled: true
-    # bytes
-    token_length: 32
-    cookie_name: csrf_token
-    header_name: X-CSRF-Token
     # auto | true | false. "auto" sets Secure when proto is https.
     secure: auto
     # Frontend (non-/api) endpoints exempt from CSRF (operator-declared). Glob patterns supported.
@@ -39527,7 +39524,7 @@ backup only: highest priority wins, and it consumes no monthly, weekly or daily 
 | **Database** | A SQLite database that changed is stored whole in the incremental (no page-level delta) |
 | **Archive format** | Same `tar.gz[.enc]` and encryption as a full; contains only changed/new files plus `manifest.json` |
 | **Base protection** | Retention never deletes a full that is the `base_backup` of a retained incremental |
-| **Verification** | An incremental is verified like a full, plus: base file exists and its SHA-256 equals `base_sha256` |
+| **Verification** | An incremental is verified like a full, plus: the base file exists and the `sha256` field of ITS manifest equals `base_sha256` |
 | **First run** | No previous full: skip the daily incremental |
 | **Password change** | The base full's `key_id` is read from its cleartext header ("Encrypted archive format", PART 21), never from the encrypted manifest, so it is readable whatever password is configured. The run re-derives a key from the CURRENT password with the base's own salt and Argon2id parameters, computes `key_id` and compares: equal = same password, different = the password changed. A header that does not parse (bad magic or parameters) is a corrupt base, not a change. Either way the run skips the daily incremental (as on the first run), creates a new full under the current password and logs it (INFO for a change, WARN for a corrupt base); the integrity of the old base is the job of `--maintenance backup test`. A restorable pair is one full plus the incremental based on it, and a pair always shares ONE password. The server stores only the CURRENT password, so verifying (`--maintenance backup test`) or restoring an archive made under an older password needs the operator to supply that password. After a change there are two pairs: the old full with its old incremental (old password) until the old full ages out of retention, and the new full (new password) alone until the next run writes an incremental based on it, which then replaces the old incremental |
 
@@ -56507,10 +56504,10 @@ server:
 | **Model B SAM** | `server.i2p.sam_address`. The router's SAM bridge must be enabled by its operator (`[sam] enabled = true` in i2pd, "SAM application bridge" in Java I2P). SAM 3.1 or newer is required (`HELLO VERSION MIN=3.1 MAX=3.3`) |
 | **One socket per job** | Every SAM socket needs its own `HELLO`. The session control socket carries `SESSION CREATE` only; `STREAM FORWARD` is sent on a SECOND, new socket. SAM ends the session when its control socket closes and stops forwarding when the forward socket closes, so both stay open for the life of the eepsite |
 | **`SILENT=true` is mandatory** | Without it SAM writes the connecting peer's destination as the first line of every forwarded connection, which corrupts the HTTP request. Command: `STREAM FORWARD ID={id} PORT={i2p_backend_port} HOST=127.0.0.1 SILENT=true`. The reply `STREAM STATUS RESULT=OK` is sent either way |
-| **Key file** | `{data_dir}/i2p/site/site-keys.dat` holds ONE line: the SAM `PRIV` value (I2P base64 of destination + private keys). Written by the app (0600) for both models. If missing: `DEST GENERATE SIGNATURE_TYPE={signature_type}`, then write temp file + fsync + rename BEFORE `SESSION CREATE`, so a crash never loses a published identity. If present but unparsable: fail with an error naming the file; NEVER regenerate silently |
+| **Key file** | `{data_dir}/i2p/site/site-keys.dat` holds ONE line: the SAM `PRIV` value (I2P base64 of destination + private keys), WITHOUT the `PRIV=` label of the SAM reply and without a trailing newline. Written by the app (0600) for both models. If missing: `DEST GENERATE SIGNATURE_TYPE={signature_type}`, then write temp file + fsync + rename BEFORE `SESSION CREATE`, so a crash never loses a published identity. If present but unparsable: fail with an error naming the file; NEVER regenerate silently |
 | **I2P base64** | Alphabet `A-Za-z0-9-~` (`-` and `~` replace `+` and `/`), `=` padding. Standard base64 decoders MUST NOT be used |
 | **Address derivation** | Decode `PRIV`. The destination is its first `387 + certlen` bytes, where `certlen` is the big-endian uint16 at byte offsets 385-386 (Ed25519 + X25519 key certificates give 391). Address = lowercase base32 without padding of `SHA-256(destination)` + `.b32.i2p` (52 characters + suffix). Computed locally, no router round trip |
-| **Session options** | `SESSION CREATE STYLE=STREAM ID={id} DESTINATION={PRIV} i2cp.leaseSetEncType=4 inbound.length=.. outbound.length=.. inbound.quantity=.. outbound.quantity=..`. `ID` is unique per start (`site-{pid}`); `DUPLICATED_ID` retries once with a new suffix |
+| **Session options** | `SESSION CREATE STYLE=STREAM ID={id} DESTINATION={PRIV} (the stored bare base64 value, never the `PRIV=` label: a labelled value makes SAM answer `INVALID_KEY`) i2cp.leaseSetEncType=4 inbound.length=.. outbound.length=.. inbound.quantity=.. outbound.quantity=..`. `ID` is unique per start (`site-{pid}`); `DUPLICATED_ID` retries once with a new suffix |
 | **Reply timing** | `SESSION STATUS` arrives only AFTER the router has built tunnels (seconds, or minutes on a first start that must reseed). Wait up to `server.i2p.bootstrap_timeout`; NEVER abandon the socket and retry while a build is in progress. The first start of a fresh i2pd data directory may need more than 300 s: raise `bootstrap_timeout` (max 600) on slow links |
 | **Secrets in logs** | `PRIV` is a private key. SAM command lines are never logged or put in error text; errors name the command word only (`SESSION CREATE`) |
 | **Backend listener** | The plain loopback listener on `i2p_backend_port` MUST be accepting before `STREAM FORWARD` is sent. SAM must connect to it within 3 s per incoming stream, so the accept loop never blocks |
