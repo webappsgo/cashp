@@ -4774,7 +4774,7 @@ db.Query("SELECT * FROM users WHERE email = '" + email + "'")
 | **Read (GET, HEAD)** | **120 req/min** | 60s | Per IP (anonymous) or per token (authenticated), sliding window |
 | **Write (POST, PUT, PATCH, DELETE)** | **10 req/min** | 60s | Per IP (anonymous) or per token (authenticated), sliding window |
 | **Health / status** | **120 req/min** | 60s | `/server/healthz` (and the optional `/healthz` root alias) |
-| **Global burst** | **240 req/min** | 60s | Absolute ceiling across all types |
+| **Global burst** | **240 req/min** | 60s | Absolute ceiling across all endpoint types for ONE client identity (per IP anonymous, per token authenticated) |
 
 **Auth endpoint defaults (stricter — applied regardless of general limits above):**
 
@@ -8372,6 +8372,8 @@ There is no `_cache` block: the area files in `yaml.d/` are the last synced copy
 
 **Table names:** the SQLite single-instance names are the unprefixed names (`admins`, `users`, `audit_log`), split across two files: tables in the Server list live in `server.db`, tables in the User list live in `users.db`. In a remote PostgreSQL/MySQL database (Cluster Mode) the same tables share one database and carry a prefix that follows the file they would live in: `srv_` for the Server list, `usr_` for the User list (`admins` becomes `usr_admins`, `audit_log` becomes `srv_audit_log`). There is no other prefix (never `server_`), and each table has exactly these two names, one per mode.
 
+**Project-owned tables.** A table the project defines follows who owns its rows: user-owned content (rows that belong to a Regular User, such as profiles and links, each with a `user_id`) lives in `users.db` (the `usr_` prefix in a remote database), so a user's export, deletion and backup boundary is one file; project data that no user owns (catalogs, reference data, project-wide settings records) lives in `server.db` (`srv_`). A project declares each of its tables as one or the other in `IDEA.md`.
+
 **Server Tables (srv_* prefix in remote DB, or server.db in SQLite):**
 
 | Table | Purpose |
@@ -8626,6 +8628,8 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | `CACHE_DIR` | (none) | Cache directory (precedence: the environment variable, then the platform default; PART 4) |
 
 **Directory variables are applied on EVERY startup, never "once".** Precedence: flag, then environment variable, then the platform default (PART 4). They locate `server.yml` and the rest of the app's files, so they cannot live inside `server.yml` and are never written to it.
+
+**`DATABASE_DIR` locates the SQLite files.** `{db_dir}` is `DATABASE_DIR` when it is set, otherwise `{data_dir}/db`; the default SQLite file is `{db_dir}/server.db` (and `{db_dir}/users.db` where the project has it). Every path in this specification written as `{data_dir}/db/server.db` is that default with `DATABASE_DIR` unset; the container image sets `DATABASE_DIR=/data/db/sqlite`, so the same file is `/data/db/sqlite/server.db` there. A configured `server.database.url` always wins over the default path.
 
 ### Init-Only Variables (First Run Only)
 
@@ -13927,7 +13931,7 @@ func buildHealthResponse() *HealthResponse {
         },
 
         // Basic status
-        // "healthy", "unhealthy", "degraded"
+        // "healthy", "degraded", "unhealthy", "restart_required", "maintenance", "shutting_down"
         Status:    getOverallStatus(),
         Version:   version.Version,
         // "production", "development", or "debug"
@@ -17232,6 +17236,25 @@ Redirect to         │                    │
 
 **Required entry details.** `security.txt` is the RFC 9116 file described in "security.txt (RFC 9116)" (`Contact`, `Expires` and `Policy` are mandatory fields); `llms.txt` is the generated AI-discovery file described in "llms.txt (AI Discovery)". Both are served with `GET` and `HEAD`, carry no authentication, resolve every URL per request with `BuildURL`, and over Tor use the onion host. A path in the matrix that is not enabled for the project, and any path not in the matrix, answers `404`.
 
+**Drift-test reading of this matrix.** The matrix has no method column, so the drift test reads it with its own fixed rule instead of the generic inventory parser: every row is a `GET` route (`HEAD` follows), the path cell lists one path or two joined by `and`, `{token}` and `{hash}` are path parameters, and the `x-mounted-when` value of each row is this exact mapping:
+
+| Path | `x-mounted-when` |
+|------|------------------|
+| `security.txt`, `llms.txt` | always mounted (no condition) |
+| `pgp-key.asc` | `web.security.publish_pgp_key` is true AND the security keypair exists |
+| `acme-challenge/{token}` | `server.ssl.letsencrypt.enabled` with `challenge: http-01` |
+| `change-password` | the auth routes are mounted (the project has accounts) |
+| `webfinger` | `web.well_known.webfinger.enabled` |
+| `nodeinfo` | `web.well_known.nodeinfo.enabled` |
+| `oauth-protected-resource` | `web.well_known.oauth_protected_resource.enabled` |
+| `oauth-authorization-server` | `web.well_known.oauth_authorization_server.enabled` |
+| `gpc.json` | `web.well_known.gpc.enabled` |
+| `openpgpkey/hu/{hash}`, `openpgpkey/policy` | `web.well_known.openpgpkey.enabled` |
+| `openid-configuration` | `web.well_known.openid_configuration.enabled` |
+| `assetlinks.json` | `web.well_known.assetlinks.enabled` |
+| `apple-app-site-association` | `web.well_known.apple_app_site_association.enabled` |
+| `mta-sts.txt` | `web.well_known.mta_sts.enabled` |
+
 **Optional-entry rule:** optional well-known endpoints MUST be enabled only when the matching product feature, platform integration, or mail/domain ownership is explicitly defined in `IDEA.md` or project config. Do NOT invent or auto-enable them.
 
 ### Well-Known Directory Support
@@ -17465,7 +17488,7 @@ web:
 | Rate limiting, audit | The same limiters and audit events as the API; the audit entry's top-level `source` field (PART 11 → "Audit Log Format") is `mcp` so MCP traffic is distinguishable |
 | Operator-only endpoints | Exposed as tools only to a caller whose token is already operator/admin-scoped; for any other caller they are absent from `tools/list` AND rejected on `tools/call` |
 | Token types and scope | `adm_`, `usr_`, `org_` tokens (and agent variants) work as Bearer with exactly the access they have over REST. A token with scope `agent` is rejected on the MCP endpoint, as on every route outside the `agents/*` routes (see "Token Properties"). The token's `scope` is enforced per tool in `tools/list` AND `tools/call`: `read` → read tools only; `read-write` → no delete or admin tools; `global` → everything the token's owner can do |
-| MCP clients | Create one dedicated named token per client (name, scope `read` or `read-write`, expiry) in the user's or org's token settings so it can be revoked alone. Use `adm_` only for a server-admin tool, never for a general MCP client |
+| MCP clients | Create one dedicated named token per client (name, scope `read` or `read-write`, expiry) in the user's or org's token settings so it can be revoked alone. Use `adm_` only for a server-admin tool, never for a general MCP client. In an admin-only project (no PART 34, so no user or org token settings) the general client is by definition an admin tool: the admin creates one named `adm_` token per client through the shared API login (`POST /api/{api_version}/server/auth/login`, which keeps the account's own scope), and that is the one case where `adm_` serves a general MCP client |
 
 #### Tools
 
@@ -18493,7 +18516,7 @@ When GDPR/CCPA (right to erasure) conflicts with HIPAA/SOC2 (retention requireme
 
 | Control | Kind and detail |
 |---------|----------|
-| PHI encryption | **Server:** sensitive fields are encrypted at rest with `server.security.encryption_key` (AES-256-GCM); there are no per-record keys |
+| PHI encryption | **Server:** sensitive fields are encrypted at rest as an `enc:v1:` value (AES-256-GCM under `server.security.encryption_key`, PART 11 "Encryption at rest"); there are no per-record keys |
 | Audit trail | **Server:** the tamper-evident audit log; the strictest enabled standard sets the minimum retention (6 years with HIPAA) |
 | Access controls | **Server:** Role-based with minimum necessary access |
 | Session timeout | **Server:** 15 minutes maximum idle |
@@ -19609,7 +19632,7 @@ These rules apply to **all responses** when the request is detected as a Tor req
 | **Email** | Show `server.tor.contact_email` only; if unset, omit email entirely from all responses (security.txt, contact pages, error pages, footers). Never fall back to the clearnet contact email. |
 | **URLs** | All absolute URLs in responses must use `tor.onion_address`. Never embed clearnet FQDN. Applies to: `security.txt`, `llms.txt`, OpenAPI `servers[0].url`, GraphQL endpoint, OAuth redirect URIs, email verification links, pagination links. |
 | **Clearnet links** | Any link that would normally point to the clearnet site must use the onion address or be omitted entirely. |
-| **Third-party and user-authored links** | An operator- or user-authored external link (a privacy-policy URL, a profile website, a Markdown link) is rendered as plain text without a link, and an external avatar (Gravatar included) is replaced by the built-in default avatar, so a Tor visitor's browser never contacts a clearnet host. `/api/autodiscover` answers a Tor request with the onion origin only, never a clearnet origin. A personal-data export keeps the stored values: it is a download, not a page. |
+| **Third-party and user-authored links** | An operator- or user-authored external link (a privacy-policy URL, a profile website, a Markdown link) is rendered as plain text without a link, and an external avatar (Gravatar included) is replaced by the built-in default avatar, so a Tor visitor's browser never contacts a clearnet host. `/api/autodiscover` answers a Tor request with an empty `urls` (never a clearnet origin) and the onion address only in its dedicated `onion` field: overlay addresses are never in `urls`. A personal-data export keeps the stored values: it is a download, not a page. |
 | **Personal email on public pages** | A user's opted-in public-profile email is suppressed on Tor responses: `server.tor.contact_email` stays the only address shown |
 | **CORS** | The onion address is added to the CORS allow-list automatically when `tor.onion_address` is set. The clearnet origin must NOT appear in Tor response CORS headers. |
 | **OAuth / external auth** | Redirect URIs must use the onion address. If the OAuth provider does not support `.onion` redirect URIs, that provider is disabled for Tor requests with a `503` error. |
@@ -23929,7 +23952,7 @@ Before proceeding, confirm you understand:
 | Rule | Detail |
 |------|--------|
 | YAML shape | `server.ssl.letsencrypt.dns_provider` is the lego provider name (the lowercase identifier on the lego DNS provider list, e.g. `cloudflare`). `dns_credentials` is ONE flat map of that provider's lego environment variable names to string values, e.g. `CF_DNS_API_TOKEN: "..."`; no nesting |
-| Encryption at rest | A plaintext value an operator writes is accepted at load and rewritten in place, in `secrets.yml` (where the automatic migration has already moved it), atomically and `0600` (PART 8 private paths), as `enc:v1:{base64 of nonce + AES-256-GCM ciphertext}` under `server.security.encryption_key`. A value that starts with `enc:v1:` is decrypted in memory only. A value is never logged, never returned by the API, and shown as `********` in every view and bundle |
+| Encryption at rest | The same `enc:v1:` representation protects `server.backup.encryption_password` (PART 22): a plaintext value, including one left by an earlier install, is migrated at the next start exactly as below, and an `enc:v1:` value that cannot be decrypted (the encryption key was lost) makes scheduled backups fail closed with `backup.password_unreadable` instead of writing an unencrypted archive. A plaintext value an operator writes is accepted at load and rewritten in place, in `secrets.yml` (where the automatic migration has already moved it), atomically and `0600` (PART 8 private paths), as `enc:v1:{base64 of nonce + AES-256-GCM ciphertext}` under `server.security.encryption_key`. A value that starts with `enc:v1:` is decrypted in memory only. A value is never logged, never returned by the API, and shown as `********` in every view and bundle |
 | Field discovery | The server hardcodes no field list for VALIDATION (lego decides what is missing); the table below only prefills the form. For one `dns.NewDNSChallengeProviderByName` call it sets the map as the provider's environment (under a mutex), then restores the environment. lego's error names a missing or invalid variable; the server reports the variable NAME only, never a value |
 | Passing to lego | Only through that constructor call: the resulting provider object is given to the ACME client as its DNS-01 solver. Credentials are never written to a file or kept in the process environment |
 | Validation | At startup and before every certificate request the provider is constructed (no DNS record is touched). A failure makes the request fail with the variable name and logs at ERROR; no other challenge type is tried silently. Real proof of the credentials is a successful issuance |
@@ -30232,7 +30255,7 @@ server:
 | Rule | Behavior |
 |------|----------|
 | **Format** | `md` is Markdown, rendered by the project's Markdown renderer with every heading level shifted down by two (`#` renders as `<h3>`, `##` as `<h4>`, capped at `<h6>`), because each card already has its one `<h2>` and the page its one `<h1>`; the same shift applies to the headings of an `html` body. `html` is a fragment (no `<html>`, `<head>` or `<body>`). `txt` is plain text: HTML-escaped, a blank line starts a paragraph. `header` and `footer` are `html` only |
-| **Sanitizing** | Every body is sanitized before it renders; nothing the operator writes can run script. `header` and `footer` use the strict policy of "Footer Customization → Custom HTML Validation". `about`, `privacy` and `terms` (after Markdown rendering) use the same policy plus `table`, `thead`, `tbody`, `tr`, `th`, `td`, `pre`, `code`, `blockquote`, `hr`, `dl`, `dt`, `dd`, `sup`, `sub`, so ordinary documents keep their tables and code blocks. No policy allows `<h1>`: the page title is the page's one `<h1>`, so a heading in any operator body is `<h2>` or lower (a Markdown `#` heading renders as `<h2>`) |
+| **Sanitizing** | Every body is sanitized before it renders; nothing the operator writes can run script. `header` and `footer` use the strict policy of "Footer Customization → Custom HTML Validation". `about`, `privacy` and `terms` (after Markdown rendering) use the same policy plus `table`, `thead`, `tbody`, `tr`, `th`, `td`, `pre`, `code`, `blockquote`, `hr`, `dl`, `dt`, `dd`, `sup`, `sub`, so ordinary documents keep their tables and code blocks. No policy allows `<h1>`: the page title is the page's one `<h1>`, and the card already has its one `<h2>`, so a heading in any operator body, Markdown or HTML, is `<h3>` or lower (the two-level shift of the Format row: `#` and an HTML `<h1>` become `<h3>`, `<h2>` becomes `<h4>`, capped at `<h6>`) |
 | **Language** | A `body` map picks the request's resolved language (PART 31 → "I18N & A11Y"), then its `default` key, then the built-in content. A plain string is used for every language |
 | **Variables** | The placeholders of "Footer Customization → Available Footer Variables" work in every body |
 | **Links** | A body MUST NOT link `/server/contact` (PART 16 → "Who can reach the form"). Scripts, styles, forms and frames are stripped by the sanitizer |
@@ -39203,7 +39226,7 @@ groups:
 | Encrypted archive format | A cleartext header, then the AES-256-GCM ciphertext. Header, in this fixed order and encoding: magic `BKUP1` (5 bytes), `salt` (16 random bytes, new for every archive), `m`, `t`, `p` (each a uint32, big-endian: memory in KiB, iterations, parallelism), the 12-byte `nonce`, `key_id` (8 ASCII lowercase hex characters), then `base_len` (uint16, big-endian; 0 for a full backup) followed by `base_len` bytes of the base file's name (UTF-8, at most 255 bytes, no path separators). The header is exactly the concatenation of these fields (55 bytes plus the name), and a reader rejects a `base_len` above 255 or a header that ends early before it derives any key. Retention and base protection use only this header and the file names, never a password. The whole header is bound to the ciphertext as AES-GCM additional data, so any change to it fails decryption. It holds no password and no key material. `m`, `t` and `p` are attacker-controlled until the archive authenticates, so a reader enforces ceilings BEFORE it derives any key: `m` from 8192 to 1048576 KiB, `t` from 1 to 10, `p` from 1 to 16 (and `m` at least `8 × p`); a value outside them rejects the archive as corrupt without running Argon2id. The writer uses `m` = 65536, `t` = 3, `p` = 4 |
 | `key_id` | The first 8 hex characters of `HMAC-SHA256(derived_key, "key-id")`, where `derived_key` is Argon2id over the password with THAT archive's own salt and parameters. The same password gives the same `key_id` only when derived with the same salt, so comparing against another archive means re-deriving with that archive's salt and parameters |
 | File Extension | `.tar.gz` (unencrypted) or `.tar.gz.enc` (encrypted) |
-| Password Storage | Kept only so scheduled backups can run unattended: encrypted at rest with `server.security.encryption_key` (AES-256-GCM), never hashed (it is key material, not a login verifier), never written to a log, manifest or archive, and never returned by any API. Restore never reads it: the admin supplies the password |
+| Password Storage | Kept only so scheduled backups can run unattended: encrypted at rest as an `enc:v1:` value (AES-256-GCM under `server.security.encryption_key`, PART 11 "Encryption at rest"), never hashed (it is key material, not a login verifier), never written to a log, manifest or archive, and never returned by any API. Restore never reads it: the admin supplies the password |
 
 **How Encryption Works:**
 1. Backup creates `.tar.gz` archive in memory
@@ -40746,7 +40769,7 @@ Shell integration commands:
 
 completions [SHELL]                   - Print shell completion script
                                         Auto-detects shell if SHELL omitted
-                                        Supported: bash, zsh, fish, sh, dash, ksh, powershell, pwsh
+                                        Supported: bash, zsh, fish, powershell, pwsh (sh, dash and ksh have no programmable completion: exit 2)
 init [SHELL]                          - Print shell init command for eval
                                         Auto-detects shell if SHELL omitted
 
@@ -41107,7 +41130,7 @@ Examples:
 
 **Legacy macOS accounts.** Earlier implementations created the macOS account as `_{internal_name}` (the underscore convention). Startup never renames, deletes or edits it. When it exists, startup still creates the canonical `{internal_name}` account and group as above, re-owns the application directories (`{config_dir}`, `{data_dir}`, `{log_dir}`, `{cache_dir}`) once from the legacy user to the canonical one, and logs one `warn` naming the legacy account, which the operator removes by hand when it is no longer needed. The server never runs as the legacy account.
 
-**Existing account with the same name.** An account named `{internal_name}` that already exists (for example the stock `mail` account when `internal_name` is `mail`) is reused exactly as it is: the 200-899 range and the equal UID/GID rule apply only to an account the application creates, and startup never changes an existing account's IDs, shell or home. It is reused only when it is a system account (UID below 1000 and a `nologin` or `false` shell); an existing human account (UID 1000 or higher, or a login shell) is never taken over: startup fails with one error naming the account and the conflict.
+**Existing account with the same name.** An account named `{internal_name}` that already exists (for example the stock `mail` account when `internal_name` is `mail`) is reused exactly as it is: the 200-899 range and the equal UID/GID rule apply only to an account the application creates, and startup never changes an existing account's IDs, shell or home. It is reused only when it is a system account (UID from 1 to 999, a primary GID from 1 to 999, never 0, and a `nologin` or `false` shell, so root identity or root group access is never kept after the privilege drop); an existing human account (UID 1000 or higher, or a login shell) is never taken over: startup fails with one error naming the account and the conflict.
 
 ### UID/GID Selection Logic
 
@@ -47930,7 +47953,7 @@ Jenkins provides equivalent functionality to GitHub Actions, Gitea Actions, and 
 | Beta tag | `when { tag '*-beta' }` | `beta.yml` |
 | Main | `when { branch 'main' }` | `devel.yml` |
 | Scheduled | `triggers { cron('0 3 * * *') }` | `devel.yml` schedule |
-| All branches | Default (no `when`) | `docker.yml` |
+| Docker stages | `when { anyOf { branch 'main'; buildingTag() } }` | `docker.yml` (main pushes and version/beta tags; never other branches) |
 | Devel image | `triggers { cron('0 4 * * *') }` + `when { branch 'main' }`; it runs in every `main` build (push, 3am and 4am) | `docker.yml` `build-devel` job |
 
 ## Jenkinsfile
@@ -49720,7 +49743,7 @@ make test
 
 **Coverage data is collected with `-test.gocoverdir` and converted with `go tool covdata textfmt`; `-coverprofile` is not used.** Every test process writes its own file into the coverage directory, so no profile file is shared between processes (a shared one can end up malformed, `expected "mode: set"`). The directory is the project-scoped temp directory of the Test Output rule, never the project tree.
 
-**In CI/CD Pipeline (REQUIRED):**
+**In CI/CD Pipeline (REQUIRED):** `PROJECT_NAME` and `INTERNAL_NAME` below come from the workflow's top-level `env:` block (PART 28; `INTERNAL_NAME` is the IDEA.md `internal_name`). A provider runs the toolchain either as a job container (`container: image: casjaysdev/go:latest`, where the same commands run directly and `COVDIR` is created inside that container under `/tmp/{project_org}/{internal_name}-XXXXXX`) or, as shown here, through an explicit `docker run` of the same image from a host-runner job; both are valid, and the example shows the `docker run` form because the coverage directory lives outside the workspace and is mounted in.
 
 ```yaml
 # .github/workflows/ci.yml (test job with coverage)
@@ -49753,7 +49776,7 @@ test:
 
 ### How to Achieve the Coverage Gates (≥60% unit, 100% endpoints)
 
-**0. Keep the process entry thin and testable.** The unit gate counts every package, the root `src` package included, so orchestration left in `main()` drags the percentage down while only the compiled binary can reach it. `src/main.go` holds only `main()`: it parses flags, builds the configuration (copying the build metadata `Version`, `CommitID`, `BuildEpoch` and `OfficialSite` from `src/version.go` into it) and calls `app.Run(ctx, cfg) error`, where `cfg` is the `config.Config` value and `app` is the package `github.com/{project_org}/{internal_name}/src/app`, which never imports `main`. `app.Run` (startup, signal handling, graceful shutdown) is in that package, which unit tests reach: the test calls `run` with a cancelable context and a listener on `127.0.0.1:0`, waits for the ready signal, makes one request, cancels the context and asserts a clean return. Phase 2 still tests the compiled binary; its coverage never counts toward the Phase 1 percentage.
+**0. Keep the process entry thin and testable.** The unit gate counts every package, the root `src` package included, so orchestration left in `main()` drags the percentage down while only the compiled binary can reach it. `src/main.go` holds only `main()`: it calls `config.Load(os.Args[1:])` (flag parsing and configuration building live in `src/config`, which unit tests reach), copying the build metadata `Version`, `CommitID`, `BuildEpoch` and `OfficialSite` from `src/version.go` into the result, and then calls `app.Run(ctx, cfg) error`, where `cfg` is the `config.ServerConfig` value (the server configuration type of `src/config`, the naming rule's `ServerConfig`) and `app` is the package `github.com/{project_org}/{internal_name}/src/app`, which never imports `main`. `app.Run` (startup, signal handling, graceful shutdown) is in that package, which unit tests reach: the test calls `run` with a cancelable context and a listener on `127.0.0.1:0`, waits for the ready signal, makes one request, cancels the context and asserts a clean return. Phase 2 still tests the compiled binary; its coverage never counts toward the Phase 1 percentage.
 
 **1. Test All Code Paths:**
 ```go
@@ -60233,7 +60256,7 @@ Administration (requires admin token):
 
   {project-specific flags listed here}
 
-Shells: bash, zsh, fish, sh, dash, ksh, powershell, pwsh
+Shells: completions for bash, zsh, fish, powershell, pwsh; init for those and also sh, dash, ksh (sh, dash and ksh have no programmable completion, so `completions` with them is a usage error, exit 2)
 
 Run without arguments for interactive TUI mode.
 Run '{project_name}-cli <flag> --help' (for example `--shell --help`) for detailed help on any command flag.
@@ -61527,7 +61550,7 @@ Flags:
 --service CMD                          - Service management (start|restart|stop|reload|--install|--uninstall|--disable); `status` is the top-level `--status`, not a service subcommand
 --update [CMD]                         - Check/perform self-update
 
-Shells: bash, zsh, fish, sh, dash, ksh, powershell, pwsh
+Shells: completions for bash, zsh, fish, powershell, pwsh; init for those and also sh, dash, ksh (sh, dash and ksh have no programmable completion, so `completions` with them is a usage error, exit 2)
 ```
 
 ### Agent Commands
@@ -69049,7 +69072,7 @@ make docker
   - [ ] docs/development.md
   - [ ] docs/translating.md
 - [ ] ReadTheDocs builds successfully
-- [ ] Documentation badge in README.md
+- [ ] Documentation badge in README.md (only when a documentation deployment exists and answers; otherwise omitted, PART 29)
 
 **PART 31: I18N & A11Y**
 - [ ] Internationalization framework (if applicable)
