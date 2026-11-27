@@ -1,85 +1,67 @@
-# cashp — Claude Code Memory
+# Project SPEC
 
-Read `AI.md` (source of truth, read-only, ~65k lines) and `IDEA.md`
-(business logic, WHAT this project is) before implementing anything.
+Project: cashp
+Role: Efficient loader for AI.md
 
-## FIRST TURN - READ THIS
+⚠️ **THIS FILE IS AUTO-LOADED EVERY CONVERSATION. FOLLOW IT EXACTLY.** ⚠️
 
-On EVERY new conversation or after context compaction:
-1. Read the relevant `.claude/rules/*.md` files for the current task.
-2. NEVER assume — always verify against `AI.md` before implementing.
+Purpose:
+- This file is a short loader for the most important project rules.
+- `AI.md` is the read-only implementation source of truth.
+- `IDEA.md` defines product intent; `SPEC.md` activates optional parts and records technical exceptions.
 
-## Binary Terminology
-- **server** = `cashp` (main binary, runs as service)
-- **client** = `cashp-cli` (REQUIRED companion, CLI/TUI/GUI)
-- **agent** = `cashp-agent` (optional, runs on remote machines)
+## FIRST TURN — MANDATORY
 
-## Key Placeholders
-- `{project_name}` = cashp
-- `{project_org}` = webappsgo
-- `{internal_name}` = cashp (frozen)
-- `{internal_org}` = webappsgo (frozen)
+On every new conversation or after context compaction:
+1. Read the relevant `.claude/rules/*.md` for the current task.
+2. Verify every implementation choice against the applicable AI.md PART.
+3. Read the relevant IDEA.md business logic before changing product behavior.
 
-## NEVER Do — VIOLATIONS ARE BUGS
-1. Use bcrypt → Argon2id
-2. Put Dockerfile in root → `docker/Dockerfile`
-3. Use CGO → CGO_ENABLED=0 always
-4. Hardcode dev values → detect at runtime
-5. Use external cron → internal scheduler (PART 19)
-6. Store passwords plaintext → Argon2id (tokens use SHA-256)
-7. Create premium tiers → all features free, billing gates quota only
-8. Use Makefile in CI/CD → explicit commands only
-9. Guess a value a command can produce → run the command, or ask
-10. Skip platforms → build all 8 (linux/darwin/windows/freebsd × amd64/arm64)
-11. Client-side rendering (React/Vue) → server-side Go templates
-12. Add JS for anything HTML5+CSS already does → JS is a last resort
-13. Let long strings break mobile → word-break CSS
-14. Skip validation → server validates everything
-15. Implement without reading spec → read relevant PART first
-16. Modify `AI.md` — read-only; project changes go in `IDEA.md`/`SPEC.md`
-17. Edit `## Project variables` in IDEA.md without user confirmation
-18. Read an image >1000x1000 directly — resize first
-19. Use non-conforming IDEA.md without migration
+## Project terminology
 
-## ALWAYS Do — NON-NEGOTIABLE
-1. Read AI.md before implementing any feature
-2. Server-side processing
-3. Mobile-first responsive CSS
-4. All features work without JavaScript
-5. Tor hidden service support (auto-enabled if Tor found)
-6. Built-in scheduler, GeoIP, metrics, email, backup, update
-7. Full admin panel with ALL settings
-8. Client binary for the project (`cashp-cli`)
-9. Commit often, small focused commits; subagents never commit
+- Server: `cashp`.
+- Required client: `cashp-cli`.
+- Agent: `cashp-agent` (optional by AI.md; implemented only when IDEA.md requires it).
+- Project/org: `cashp` / `webappsgo`.
+- Frozen internal name/org: `cashp` / `webappsgo`.
+- Admin URL root: `/server/{admin_path}` (default `administration`).
 
-## File Locations
-- Config: `{config_dir}/server.yml`
-- Data: `{data_dir}/`
-- Logs: `{log_dir}/`
-- Source: `src/`
-- Docker: `docker/`
+## Non-negotiable project rules
 
-## Where to Find Details
-- AI behavior: `.claude/rules/ai-rules.md` (PART 0, 1)
-- Project structure: `.claude/rules/project-rules.md` (PART 2, 3, 4)
-- Config/modes: `.claude/rules/config-rules.md` (PART 5, 6, 12)
-- Binaries/CLI: `.claude/rules/binary-rules.md` (PART 7, 8, 33)
-- Backend: `.claude/rules/backend-rules.md` (PART 9, 10, 11, 32)
-- API: `.claude/rules/api-rules.md` (PART 13, 14, 15)
-- Frontend/admin: `.claude/rules/frontend-rules.md` (PART 16, 17)
-- Features: `.claude/rules/features-rules.md` (PART 18-23)
-- Service: `.claude/rules/service-rules.md` (PART 24, 25)
-- Makefile: `.claude/rules/makefile-rules.md` (PART 26)
-- Docker: `.claude/rules/docker-rules.md` (PART 27)
-- CI/CD: `.claude/rules/cicd-rules.md` (PART 28)
-- Testing/docs/i18n: `.claude/rules/testing-rules.md` (PART 29-31)
-- Optional (multi-user/orgs/domains): `.claude/rules/optional-rules.md` (PART 34-36)
-- Optional PART activation: declare adopted PARTs under `## Optional parts` in `SPEC.md`; never activate by editing AI.md or IDEA.md.
-- Full spec: `AI.md` (~65k lines) ← **SOURCE OF TRUTH**
-- Product/business logic: `IDEA.md`
+- Never edit `AI.md`; it is read-only. Fix project behavior and docs to match it.
+- Use Argon2id for passwords, SHA-256 hashes for tokens, and never store plaintext credentials.
+- Keep Dockerfiles under `docker/`; build with `CGO_ENABLED=0` for all eight required platforms.
+- Use the built-in scheduler, server-rendered Go templates, mobile-first CSS, and no-JavaScript form flows.
+- Validate all input on the server; never expose internal causes, secrets, or paths in user-facing errors.
+- Tor support is required and auto-enabled when detected; implement I2P per PART 32.
+- Keep all required features free; product billing may enforce resource quotas only, never feature access.
+- Never use Makefile targets in CI/CD; use explicit commands.
 
-## Current Project State
-- Bootstrap (PART 0-6) DONE: layout, CLAUDE.md loader, .claude/rules/,
-  Makefile, go.mod, gitignore/dockerignore, mode/config scaffolding
-- Next: work through `TODO.AI.md` in dependency order (PART 7 onward)
-- Relevant PARTs: 0-6 (done), 7-36 + IDEA.md domain backlog (see TODO.AI.md)
+## Work and verification
+
+- Read the applicable AI.md PART in full before implementation and follow its cross-references.
+- Use project TODO rules: `TODO.AI.md` is project implementation work; template issues go only in the parent SERVER inbox.
+- Run tests/build/lint through the prescribed container workflow and report actual results.
+- Keep runtime/test artifacts in `/tmp/webappsgo/cashp-XXXXXX/`; preserve user changes.
+- Only the primary session prepares commits and pushes, through `gitcommit --dir {project_dir} all` after required gates.
+
+## Rule index
+
+- AI behavior: `.claude/rules/ai-rules.md` (PART 0–1).
+- Project/layout: `.claude/rules/project-rules.md` (PART 2–4).
+- Config and modes: `.claude/rules/config-rules.md` (PART 5–6, 12).
+- Binaries and CLI: `.claude/rules/binary-rules.md` (PART 7–8, 33).
+- Backend and overlays: `.claude/rules/backend-rules.md` (PART 9–11, 32).
+- API and TLS: `.claude/rules/api-rules.md` (PART 13–15).
+- Pages and admin: `.claude/rules/frontend-rules.md` (PART 16–17).
+- Features: `.claude/rules/features-rules.md` (PART 18–23).
+- Services: `.claude/rules/service-rules.md` (PART 24–25).
+- Makefile, Docker, CI/CD: `.claude/rules/{makefile,docker,cicd}-rules.md` (PART 26–28).
+- Tests, docs, i18n: `.claude/rules/testing-rules.md` (PART 29–31).
+- Optional user/org/domain parts: `.claude/rules/optional-rules.md` (PART 34–36).
+
+## Optional parts
+
+`SPEC.md` activates PART 34 (Multi-User), PART 35 (Organizations), and PART 36 (Custom Domains) as REQUIRED for cashp.
+
+For complete details, read `AI.md` and the applicable rule files. Do not treat this loader as a substitute for the spec.

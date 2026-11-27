@@ -4834,8 +4834,8 @@ Content-Type: application/json
 
 {
   "ok": false,
-  "error": "SERVICE_ERROR",
-  "message": "Service temporarily unavailable"
+  "error": "MAINTENANCE",
+  "message": "Service unavailable"
 }
 ```
 
@@ -9034,7 +9034,7 @@ ENTRYPOINT [ "tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh" ]
    }
 
    // execElevated re-executes with elevated privileges (Unix)
-   // Illustrative: the normative dispatch tries the detected methods in the order of the list in PART 23 (sudo, doas, pkexec)
+   // Illustrative and intentionally partial (the example shows sudo only): the normative dispatch tries the detected methods in the order of the list in PART 23 (sudo, doas, pkexec)
    // and, only after the user accepted the prompt and every detected method failed, su in the same terminal
    // (su asks for the root password itself; the accepted prompt is not repeated)
    func execElevated(args []string) error {
@@ -18895,7 +18895,7 @@ Temporary blocks are automatically released when:
 
 ### Account Lockout (User-Level)
 
-**Separate from IP blocking.** When a specific user account has too many failed login attempts:
+**Separate from IP blocking.** When a specific account (a user or an admin: the same thresholds apply to both, tracked per account in its own store) has too many failed login attempts:
 
 | Failed Attempts | Action | Duration |
 |-----------------|--------|----------|
@@ -20477,7 +20477,9 @@ server:
       # Preference cookies (theme, language, UI settings)
       preferences:
         # Whether the category is OFFERED (banner, /server/preferences, toggles). It is not the consent state:
-        # a visitor with no consent action has the category off until they accept it
+        # a visitor with no consent action has the category off until they accept it.
+        # Setting it to false hides the control, ignores a submitted value for the category and treats the
+        # category as off whatever the stored consent says (the stored cookie_consent keeps the choice)
         enabled: true
         description: "Remember your settings such as theme (dark/light), language, and UI preferences. Without it nothing is saved and the defaults apply on each visit."
 
@@ -25704,7 +25706,7 @@ footer p {
 | **Content fills the viewport width correctly** | The `.container` rules above apply on every page: phones use the full width minus `1rem` padding; a content column is centered, never stuck left with dead space on the right |
 | **Fixed/overlay containment** | See "Drawer containment" in the header / navigation section ("Mobile Menu Behavior"). Overlays are direct children of `<body>`; no `transform`, `filter`, `backdrop-filter`, `contain` or `will-change` on an ancestor of a `position: fixed` element |
 | **Dynamic viewport** | `100dvh` / `min-height: 100dvh`, never bare `100vh` (mobile browser bars); `env(safe-area-inset-*)` padding on anything touching a screen edge (drawer, toast, banner, bottom actions) |
-| **Spacing scale** | Only the `--space-*` tokens from "CSS Variable Reference" (`--space-1` 4 px, `--space-2` 8 px, `--space-3` 12 px, `--space-4` 16 px, `--space-6` 24 px, `--space-8` 32 px, `--space-12` 48 px). Label to control `--space-1`, control to control `--space-4`, card to card `--space-6` (24 px). A page is never a bare stream of headings, text and controls: group content in `.section-card` blocks |
+| **Spacing scale** | Only the `--space-*` tokens of "CSS Variable Reference" (`--space-px`, then `--space-1` 4 px through `--space-24`); rhythm uses `--space-1` 4 px, `--space-2` 8 px, `--space-3` 12 px, `--space-4` 16 px, `--space-6` 24 px, `--space-8` 32 px and `--space-12` 48 px, and the larger steps are for heroes and empty states. Label to control `--space-1`, control to control `--space-4`, card to card `--space-6` (24 px). A page is never a bare stream of headings, text and controls: group content in `.section-card` blocks |
 | **Page header pattern** | Exactly one `<h1>` per page (the page title); an optional back link above it written `← {parent title}` (arrow icon + one full translated string); one `<h2>` per card. A heading is never repeated at a lower level (an "Owner tokens" `<h1>` followed by an "Owner tokens" `<h2>` is a defect) |
 | **No UI string concatenation** | Every visible label is ONE translation key holding the whole phrase (`nav.back_to_preferences` = "Back to Preferences"). Never join fragments ("Back" + "Preferences" rendered "Back Preferences"; this also breaks RTL and other languages) |
 | **No empty or unlabeled controls** | A `<select>` always has options and a visible selected default; an input always has a visible `<label>`; a button always has visible text or an `aria-label` plus tooltip. Two controls never share a label (a duplicated "Expiry" with a blank select is a defect) |
@@ -26435,7 +26437,7 @@ No other stylesheet is written by hand: a project never adds a file per page. Th
 | Tile (picker) | `.tile`, `.tile-icon`, `.tile-label` | none | `sm`, `lg`, `xl` | `[aria-checked]`, `:disabled` |
 | Badge | `.badge` | `-ok`, `-warning`, `-error`, `-info`, `-neutral` | `sm`, `lg` | none |
 | Alert | `.alert`, `.alert-title` | `-info`, `-success`, `-warning`, `-error` | none | none |
-| Toast | `.toast-container`, `.toast`, `.toast-icon`, `.toast-message`, `.toast-progress`, `.toast-close` | `-success`, `-info`, `-warning`, `-error` | none | none |
+| Toast | `.toast-container`, `.toast`, `.toast-icon`, `.toast-message`, `.toast-progress`, `.toast-close` | `-success`, `-info`, `-warning`, `-error` | none | `.toast-removing` (the exit animation, set by `app.js` just before the toast is removed) |
 | Modal, popover | `.modal`, `.modal-body`, `.modal-actions` on `<dialog>` or `[popover]` | none | none | `[open]`, `:popover-open` |
 | Table | `.table-wrapper`, `.data-table` | none | `sm` | `[aria-sort]` |
 | Navigation | `.nav-links`, `.nav-link`, and the drawer: `.nav-panel`, `.nav-toggle`, `.nav-overlay`, `.nav-checkbox`, `.nav-close` | none | none | `[aria-current]`, `[aria-expanded]` |
@@ -26443,7 +26445,7 @@ No other stylesheet is written by hand: a project never adds a file per page. Th
 | Hub list | `.hub-list`, `.hub-item`, `.hub-link`, `.hub-title`, `.hub-desc` | none | none | `:focus-visible` |
 | Info list | `.info-list`, `.info-label`, `.info-value` | none | none | none |
 | Empty state | `.empty-state`, `.empty-state-icon`, `.empty-state-title`, `.empty-state-message` | none | `lg`, `xl` | none |
-| Site banner | `.site-banner` | `-info`, `-warning`, `-error`, `-success` | none | none |
+| Site banner | `.site-banner`, `.site-banner-icon`, `.site-banner-text`, `.site-banner-dismiss`, `.site-banner-close` | `-info`, `-warning`, `-error`, `-success` | none | none |
 | Icon | `.icon` | none | `sm`, `lg`, `xl` | none |
 
 ### Feature components and exempt CSS
@@ -26512,7 +26514,7 @@ No other stylesheet is written by hand: a project never adds a file per page. Th
 | **Print** | One `@media print` block in `utilities`: white background, black text, no nav, no toast, no banner, links show their URL |
 | **Focus** | One `:focus-visible` rule in `base` draws `--focus-ring`; a component never removes an outline without a replacement of at least the same contrast |
 
-**CSS lint rules (in addition to "CSS Architecture"):** no literal color, `font-size`, `margin`, `padding`, `gap` or `border-radius` value outside the `tokens` layer; logical properties only; no ID selector; no `!important` outside the print and reduced-motion blocks; no class that is not in the catalog, the primitives, the utilities or a page hook.
+**CSS lint rules (in addition to "CSS Architecture"):** no literal color, `font-size`, `margin`, `padding`, `gap` or `border-radius` value outside the `tokens` layer; logical properties only (`overflow-x` and `overflow-y` stay physical because `overflow-block` and `overflow-inline` are not yet baseline; `inset: 0` is written `inset-block: 0; inset-inline: 0`); no ID selector; no `!important` outside the print and reduced-motion blocks; no class that is not in the catalog, the primitives, the utilities or a page hook.
 
 ## CSS Variable Reference
 
@@ -26685,11 +26687,11 @@ html.theme-light {
 
 | Rule | Detail |
 |------|--------|
-| **No unlayered CSS** | Unlayered rules beat every layer, so every rule in every stylesheet sits in a layer; each file starts with its `@layer` block |
+| **No unlayered CSS** | Unlayered rules beat every layer, so every rule in every project stylesheet sits in a layer (the vendored and generated-theme files of the exemption excepted); each file starts with its `@layer` block |
 | **Customize through properties** | A component exposes custom properties for what may vary; overriding its selectors from another file is a defect |
 | **No `!important`, no ID selectors** | The `!important` of the print block and of the reduced-motion block is the only exception; both live in `utilities` |
 | **Examples are unwrapped** | The CSS examples in this document are shown without their `@layer` wrapper to stay readable; in a project every rule sits inside its layer |
-| **Lint gate** | A CSS lint test runs in `make test` (Phase 1, no Node and no `package.json`): a unit test in the package that embeds the static files parses every embedded stylesheet with a pure-Go CSS parser (`github.com/tdewolff/parse/v2/css`) and fails on an unlayered rule, `!important`, an ID selector, a selector above `(0,4,1)` in `components`, and a descendant selector whose subject is a bare element under a generic or foreign component class (a component's own block may style its own `dt`, `dd`, `th`, `td`, `input` and `label`), plus every check of "CSS lint rules" above (token-bound values, logical properties, cataloged classes); the two lists together are the complete gate |
+| **Lint gate** | A CSS lint test runs in `make test` (Phase 1, no Node and no `package.json`): a unit test in the package that embeds the static files parses every embedded project stylesheet (not the vendored and generated-theme files of the exemption) with a pure-Go CSS parser (`github.com/tdewolff/parse/v2/css`) and fails on an unlayered rule, `!important`, an ID selector, a selector above `(0,4,1)` in `components`, and a descendant selector whose subject is a bare element under a generic or foreign component class (a component's own block may style its own `dt`, `dd`, `th`, `td`, `input` and `label`), plus every check of "CSS lint rules" above (token-bound values, logical properties, cataloged classes); the two lists together are the complete gate |
 
 ## Reuse Before Creating
 
@@ -27880,16 +27882,18 @@ setInterval(() => {
 **Notify user when new version is available:**
 
 ```javascript
-// Show update banner
+// Show the update prompt: it is a `.site-banner-info` in the site-banner slot ("Site banner" in PART 16) and replaces an announcement banner while it is shown
 function showUpdateNotification() {
   const banner = document.createElement('div');
-  banner.className = 'update-banner';
+  banner.className = 'site-banner site-banner-info';
   const label = document.createElement('span');
   label.textContent = 'A new version is available';
   const updateBtn = document.createElement('button');
+  updateBtn.className = 'btn btn-primary btn-sm';
   updateBtn.textContent = 'Update Now';
   updateBtn.addEventListener('click', updateApp);
   const laterBtn = document.createElement('button');
+  laterBtn.className = 'btn btn-secondary btn-sm';
   laterBtn.textContent = 'Later';
   laterBtn.addEventListener('click', () => banner.remove());
   banner.append(label, updateBtn, laterBtn);
@@ -30123,7 +30127,8 @@ Without the script: Esc and overflow detection are unavailable, but the scrim, t
 .nav-overlay {
   display: none;
   position: fixed;
-  inset: 0;
+  inset-block: 0;
+  inset-inline: 0;
   background: var(--color-overlay);
   z-index: var(--z-overlay);
   cursor: pointer;
@@ -37837,7 +37842,7 @@ Execute task
 │  2025-01-14 02:00   14.8 seconds ✓        Verified: 2 backups, 27 megabytes│
 │  2025-01-13 02:00   45.2 seconds ✗        Error: disk full                │
 │                                                                             │
-│  [View Full History]  [Download Backup]  [Restore...]                      │
+│  History: {project_name} --maintenance scheduler history backup_daily      │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -39693,7 +39698,7 @@ groups:
 {project_name} --maintenance backup test [file]
 ```
 
-`backup test` verifies a backup without touching live data: `file` defaults to the newest backup file in `{backup_dir}`, full or incremental (chosen by the UTC date in the file name, "Default archive selection"; an incremental is checked together with its base). An encrypted backup asks for its password interactively exactly like restore (there is no password flag; without a terminal the command fails with a message that says so). It extracts into a temporary directory, verifies the manifest checksums, reports each result and removes the temporary directory.
+`backup test` verifies a backup without touching live data: `file` defaults to the newest full backup in `{backup_dir}` (chosen by the UTC date in the file name, "Default archive selection") and also tests the daily and hourly incrementals when present, each together with its base: every file the next restore could use (incrementals have fixed names without a date, so they are tested when present, never "dated"). An encrypted backup asks for its password interactively exactly like restore (there is no password flag; without a terminal the command fails with a message that says so). It extracts into a temporary directory, verifies the manifest checksums, reports each result and removes the temporary directory.
 
 ### Backup Contents
 
@@ -39704,7 +39709,7 @@ groups:
 | `{config_dir}/secrets.yml` | ✓ If exists | Secrets (encryption key, credentials); `server.token` and `server.backup.encryption_password` are blanked in the backup copy (the backup password is never inside an archive) |
 | `{config_dir}/assets/` | If exists | Branding image files |
 | `server.db` | ✓ When the local file exists | The local SQLite main database (settings). With a remote driver the optional cache file `cache.db` is a derived replica, never part of a backup (the next sync rebuilds it). A remote database is never part of a backup (see below) |
-| `app_secrets.json` | ✓ Always | EVERY `app_secrets` row (`installation_secret`, `cookie_signing_key`, `csrf_token_secret`, and all `{name}_previous` and `{name}_previous_until` rows, including `encryption_key_previous` and `encryption_key_previous_until` during the 30-day grace period, so a restore inside it can still decrypt data that depends on the previous key), exported by the server whether the database is local or remote, so a restore can decrypt the PGP private key (PART 11) even when the database is remote with no local cache. A restore writes them back and replaces rows that exist |
+| `app_secrets.json` | ✓ Always | EVERY `app_secrets` row (`installation_secret`, `cookie_signing_key`, `csrf_token_secret`, and all `{name}_previous` and `{name}_previous_until` rows, including `encryption_key_previous` and `encryption_key_previous_until` during the 30-day grace period, so a restore inside it can still decrypt data that depends on the previous key), exported by the server whether the database is local or remote, so a restore can decrypt the PGP private key (PART 11) even when the database is remote with no local cache. A restore into SQLite writes them back and replaces rows that exist; a restore into a remote database applies them only when its `app_secrets` rows are absent, because other nodes use the live rows |
 | `users.db` | ✓ When the local file exists | The local SQLite user database (admins table holds admin credentials) |
 | `{config_dir}/template/` | ✓ If exists | Custom email templates |
 | `{config_dir}/ssl/` | Optional | SSL certificates (flag: `--include-ssl`) |
@@ -40017,7 +40022,7 @@ Every backup is verified **immediately after creation** - backups must be 100% w
 | `{project_name}-daily.tar.gz[.enc]` | Daily incremental (cumulative changes since the previous full - see Incremental Backup Contract) | Always 1 (replaced each run) |
 | `{project_name}-hourly.tar.gz[.enc]` | Hourly incremental (if enabled) | Always 1 (replaced each run) |
 
-**Default archive selection (restore and "Test Backup").** When no archive is named, the newest file is the one with the latest date in its file name (restore considers fulls only and uses an incremental only when it is named; "Test Backup" considers every backup file and tests an incremental together with its base) (`{project_name}_backup_YYYY-MM-DD`, UTC; a tie goes to the later file modification time). The manifest and its `snapshot_at` are never read to choose, because an encrypted archive keeps the manifest inside the ciphertext and the cleartext `BKUP1` header carries no timestamp.
+**Default archive selection (restore and "Test Backup").** When no archive is named, the newest full is the one with the latest date in its file name (restore uses that full and an incremental only when it is named; "Test Backup" uses the same newest full and also tests the present incrementals with their bases) (`{project_name}_backup_YYYY-MM-DD`, UTC; a tie goes to the later file modification time). The manifest and its `snapshot_at` are never read to choose, because an encrypted archive keeps the manifest inside the ciphertext and the cleartext `BKUP1` header carries no timestamp.
 
 ### Retention Validation & Examples
 
@@ -58084,6 +58089,7 @@ func monitorI2P(ctx context.Context, service *I2PService, restartFunc func() (*I
 | I2P router config | `{config_dir}/i2p/i2pd.conf` | Server generates with 0600 (Model A) |
 | Empty tunnel definitions | `{config_dir}/i2p/tunnels.conf`, `{config_dir}/i2p/tunnels.d/` | Server creates empty (0600 / 0700) so no other tunnel is ever loaded (Model A) |
 | I2P data directory | `{data_dir}/i2p/` | Server creates with 0700 (Model A) |
+| Reseed trust certificates | The packaged directory: first existing of `/usr/share/i2pd/certificates`, `/var/lib/i2pd/certificates`, `/usr/local/share/i2pd/certificates` | The generated `i2pd.conf` points `certsdir` at it (read-only: the app never copies or edits those files, so package updates apply); when none exists, reseed cannot verify and the I2P check reports `unavailable` with the reason in the log (Model A) |
 | Destination key | `{data_dir}/i2p/site/site-keys.dat` | App creates with 0600; one line, SAM `PRIV` in I2P base64 (both models) |
 | Public address | `{data_dir}/i2p/site/hostname` | App writes with 0644; ONLY the public `.b32.i2p` address derived from the destination (both models), never private material |
 | i2pd process PID | `{data_dir}/i2p/i2pd.pid` | Model A only |
@@ -65590,7 +65596,7 @@ Organizations - only for projects with multi-user collaboration.
 | `script-sample`, `error.message`, `body.message`, any free-text field | Truncate to 200 chars after PART 11 sanitization. |
 | `error.stack`, any stack-trace field | Strip absolute filesystem paths (regex `/[^\s:]+/`); keep only the basename. Truncate to 2 KB. |
 | User-Agent | Keep verbatim — already public information the browser sends to every site. |
-| Source IP | Hash with a daily-rotating salt before storage IF the deployment's `privacy.hash_report_ips: true` is set (default `true` in EU deployments per GDPR; `false` elsewhere). Raw IP retained only in the rate-limit ring buffer (memory only, never persisted). |
+| Source IP | Hash with a daily-rotating salt before storage IF the deployment's `privacy.hash_report_ips: true` is set (default `true` everywhere: no deployment region is detected or configured; set `false` to keep raw IPs). Raw IP retained only in the rate-limit ring buffer (memory only, never persisted). |
 | Any field NOT in the allow-list per the report-type schema | Dropped. (Defense in depth — browser vendors add fields over time; we don't auto-trust new ones.) |
 
 **Cross-report rules:**
@@ -70381,7 +70387,7 @@ make docker
 - [ ] Unsupported `--lang` value → silently use `en` (no error, no crash)
 - [ ] Unsupported `Accept-Language` → silently use `en`
 - [ ] Missing key in active language → fall back to `en` value
-- [ ] Missing key in `en` → return key itself as last resort (never empty/null)
+- [ ] A key missing from `en.json` fails the build (the raw key is never rendered); a key missing in another language falls back to `en`; the runtime returns the key itself only as a defensive last resort that the key-parity test makes unreachable
 - [ ] Invalid `?lang=` param → silently use `en` (no error page)
 - [ ] Corrupted/missing locale file → fall back to `en` (never crash on startup)
 
