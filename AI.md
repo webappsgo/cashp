@@ -9729,7 +9729,7 @@ server:
       requests: 120
       window: 60
     strict:
-      # token reveal, rotate and restore (PART 8), per IP or per owner; every attempt, valid or not, counts
+      # token issue, reveal, rotate, primary revoke and restore (PART 8), per IP or per owner; every attempt, valid or not, counts
       requests: 10
       window: 900
     auth_failures:
@@ -11537,6 +11537,7 @@ Run '{project_name} <flag> --help' (for example `--service --help`) for detailed
 | **Backup archives** | Created `0600`, owned by the service identity `{internal_name}:{internal_name}`. A root-run `--maintenance backup` (and any other root write into `{backup_dir}`) chowns every file and directory it creates to the service identity, so the service can later read, verify and prune them. A retention sweep that cannot delete a file logs a WARN with the path and mode, continues, and never fails the backup |
 | **Private paths (root AND user mode)** | Directories `0700` and files `0600`, whoever runs the server, on: `{config_dir}/server.yml`, `{config_dir}/secrets.yml`, `{config_dir}/yaml.d/` and its drop-ins, `{config_dir}/assets/`, `{config_dir}/ssl/`, `{config_dir}/tor/`, `{config_dir}/i2p/`, `{data_dir}/security/` and `{data_dir}/tor/` INCLUDING `tor/site/`, each with EVERYTHING below it. `secrets.yml` holds `server.token`, the encryption key and every other credential, and an operator may hand-write a secret into `server.yml` or a drop-in until the next start moves it, so those files are private too. Files and directories are CREATED with these modes (never created `0644`/`0755` and fixed later) |
 | **Private path enforcement** | `enforcePrivate` runs on every private path at every start, BEFORE the first read of `server.yml` and BEFORE any child process (tor, i2pd) is spawned. A wrong mode is FIXED, never reported as a config load failure; only a path that is neither private nor fixable stops the start, with an error naming the path and its mode (never any content). The unit test builds the tree at `0755`/`0644` and asserts every private path ends `0700`/`0600`, `tor/site` and `server.yml` included |
+| **Windows private ACL (system mode)** | Under `%ProgramData%` the inherited ACL lets `BUILTIN\Users` read, so every private path gets a PROTECTED ACL (inheritance removed) granting Full Control only to `NT SERVICE\{internal_name}` (the service identity), `NT AUTHORITY\SYSTEM` and `BUILTIN\Administrators`, applied to the directory with inheritance to its children (`icacls "{path}" /inheritance:r /grant:r "NT SERVICE\{internal_name}:(OI)(CI)F" "NT AUTHORITY\SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F"`, or the equivalent `SetNamedSecurityInfo` call). User mode keeps the ACL inherited from `%APPDATA%` and `%LOCALAPPDATA%`, which already is user-only. `enforcePrivate` applies it at every start like the Unix modes |
 | **PID directory (root)** | `/var/run/{internal_org}/{internal_name}/`, one directory per service, `0755`, owned by `{internal_name}:{internal_name}`, created in the root phase (PART 8 startup step 8b) or by the init script before the start. Never a directory shared between services of one org: a service account can then remove only its own PID file on shutdown and can never touch another service's |
 | **Parent dirs** | Create parent directories as needed (`mkdir -p` equivalent) |
 | **Validate writable** | Fail fast if a directory is not writable, EXCEPT `{backup_dir}`: at startup it is warning-only (step 8j logs one error and the server starts), and a backup operation fails closed when it cannot use it (PART 22), writing nothing elsewhere |
@@ -17459,7 +17460,7 @@ web:
 | Validation | Run through the SAME token validation function and middleware as the API — one code path, not a copy |
 | Cookies | Ignored. Like every `/api/...` route, the MCP endpoint accepts the `Authorization` header only — no ambient authority |
 | No token | **Rejected.** Every MCP request carries `Authorization: Bearer ...`; without a valid token the endpoint answers `401` (with `WWW-Authenticate: Bearer`, PART 8 → "Auth Token Presentation") and a JSON-RPC error, and `tools/list` is never served. The public REST API is different: its ordinary operations work without a token (a route marked Bearer-protected still needs its token), and a token only links what the caller creates to its owner and unlocks MCP |
-| OAuth | Not implemented by this template: MCP authenticates with the static Bearer tokens above, and the MCP specification makes authorization optional. If a project implements or enables OAuth, its MCP endpoint MUST then support OAuth as the specification defines it (protected resource metadata at `https://{fqdn}/.well-known/oauth-protected-resource`, built per request with `BuildURL` and served as an optional allowlisted well-known entry that exists only while OAuth is enabled, a `resource_metadata` parameter in the `401` challenge carrying that URL, audience-bound tokens), alongside the static tokens |
+| OAuth | Not implemented by this template: MCP authenticates with the static Bearer tokens above, and although the MCP specification makes authorization optional, this template requires a valid Bearer token on every MCP request (`401` otherwise): the specification's option never overrides that rule; `adm_` is for the operator-only tools, and a general client uses the owner, user or system token the project already issues. If a project implements or enables OAuth, its MCP endpoint MUST then support OAuth as the specification defines it (protected resource metadata at `https://{fqdn}/.well-known/oauth-protected-resource`, built per request with `BuildURL` and served as an optional allowlisted well-known entry that exists only while OAuth is enabled, a `resource_metadata` parameter in the `401` challenge carrying that URL, audience-bound tokens), alongside the static tokens |
 | Authorization | Per tool call, with the caller's token, by the same checks as the matching API endpoint. A token that cannot call an endpoint over REST cannot call its tool |
 | Rate limiting, audit | The same limiters and audit events as the API; the audit entry's top-level `source` field (PART 11 → "Audit Log Format") is `mcp` so MCP traffic is distinguishable |
 | Operator-only endpoints | Exposed as tools only to a caller whose token is already operator/admin-scoped; for any other caller they are absent from `tools/list` AND rejected on `tools/call` |
@@ -17729,7 +17730,7 @@ All three coexist under the admin tree. The admin-panel UI groups them under a s
 
 | Log | Purpose | Default Format | Available Formats |
 |-----|---------|----------------|-------------------|
-| `access.log` | HTTP requests | `apache` | `apache`, `nginx`, `json` |
+| `access.log` | HTTP requests | `apache` | `apache`, `nginx`, `json`, `custom` (the format string and variables below) |
 | `server.log` | Application events | `text` | `text`, `json` |
 | `error.log` | Error messages | `text` | `text`, `json` |
 | `audit.log` | Security events | `json` | `json` only (must be machine-parseable) |
@@ -18365,7 +18366,7 @@ server:
 | Rotation only | Only log rotation can remove old entries |
 | Hash chain | REQUIRED. Every entry has a `prev` field: the lowercase hex SHA-256 of the previous entry's exact line (without the newline). The first entry ever uses 64 zeros; the first entry of a rotated file carries the hash of the last line of the file it follows. One writer appends entries in order under a lock, so the chain never forks |
 | Anchor | `{log_dir}/audit.anchor` (mode `0600`) holds the hash of the last line of the file that was just closed. It is written at every rotation BEFORE the old file is deleted and is kept whatever `keep` says, so `keep: none` never breaks the chain. At start the first `prev` of the current file must equal the anchor; no anchor and a first `prev` of 64 zeros is a new log. A mismatch, or a missing anchor with a non-zero first `prev`, is reported once as `security.audit_chain_broken` with `reason: anchor_mismatch` or `anchor_missing`. Deleting the anchor together with every audit file is an operator reset: the chain restarts at 64 zeros and one `info` line says so |
-| Verification | The server re-computes the chain of the current file at start and of the closed file at every rotation. A mismatch (an edited, removed or reordered entry) is reported once as `security.audit_chain_broken` (severity `critical`; file name and line number, never entry content); the server keeps running and keeps appending |
+| Verification | The server re-computes the chain of the current file at start and of the closed file at every rotation. A mismatch (an edited, removed or reordered entry) is reported once as `security.audit_chain_broken` (severity `critical`; file name and line number, never entry content); the server keeps running and keeps appending. The guarantee covers every entry that has a successor: an edit to the LAST entry of the active file leaves every stored `prev` valid and is detected only when the next entry is appended (its `prev` no longer matches) or at rotation, so no active-tail checkpoint is kept |
 | Limit | Tamper-evident, not tamper-proof: someone who can rewrite the whole file can recompute every hash. Forward the log to another host if that case matters |
 
 **File Permissions:**
@@ -19694,7 +19695,7 @@ server:
       requests: 120
       window: 60
     strict:
-      # token reveal, rotate and restore (PART 8), per IP or per owner; every attempt, valid or not, counts
+      # token issue, reveal, rotate, primary revoke and restore (PART 8), per IP or per owner; every attempt, valid or not, counts
       requests: 10
       window: 900
     auth_failures:
@@ -19724,8 +19725,8 @@ server:
 | Read (GET, HEAD) | 120 req/min | 60s | Per IP (anonymous) or per token (authenticated), sliding window |
 | Write (POST, PUT, PATCH, DELETE) | 10 req/min | 60s | Per IP (anonymous) or per token (authenticated), sliding window |
 | Health / status | 120 req/min | 60s | `/server/healthz` (and the optional `/healthz` root alias) |
-| Global burst | 240 req/min | 60s | Absolute ceiling across all types |
-| Strict (token reveal, rotate, restore) | 10 / 15 min | 900s | Per IP (anonymous restore) or per owner (authenticated reveal and rotate). Every attempt, valid or not, consumes it |
+| Global burst | 240 req/min | 60s | Absolute ceiling across all endpoint types for ONE client identity: per IP (anonymous) or per token (authenticated), never server-wide |
+| Strict (token issue, reveal, rotate, primary revoke, restore) | 10 / 15 min | 900s | Per IP (anonymous restore) or per owner (authenticated issue, reveal, rotate and revoke). Every attempt, valid or not, consumes it |
 | Failed authentication | 5 failures / 15 min | 900s | Per IP, sliding window. At the limit every request from that IP, even one with a valid token, gets `429` until the sliding-window count falls below the limit; a success never resets the count |
 | Login | 5 req / 15 min | 900s | Per IP + per identifier |
 | Password reset | 3 req / 1 hr | 3600s | Per IP, no email hint on exceed |
@@ -22672,7 +22673,6 @@ func getAPIResponseFormat(r *http.Request) string {
 |----------|---------|----------|-------------|-------------------|
 | `/api/{api_version}/jokes/random` | JSON | Text | Text | Text |
 | `/api/{api_version}/server/healthz` | JSON | Text | Text | Text |
-| `/api/{api_version}/status` | JSON | Text | Text | Text |
 | `/api/{api_version}/users/{username}` | JSON | Text | Text | Text |
 
 **Frontend Routes (smart detection):**
@@ -30231,7 +30231,7 @@ server:
 
 | Rule | Behavior |
 |------|----------|
-| **Format** | `md` is Markdown, rendered by the project's Markdown renderer. `html` is a fragment (no `<html>`, `<head>` or `<body>`). `txt` is plain text: HTML-escaped, a blank line starts a paragraph. `header` and `footer` are `html` only |
+| **Format** | `md` is Markdown, rendered by the project's Markdown renderer with every heading level shifted down by two (`#` renders as `<h3>`, `##` as `<h4>`, capped at `<h6>`), because each card already has its one `<h2>` and the page its one `<h1>`; the same shift applies to the headings of an `html` body. `html` is a fragment (no `<html>`, `<head>` or `<body>`). `txt` is plain text: HTML-escaped, a blank line starts a paragraph. `header` and `footer` are `html` only |
 | **Sanitizing** | Every body is sanitized before it renders; nothing the operator writes can run script. `header` and `footer` use the strict policy of "Footer Customization → Custom HTML Validation". `about`, `privacy` and `terms` (after Markdown rendering) use the same policy plus `table`, `thead`, `tbody`, `tr`, `th`, `td`, `pre`, `code`, `blockquote`, `hr`, `dl`, `dt`, `dd`, `sup`, `sub`, so ordinary documents keep their tables and code blocks. No policy allows `<h1>`: the page title is the page's one `<h1>`, so a heading in any operator body is `<h2>` or lower (a Markdown `#` heading renders as `<h2>`) |
 | **Language** | A `body` map picks the request's resolved language (PART 31 → "I18N & A11Y"), then its `default` key, then the built-in content. A plain string is used for every language |
 | **Variables** | The placeholders of "Footer Customization → Available Footer Variables" work in every body |
@@ -49503,7 +49503,7 @@ done
 
 # Backend routes - test BOTH application/json and text/plain
 api_routes=(
-    "/api/{api_version}/status"
+    "/api/{api_version}/server/healthz"
     "/api/{api_version}/jokes/random"
     "/api/{api_version}/users/john"
 )
@@ -49753,7 +49753,7 @@ test:
 
 ### How to Achieve the Coverage Gates (≥60% unit, 100% endpoints)
 
-**0. Keep the process entry thin and testable.** The unit gate counts every package, the root `src` package included, so orchestration left in `main()` drags the percentage down while only the compiled binary can reach it. `src/main.go` holds only `main()`: it parses flags, builds the configuration (copying the build metadata `Version`, `CommitID`, `BuildEpoch` and `OfficialSite` from `src/version.go` into it) and calls `run(ctx, cfg) error`; the package `run` lives in never imports `main`. `run` (startup, signal handling, graceful shutdown) lives in a package under `src/` that unit tests reach: the test calls `run` with a cancelable context and a listener on `127.0.0.1:0`, waits for the ready signal, makes one request, cancels the context and asserts a clean return. Phase 2 still tests the compiled binary; its coverage never counts toward the Phase 1 percentage.
+**0. Keep the process entry thin and testable.** The unit gate counts every package, the root `src` package included, so orchestration left in `main()` drags the percentage down while only the compiled binary can reach it. `src/main.go` holds only `main()`: it parses flags, builds the configuration (copying the build metadata `Version`, `CommitID`, `BuildEpoch` and `OfficialSite` from `src/version.go` into it) and calls `app.Run(ctx, cfg) error`, where `cfg` is the `config.Config` value and `app` is the package `github.com/{project_org}/{internal_name}/src/app`, which never imports `main`. `app.Run` (startup, signal handling, graceful shutdown) is in that package, which unit tests reach: the test calls `run` with a cancelable context and a listener on `127.0.0.1:0`, waits for the ready signal, makes one request, cancels the context and asserts a clean return. Phase 2 still tests the compiled binary; its coverage never counts toward the Phase 1 percentage.
 
 **1. Test All Code Paths:**
 ```go
@@ -58552,6 +58552,8 @@ func selectSetupMode() SetupMode {
 
 **GUI Setup Wizard (Native-feel - `gogpu/ui`, pure Go):**
 
+**One shared setup flow:** the GUI, TUI and inline-prompt wizards expose the same connection and persistence options (server URL, optional API token, Save to configuration, Set as default server). The GUI wizard adds exactly one extra, Start automatically on login (an OS autostart entry), which has no TUI or inline equivalent.
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  {PROJECT_NAME} Setup                                    [X] │
@@ -58560,9 +58562,12 @@ func selectSetupMode() SetupMode {
 │  Welcome! Let's configure your server.                      │
 │                                                             │
 │  Server URL:  [https://                              ] [?]  │
+│  API Token (optional):                                      │
+│  [                                                   ] [?]  │
 │                                                             │
 │  ☑ Save configuration                                       │
-│  ☐ Start automatically on login                             │
+│  ☐ Set as default server                                    │
+│  ☐ Start automatically on login   (GUI only)                │
 │                                                             │
 │                    [Test Connection]                        │
 │                                                             │
@@ -59448,16 +59453,17 @@ func setFilePermissions(path string) error {
 import "golang.org/x/sys/windows"
 
 func setDirPermissions(dir string) error {
-	// Windows: ACLs are inherited from parent by default in user directories
-	// %APPDATA% and %LOCALAPPDATA% already have user-only access
-	// No explicit ACL modification needed for user directories
-	return nil
+	// User mode: %APPDATA% and %LOCALAPPDATA% already have a user-only ACL, nothing to change
+	if !isSystemMode() {
+		return nil
+	}
+	// System mode (%ProgramData%): BUILTIN\Users can read by default, so apply the protected service ACL
+	// (NT SERVICE\{internal_name}, SYSTEM and Administrators only; "Windows private ACL (system mode)")
+	return applyServiceACL(dir)
 }
 
 func setFilePermissions(path string) error {
-	// Windows: files inherit ACLs from directory
-	// For sensitive files, we could set explicit ACLs, but for user
-	// directories this is not needed as they inherit from %APPDATA%
+	// Files inherit the directory's ACL, which setDirPermissions has already made private
 	return nil
 }
 
@@ -68569,7 +68575,7 @@ maintainer_email: jane@example.com
 - [ ] **NEVER run `go run` locally** - ALWAYS use Docker `casjaysdev/go:latest`
 
 **Testing (Docker OR Incus):**
-- [ ] **Unit tests** - `make test` in the Docker toolchain image `casjaysdev/go:latest` (locally and in CI/CD), never in `alpine:latest`
+- [ ] **Unit tests** - `make test` locally, and the same Docker commands spelled out in the workflow in CI/CD (CI never calls `make`), in the Docker toolchain image `casjaysdev/go:latest`, never in `alpine:latest`
 - [ ] **Basic tier** - Docker `alpine:latest` (`tests/docker.sh`): the compiled binary (not the shipped image), the basic suite including Tor and I2P health; the init-system and service lifecycle belong to `tests/incus.sh`
 - [ ] **Full OS tests** - Incus `debian:latest` for systemd (PREFERRED)
 - [ ] **NEVER run binaries locally** - use Docker or Incus container
