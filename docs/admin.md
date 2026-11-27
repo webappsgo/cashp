@@ -22,7 +22,9 @@ help, administrator profile and preferences, and agent management when the
 optional agent component is enabled. The agent pages list connected hosts and
 their health, show system and recent metric details, and provide forms to add,
 edit, remove, or rotate an agent credential. A newly generated agent command is
-shown once and should be treated as a secret. Settings sections include
+shown once and should be treated as a secret. Set `server.fqdn` (or the
+runtime `DOMAIN` value) so the panel can build a safe `--server` URL for that
+command. Settings sections include
 branding, TLS, email, notifications, scheduler, backups, updates, maintenance,
 security, network services, moderation, invites, and cluster nodes. The
 running server's route list and settings schema are authoritative for the
