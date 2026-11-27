@@ -11772,6 +11772,21 @@ func RemovePIDFile(pidPath string) error {
 - Check for stale PIDs on EVERY startup
 - Verify process identity to handle PID reuse
 
+### Startup Never Fails (Degrade, Never Exit)
+
+**The server starts and stays up whenever it can serve anything. A dependency, dataset, migration, download, overlay or optional feature that fails never stops the process and never makes it restart in a loop.** A container that exits is restarted by its policy forever, and the site then shows only the service worker's offline page.
+
+| Situation | Required behavior |
+|-----------|-------------------|
+| Invalid or missing setting | Replace it with the default and warn once ("Invalid → default") |
+| A schema migration step that cannot proceed | Log ONE error naming the table and statement, mark the database check `error` and start in the `maintenance` status; the migration is retried at the next start |
+| A dataset, blocklist, GeoIP, CVE or certificate download that fails | Log one warning, keep the previous copy or run without it, report its check as `degraded` or `error` and retry by its scheduler task; never `unhealthy` unless it was registered `critical` |
+| An upstream (a search engine, a mail relay, a remote API) that fails | Per-upstream `degraded` or `error`; the feature that depends on it answers with a clear message, the rest keeps working |
+| Tor, I2P or any overlay | `unavailable` in health and one warning; never blocks, restarts or fails the server |
+| An optional feature that cannot start | Disabled for this run with one warning |
+
+**The only startup exits:** a command-line usage error (exit `2`), and a state in which the process cannot serve anything at all (no listener can be bound after the port rules, or the data directory cannot be written after the permission repair), which exits with one error naming the cause and the fix. Everything else degrades. **GeoIP, blocklists, CVE data and other downloaded datasets, and third-party upstreams such as search engines, are NEVER registered `critical`**: a failed download or a dead upstream must not turn the health response into `503`.
+
 ### Server Startup Sequence
 
 **The server binary handles ALL initialization. No external scripts needed.**
@@ -21290,7 +21305,7 @@ type StatsInfo struct {
 | **Registry, not hand-coding** | Each data set registers itself once at load time: `health.Register(key, critical, fn)`. `buildHealthResponse()` iterates the registry — adding a data set MUST NOT require editing the health handler |
 | **Values** | `ok` = loaded, parsed, non-empty, and within its maximum age · `degraded` = loaded but stale (update failing, past its max age) or running on the last known good copy · `error` = missing, empty, or unparseable with no usable copy |
 | **Disabled features** | A data set whose feature is disabled is OMITTED from `checks` (never reported as `ok` or `error`) |
-| **Aggregation** | `error` on `database` or `disk` → `unhealthy`. A dataset check at `degraded` or `error` → `degraded`, unless it was registered `critical` (the app cannot do its core job without it) → `unhealthy` |
+| **Aggregation** | `error` on `database` or `disk` → `unhealthy`. A dataset check at `degraded` or `error` → `degraded`, unless it was registered `critical` (the app cannot do its core job without it; downloaded datasets such as GeoIP, blocklists and CVE data and third-party upstreams such as search engines are never critical, "Startup Never Fails") → `unhealthy` |
 | **Overlay networks** | A Tor or I2P check at `degraded` → overall `degraded`. It is never `critical` and never makes the overall status `unhealthy` (see "Overlay Network Health") |
 | **Stable keys** | `{kind}_{id}` is a stable snake_case identifier — NEVER a file path, URL, or filename (public-safe; see Security) |
 | **Order** | Core checks first (`database`, `cache`, `disk`, `scheduler`), then `tor`, `i2p`, then dataset checks in registration order. JSON emits keys in exactly this order (custom marshaller — never an unordered map) |

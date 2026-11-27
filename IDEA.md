@@ -760,3 +760,87 @@ returns a file export.
 | `/api/{api_version}/users/workloads/{name}/snapshots/{snapshot}/restore` | POST | Authenticated tenant | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
 | `/api/{api_version}/users/workloads/{name}/start` | POST | Authenticated tenant | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
 | `/api/{api_version}/users/workloads/{name}/stop` | POST | Authenticated tenant | Create or operate on workloads resource | Resource fields or action parameters → updated resource |
+| `/api/{api_version}/orgs/{slug}/agents/{name}` | DELETE | Organization member; writes require organization admin | Remove a scoped agent | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}` | DELETE | Organization member; writes require organization admin | Read or delete a managed database instance | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/backups/{backup}` | DELETE | Organization member; writes require organization admin | List, create, restore, or delete database backups | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/databases/{name}` | DELETE | Organization member; writes require organization admin | List, create, or drop databases | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/replicas/{replica}` | DELETE | Organization member; writes require organization admin | List, create, or remove database replicas | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/users/{username}` | DELETE | Organization member; writes require organization admin | List, create, or delete database users | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/users/{username}/grants/{database}` | DELETE | Organization member; writes require organization admin | Grant or revoke database access | Confirmation → success |
+| `/api/{api_version}/users/agents/{name}` | DELETE | Authenticated tenant | Remove a scoped agent | Confirmation → success |
+| `/api/{api_version}/users/database-instances/{id}` | DELETE | Authenticated tenant | List, create, or delete database users | Confirmation → success |
+| `/api/{api_version}/users/database-instances/{id}/backups/{backup}` | DELETE | Authenticated tenant | List, create, restore, or delete database backups | Confirmation → success |
+| `/api/{api_version}/users/database-instances/{id}/databases/{name}` | DELETE | Authenticated tenant | List, create, or drop databases | Confirmation → success |
+| `/api/{api_version}/users/database-instances/{id}/replicas/{replica}` | DELETE | Authenticated tenant | List, create, or remove database replicas | Confirmation → success |
+| `/api/{api_version}/users/database-instances/{id}/users/{username}` | DELETE | Authenticated tenant | List, create, or delete database users | Confirmation → success |
+| `/api/{api_version}/users/database-instances/{id}/users/{username}/grants/{database}` | DELETE | Authenticated tenant | Grant or revoke database access | Confirmation → success |
+| `/api/{api_version}/orgs/{slug}/agents` | GET | Organization member; writes require organization admin | Read scoped agents | Filters → agent list or details |
+| `/api/{api_version}/orgs/{slug}/agents/{name}` | GET | Organization member; writes require organization admin | Read scoped agents | Filters → agent list or details |
+| `/api/{api_version}/orgs/{slug}/agents/{name}/metrics` | GET | Organization member; writes require organization admin | Read agent metrics | Period and limit → metric history |
+| `/api/{api_version}/orgs/{slug}/database-engines` | GET | Organization member; writes require organization admin | List managed database engines or versions | Engine → supported versions and capabilities |
+| `/api/{api_version}/orgs/{slug}/database-engines/{engine}/versions` | GET | Organization member; writes require organization admin | List managed database engines or versions | Engine → supported versions and capabilities |
+| `/api/{api_version}/orgs/{slug}/database-instances` | GET | Organization member; writes require organization admin | List or create managed database instances | Filters → instance list |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}` | GET | Organization member; writes require organization admin | Read or delete a managed database instance | Empty body → instance or operation result |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/backups` | GET | Organization member; writes require organization admin | List, create, restore, or delete database backups | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/databases` | GET | Organization member; writes require organization admin | List, create, or drop databases | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/health` | GET | Organization member; writes require organization admin | Probe database instance health | Empty body → health result |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/replicas` | GET | Organization member; writes require organization admin | List, create, or remove database replicas | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/upgrade-path` | GET | Organization member; writes require organization admin | List available database upgrades | Empty body → compatible versions |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/usage` | GET | Organization member; writes require organization admin | Read database instance usage | Empty body → usage and limits |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/users` | GET | Organization member; writes require organization admin | List or create database users | Query parameters → requested resource |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/users/{username}/connection` | GET | Organization member; writes require organization admin | Read a masked database connection descriptor | Empty body → masked descriptor |
+| `/api/{api_version}/users/agents` | GET | Authenticated tenant | Read scoped agents | Filters → agent list or details |
+| `/api/{api_version}/users/agents/{name}` | GET | Authenticated tenant | Read scoped agents | Filters → agent list or details |
+| `/api/{api_version}/users/agents/{name}/metrics` | GET | Authenticated tenant | Read agent metrics | Period and limit → metric history |
+| `/api/{api_version}/users/database-engines` | GET | Authenticated tenant | List managed database engines or versions | Engine → supported versions and capabilities |
+| `/api/{api_version}/users/database-engines/{engine}/versions` | GET | Authenticated tenant | List managed database engines or versions | Engine → supported versions and capabilities |
+| `/api/{api_version}/users/database-instances` | GET | Authenticated tenant | List or create managed database instances | Filters → instance list |
+| `/api/{api_version}/users/database-instances/{id}` | GET | Authenticated tenant | List, create, or delete database users | Query parameters → requested resource |
+| `/api/{api_version}/users/database-instances/{id}/backups` | GET | Authenticated tenant | List, create, restore, or delete database backups | Query parameters → requested resource |
+| `/api/{api_version}/users/database-instances/{id}/databases` | GET | Authenticated tenant | List, create, or drop databases | Query parameters → requested resource |
+| `/api/{api_version}/users/database-instances/{id}/health` | GET | Authenticated tenant | Probe database instance health | Empty body → health result |
+| `/api/{api_version}/users/database-instances/{id}/replicas` | GET | Authenticated tenant | List, create, or remove database replicas | Query parameters → requested resource |
+| `/api/{api_version}/users/database-instances/{id}/upgrade-path` | GET | Authenticated tenant | List available database upgrades | Empty body → compatible versions |
+| `/api/{api_version}/users/database-instances/{id}/usage` | GET | Authenticated tenant | Read database instance usage | Empty body → usage and limits |
+| `/api/{api_version}/users/database-instances/{id}/users` | GET | Authenticated tenant | List, create, or delete database users | Query parameters → requested resource |
+| `/api/{api_version}/users/database-instances/{id}/users/{username}/connection` | GET | Authenticated tenant | Read a masked database connection descriptor | Empty body → masked descriptor |
+| `/api/{api_version}/orgs/{slug}/agents/{name}` | PATCH | Organization member; writes require organization admin | Update a scoped agent | Changed name or tags → updated agent |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/limits` | PATCH | Organization member; writes require organization admin | Update database instance resource limits | Limits → updated instance |
+| `/api/{api_version}/users/agents/{name}` | PATCH | Authenticated tenant | Update a scoped agent | Changed name or tags → updated agent |
+| `/api/{api_version}/users/database-instances/{id}/limits` | PATCH | Authenticated tenant | Update database instance resource limits | Limits → updated instance |
+| `/api/{api_version}/orgs/{slug}/agents` | POST | Organization member; writes require organization admin | Create a scoped agent | Agent name, tags, and expiry → agent and one-time token |
+| `/api/{api_version}/orgs/{slug}/agents/heartbeat` | POST | Owner-scoped agent token | Report agent liveness | Heartbeat → updated status |
+| `/api/{api_version}/orgs/{slug}/agents/register` | POST | Owner-scoped agent token | Register an agent | Agent identity → registered agent |
+| `/api/{api_version}/orgs/{slug}/agents/report` | POST | Owner-scoped agent token | Report agent metrics | Metrics → stored report |
+| `/api/{api_version}/orgs/{slug}/agents/{name}/token` | POST | Organization member; writes require organization admin | Rotate agent credential | Expiry → one-time token |
+| `/api/{api_version}/orgs/{slug}/database-instances` | POST | Organization member; writes require organization admin | List or create managed database instances | Engine, name, version, and limits → created instance |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/backups` | POST | Organization member; writes require organization admin | List, create, restore, or delete database backups | Database or confirmation → backup metadata or operation result |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/backups/{backup}/restore` | POST | Organization member; writes require organization admin | List, create, restore, or delete database backups | Database or confirmation → backup metadata or operation result |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/databases` | POST | Organization member; writes require organization admin | List, create, or drop databases | Database name → database or operation result |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/replicas` | POST | Organization member; writes require organization admin | List, create, or remove database replicas | Replica name → replica or operation result |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/restart` | POST | Organization member; writes require organization admin | Start, stop, or restart a database instance | Action parameters → updated instance |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/start` | POST | Organization member; writes require organization admin | Start, stop, or restart a database instance | Action parameters → updated instance |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/stop` | POST | Organization member; writes require organization admin | Start, stop, or restart a database instance | Action parameters → updated instance |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/upgrade` | POST | Organization member; writes require organization admin | Upgrade a database instance | Target version → updated instance |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/users` | POST | Organization member; writes require organization admin | List or create database users | User fields → user or user list |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/users/{username}/reveal` | POST | Organization member; writes require organization admin | Reveal a database credential once | Empty body → one-time credential |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/users/{username}/rotate` | POST | Organization member; writes require organization admin | Rotate a database user password | Empty body → one-time credential |
+| `/api/{api_version}/users/agents` | POST | Authenticated tenant | Create a scoped agent | Agent name, tags, and expiry → agent and one-time token |
+| `/api/{api_version}/users/agents/heartbeat` | POST | Owner-scoped agent token | Report agent liveness | Heartbeat → updated status |
+| `/api/{api_version}/users/agents/register` | POST | Owner-scoped agent token | Register an agent | Agent identity → registered agent |
+| `/api/{api_version}/users/agents/report` | POST | Owner-scoped agent token | Report agent metrics | Metrics → stored report |
+| `/api/{api_version}/users/agents/{name}/token` | POST | Authenticated tenant | Rotate agent credential | Expiry → one-time token |
+| `/api/{api_version}/users/database-instances` | POST | Authenticated tenant | List or create managed database instances | Engine, name, version, and limits → created instance |
+| `/api/{api_version}/users/database-instances/{id}/backups` | POST | Authenticated tenant | List, create, restore, or delete database backups | Database or confirmation → backup metadata or operation result |
+| `/api/{api_version}/users/database-instances/{id}/backups/{backup}/restore` | POST | Authenticated tenant | List, create, restore, or delete database backups | Database or confirmation → backup metadata or operation result |
+| `/api/{api_version}/users/database-instances/{id}/databases` | POST | Authenticated tenant | List, create, or drop databases | Database name → database or operation result |
+| `/api/{api_version}/users/database-instances/{id}/replicas` | POST | Authenticated tenant | List, create, or remove database replicas | Replica name → replica or operation result |
+| `/api/{api_version}/users/database-instances/{id}/restart` | POST | Authenticated tenant | List, create, or delete database users | User fields → user or operation result |
+| `/api/{api_version}/users/database-instances/{id}/start` | POST | Authenticated tenant | List, create, or delete database users | User fields → user or operation result |
+| `/api/{api_version}/users/database-instances/{id}/stop` | POST | Authenticated tenant | List, create, or delete database users | User fields → user or operation result |
+| `/api/{api_version}/users/database-instances/{id}/upgrade` | POST | Authenticated tenant | Upgrade a database instance | Target version → updated instance |
+| `/api/{api_version}/users/database-instances/{id}/users` | POST | Authenticated tenant | List, create, or delete database users | User fields → user or operation result |
+| `/api/{api_version}/users/database-instances/{id}/users/{username}/reveal` | POST | Authenticated tenant | Reveal a database credential once | Empty body → one-time credential |
+| `/api/{api_version}/users/database-instances/{id}/users/{username}/rotate` | POST | Authenticated tenant | Rotate a database user password | Empty body → one-time credential |
+| `/api/{api_version}/orgs/{slug}/database-instances/{id}/users/{username}/grants` | PUT | Organization member; writes require organization admin | Grant or revoke database access | Database and grant → updated grants |
+| `/api/{api_version}/users/database-instances/{id}/users/{username}/grants` | PUT | Authenticated tenant | Grant or revoke database access | Database and grant → updated grants |
