@@ -112,6 +112,18 @@ and support mode; plus administration of settings, service levels, departments,
 categories, agents, canned responses, and reports. The complete live method and
 path inventory is available from the generated OpenAPI document.
 
+## Managed database routes
+
+Managed database API routes are available to signed-in users and organization
+members at `/api/{api_version}/users/database-instances` and
+`/api/{api_version}/orgs/{slug}/database-instances`. The route families cover
+instance lifecycle, limits, health and usage, databases, users and grants,
+backups, replicas, and upgrades. Engine catalogues and offered versions are
+listed under the corresponding `database-engines` paths. The server resolves
+the tenant from the authenticated account and organization membership; callers
+cannot select a tenant in the request body. The generated OpenAPI document
+provides exact methods and schemas.
+
 ## Agent routes
 
 When the agent component is enabled, agents are managed under the owner scope:
