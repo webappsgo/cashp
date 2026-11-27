@@ -17208,12 +17208,12 @@ Redirect to         │                    │
 
 **The defaults above (anonymous `GET`/`HEAD`, no credentials) hold for every entry unless the entry has a row in this table.** A row is the only way a standard that needs another method or a credential enters the namespace, and it widens exactly what the row says and nothing else: the namespace is still not a general static-file bucket, still has no directory index, still serves no user-controlled file, and every other path, method or credential still gets `404`, `405` or `401` as before.
 
-| Standard | Method and path | Auth | Request | Response | Enabled by |
+| Standard | Method and path | Auth | Request | Response | Present when |
 |----------|-----------------|------|---------|----------|------------|
-| RFC 7030 EST | `GET /.well-known/est/cacerts` and `GET /.well-known/est/{label}/cacerts` | None (public CA certificates) | None | `200` `application/pkcs7-mime; smime-type=certs-only`, base64 body | `web.well_known.est.enabled` |
-| RFC 7030 EST | `POST /.well-known/est/simpleenroll` and `POST /.well-known/est/{label}/simpleenroll`; the same for `simplereenroll` | The EST client credential only: a TLS client certificate or HTTP Basic (`401` with `WWW-Authenticate` otherwise); never a session cookie | `application/pkcs10`, base64 body, at most 64 KiB | `200` `application/pkcs7-mime; smime-type=certs-only`, base64 body; `4xx` plain text reason | `web.well_known.est.enabled` |
-| RFC 7030 EST | `GET /.well-known/est/csrattrs` and `GET /.well-known/est/{label}/csrattrs` | The EST client credential | None | `200` `application/csrattrs`, or `204` | `web.well_known.est.enabled` |
-| Mozilla mail autoconfig | `GET /.well-known/autoconfig/mail/config-v1.1.xml` (query `emailaddress`) | None | None | `200` `application/xml` (the `clientConfig` document of the project's mail settings) | `web.well_known.autoconfig.enabled` |
+| RFC 7030 EST | `GET /.well-known/est/cacerts` and `GET /.well-known/est/{label}/cacerts` | None (public CA certificates) | None | `200` `application/pkcs7-mime; smime-type=certs-only`, base64 body | the project runs an EST service (`IDEA.md`) |
+| RFC 7030 EST | `POST /.well-known/est/simpleenroll` and `POST /.well-known/est/{label}/simpleenroll`; the same for `simplereenroll` | The EST client credential only: a TLS client certificate or HTTP Basic (`401` with `WWW-Authenticate` otherwise); never a session cookie | `application/pkcs10`, base64 body, at most 64 KiB | `200` `application/pkcs7-mime; smime-type=certs-only`, base64 body; `4xx` plain text reason | the project runs an EST service (`IDEA.md`) |
+| RFC 7030 EST | `GET /.well-known/est/csrattrs` and `GET /.well-known/est/{label}/csrattrs` | The EST client credential | None | `200` `application/csrattrs`, or `204` | the project runs an EST service (`IDEA.md`) |
+| Mozilla mail autoconfig | `GET /.well-known/autoconfig/mail/config-v1.1.xml` (query `emailaddress`) | None | None | `200` `application/xml` (the `clientConfig` document of the project's mail settings) | the project serves mail autoconfiguration (`IDEA.md`) |
 
 **Rules for every row:**
 - The row names the exact methods; any other method on that path is `405` with an `Allow` header listing the row's methods, and `OPTIONS` answers only that `Allow`.
@@ -17221,7 +17221,7 @@ Redirect to         │                    │
 - The request body size and content type are fixed by the row; a larger body is `413`, another content type `415`.
 - Every call is audited (`wellknown.{standard}.{action}`, with the outcome, never the credential or the request body).
 - `{label}` is lowercase `[a-z0-9-]`, at most 32 characters; an unknown label is `404`.
-- The row exists only after it is documented in `IDEA.md` with the enabling feature (a project that runs an EST or mail-autoconfig service), and its switch defaults to `false`; while off, every path of the row answers `404`.
+- The row exists only after it is documented in `IDEA.md` with the feature that needs it (a project that runs an EST or mail-autoconfig service); a project without that feature has no such route and every path of the row answers `404`. There is no enable or disable setting: a present row is always served.
 - A project adds a row only for a standard that requires that exact path; it follows "Adding New Well-Known Entries" and enters the route tables, the reserved-route checks and the checklist.
 
 ### Well-Known Tiers
@@ -17232,54 +17232,54 @@ Redirect to         │                    │
 |------|---------|------|
 | **Required** (every project, no toggle) | `security.txt`, `llms.txt` | Always served; never disabled by config; an operator file in `{data_dir}/web/.well-known/` may replace the generated body of the SAME entry, but the entry itself cannot be turned off |
 | **Feature-gated** (exists automatically with its feature) | `pgp-key.asc`, `acme-challenge/{token}`, and where password accounts exist `change-password` | Present exactly while the feature exists and `404` otherwise; there is no separate toggle, because the feature IS the toggle |
-| **Optional** (disabled until defined) | `webfinger`, `nodeinfo`, `openid-configuration`, `oauth-protected-resource`, `oauth-authorization-server`, `assetlinks.json`, `apple-app-site-association`, `mta-sts.txt`, `gpc.json`, `openpgpkey/`, `est/`, `autoconfig/mail/config-v1.1.xml` | Off by default; enabled only when the matching feature is defined in `IDEA.md` or project config (Optional-entry rule); each has a `web.well_known.{name}.enabled` switch (hyphens become underscores) and answers `404` while disabled |
+| **Optional** (present when defined) | `webfinger`, `nodeinfo`, `openid-configuration`, `oauth-protected-resource`, `oauth-authorization-server`, `assetlinks.json`, `apple-app-site-association`, `mta-sts.txt`, `gpc.json`, `openpgpkey/`, `est/`, `autoconfig/mail/config-v1.1.xml` | Present only when the matching feature is defined in `IDEA.md` or project config (Optional-entry rule); there is no runtime switch: once present it is always served, and a project that does not define the feature has no such route (it answers `404` like any unknown entry) |
 
 ### Well-Known Support Matrix
 
-| Path | Default | Required When | Source | Content-Type | Behavior |
+| Path | Present | Required When | Source | Content-Type | Behavior |
 |------|---------|---------------|--------|--------------|----------|
-| `/.well-known/security.txt` | Enabled | All projects | Generated from config (or operator override for the same path) | `text/plain; charset=utf-8` | RFC 9116 security contact file |
-| `/.well-known/llms.txt` | Enabled | All projects | Generated from config + routes | `text/plain; charset=utf-8` | AI agent discovery file (also served at `/llms.txt`) |
-| `/.well-known/pgp-key.asc` | Feature-gated | Project security-report PGP keypair exists | Generated from stored public key | `application/pgp-keys` or `text/plain; charset=utf-8` | Public key download for secure report submission |
-| `/.well-known/acme-challenge/{token}` | Feature-gated | Let's Encrypt `http-01` is active | Dynamic handler only | `text/plain; charset=utf-8` | ACME challenge response; no auth, no HTML |
-| `/.well-known/change-password` | Enabled | Auth routes exist | Dynamic handler | Redirect response with no-store headers | If logged in, send user to `/users/security/password`; otherwise send to `/server/auth/password/forgot` |
-| `/.well-known/webfinger` | Disabled | Project publishes `acct:`-style identities or federation in `IDEA.md` | Dynamic handler | `application/jrd+json` | Resolve account/resource discovery; otherwise 404 |
-| `/.well-known/nodeinfo` | Disabled | Project federates (enabled together with `webfinger`) | Dynamic handler | `application/json` | NodeInfo discovery: a `links` array pointing at the project's NodeInfo document route, which the project defines in `IDEA.md` |
-| `/.well-known/oauth-protected-resource` | Disabled | Project enables OAuth for MCP or its API (PART 11 → "MCP Endpoint") | Dynamic handler, built per request | `application/json` | RFC 9728 resource metadata: `resource` (the canonical MCP URL), `authorization_servers` (the project's configured issuer URLs) and `bearer_methods_supported: ["header"]`; the `401` challenge's `resource_metadata` parameter points here |
-| `/.well-known/oauth-authorization-server` | Disabled | Project is itself an OAuth authorization server (and not an OIDC provider) | Dynamic handler, built per request | `application/json` | RFC 8414 issuer metadata; MUST stay disabled for projects that only use static tokens or are OAuth clients |
-| `/.well-known/gpc.json` | Disabled | Project honors the Global Privacy Control signal (PART 11 → privacy and consent) | Generated | `application/json` | `{"gpc": true, "lastUpdate": "{build date}"}`; the date is the ISO 8601 date of the running build; served only while the signal is actually honored |
-| `/.well-known/openpgpkey/hu/{hash}` and `/.well-known/openpgpkey/policy` | Disabled | The security PGP key exists and the security contact address is at the served host | Generated from the stored public key | `application/octet-stream` (key), empty body (policy) | Web Key Directory, direct method: `{hash}` is the z-base-32 SHA-1 of the lowercased local part of that address; no other address is ever answered |
-| `/.well-known/openid-configuration` | Disabled | Project itself is an OIDC provider in `IDEA.md` | Dynamic handler | `application/json` | Provider metadata; MUST stay disabled for OIDC client-only apps |
-| `/.well-known/assetlinks.json` | Disabled | Android App Links / native credential association is enabled | Config or file-backed | `application/json` | Android digital asset links |
-| `/.well-known/apple-app-site-association` | Disabled | Apple Universal Links / WebCredentials / App Clips are enabled | Config or file-backed | `application/json` | Apple app/site association file; no `.json` suffix |
-| `/.well-known/mta-sts.txt` | Disabled | Deployment explicitly owns inbound mail policy for the served host | Config or file-backed | `text/plain; charset=utf-8` | MTA-STS policy; otherwise 404 |
-| `/.well-known/est/**` | Disabled | Project runs an RFC 7030 EST service in `IDEA.md` | Dynamic handler | per method, see "Well-Known Protocol Exceptions" | Certificate enrollment; the only entry family with `POST` and a credential |
-| `/.well-known/autoconfig/mail/config-v1.1.xml` | Disabled | Project serves mail client autoconfiguration in `IDEA.md` | Dynamic handler | `application/xml` | Mozilla autoconfig document; otherwise 404 |
+| `/.well-known/security.txt` | Always | All projects | Generated from config (or operator override for the same path) | `text/plain; charset=utf-8` | RFC 9116 security contact file |
+| `/.well-known/llms.txt` | Always | All projects | Generated from config + routes | `text/plain; charset=utf-8` | AI agent discovery file (also served at `/llms.txt`) |
+| `/.well-known/pgp-key.asc` | With its feature | Project security-report PGP keypair exists | Generated from stored public key | `application/pgp-keys` or `text/plain; charset=utf-8` | Public key download for secure report submission |
+| `/.well-known/acme-challenge/{token}` | With its feature | Let's Encrypt `http-01` is active | Dynamic handler only | `text/plain; charset=utf-8` | ACME challenge response; no auth, no HTML |
+| `/.well-known/change-password` | Always | Auth routes exist | Dynamic handler | Redirect response with no-store headers | If logged in, send user to `/users/security/password`; otherwise send to `/server/auth/password/forgot` |
+| `/.well-known/webfinger` | When defined | Project publishes `acct:`-style identities or federation in `IDEA.md` | Dynamic handler | `application/jrd+json` | Resolve account/resource discovery; otherwise 404 |
+| `/.well-known/nodeinfo` | When defined | Project federates (present together with `webfinger`) | Dynamic handler | `application/json` | NodeInfo discovery: a `links` array pointing at the project's NodeInfo document route, which the project defines in `IDEA.md` |
+| `/.well-known/oauth-protected-resource` | When defined | Project enables OAuth for MCP or its API (PART 11 → "MCP Endpoint") | Dynamic handler, built per request | `application/json` | RFC 9728 resource metadata: `resource` (the canonical MCP URL), `authorization_servers` (the project's configured issuer URLs) and `bearer_methods_supported: ["header"]`; the `401` challenge's `resource_metadata` parameter points here |
+| `/.well-known/oauth-authorization-server` | When defined | Project is itself an OAuth authorization server (and not an OIDC provider) | Dynamic handler, built per request | `application/json` | RFC 8414 issuer metadata; MUST stay disabled for projects that only use static tokens or are OAuth clients |
+| `/.well-known/gpc.json` | When defined | Project honors the Global Privacy Control signal (PART 11 → privacy and consent) | Generated | `application/json` | `{"gpc": true, "lastUpdate": "{build date}"}`; the date is the ISO 8601 date of the running build; served only while the signal is actually honored |
+| `/.well-known/openpgpkey/hu/{hash}` and `/.well-known/openpgpkey/policy` | When defined | The security PGP key exists and the security contact address is at the served host | Generated from the stored public key | `application/octet-stream` (key), empty body (policy) | Web Key Directory, direct method: `{hash}` is the z-base-32 SHA-1 of the lowercased local part of that address; no other address is ever answered |
+| `/.well-known/openid-configuration` | When defined | Project itself is an OIDC provider in `IDEA.md` | Dynamic handler | `application/json` | Provider metadata; MUST NOT exist for OIDC client-only apps |
+| `/.well-known/assetlinks.json` | When defined | Android App Links / native credential association is enabled | Config or file-backed | `application/json` | Android digital asset links |
+| `/.well-known/apple-app-site-association` | When defined | Apple Universal Links / WebCredentials / App Clips are enabled | Config or file-backed | `application/json` | Apple app/site association file; no `.json` suffix |
+| `/.well-known/mta-sts.txt` | When defined | Deployment explicitly owns inbound mail policy for the served host | Config or file-backed | `text/plain; charset=utf-8` | MTA-STS policy; otherwise 404 |
+| `/.well-known/est/**` | When defined | Project runs an RFC 7030 EST service in `IDEA.md` | Dynamic handler | per method, see "Well-Known Protocol Exceptions" | Certificate enrollment; the only entry family with `POST` and a credential |
+| `/.well-known/autoconfig/mail/config-v1.1.xml` | When defined | Project serves mail client autoconfiguration in `IDEA.md` | Dynamic handler | `application/xml` | Mozilla autoconfig document; otherwise 404 |
 
 **Required entry details.** `security.txt` is the RFC 9116 file described in "security.txt (RFC 9116)" (`Contact`, `Expires` and `Policy` are mandatory fields); `llms.txt` is the generated AI-discovery file described in "llms.txt (AI Discovery)". Both are served with `GET` and `HEAD`, carry no authentication, resolve every URL per request with `BuildURL`, and over Tor use the onion host. A path in the matrix that is not enabled for the project, and any path not in the matrix, answers `404`.
 
 **Drift-test reading of this matrix.** The matrix has no method column, so the drift test reads it with its own fixed rule instead of the generic inventory parser: every row is a `GET` route (`HEAD` follows), and the rows of "Well-Known Protocol Exceptions" are read with the methods that table declares, the path cell lists one path or two joined by `and`, `{token}` and `{hash}` are path parameters, and the `x-mounted-when` value of each row is this exact mapping:
 
-| Path | `x-mounted-when` |
+| Path | `x-mounted-when` (the feature that makes the route exist) |
 |------|------------------|
 | `security.txt`, `llms.txt` | always mounted (no condition) |
-| `pgp-key.asc` | `web.security.publish_pgp_key` is true AND the security keypair exists |
-| `acme-challenge/{token}` | `server.ssl.letsencrypt.enabled` with `challenge: http-01` |
+| `pgp-key.asc` | the security keypair exists |
+| `acme-challenge/{token}` | Let's Encrypt `http-01` is active |
 | `change-password` | the auth routes are mounted (the project has accounts) |
-| `webfinger` | `web.well_known.webfinger.enabled` |
-| `nodeinfo` | `web.well_known.nodeinfo.enabled` |
-| `oauth-protected-resource` | `web.well_known.oauth_protected_resource.enabled` |
-| `oauth-authorization-server` | `web.well_known.oauth_authorization_server.enabled` |
-| `gpc.json` | `web.well_known.gpc.enabled` |
-| `openpgpkey/hu/{hash}`, `openpgpkey/policy` | `web.well_known.openpgpkey.enabled` |
-| `openid-configuration` | `web.well_known.openid_configuration.enabled` |
-| `assetlinks.json` | `web.well_known.assetlinks.enabled` |
-| `apple-app-site-association` | `web.well_known.apple_app_site_association.enabled` |
-| `mta-sts.txt` | `web.well_known.mta_sts.enabled` |
-| `est/**` (every EST path) | `web.well_known.est.enabled` |
-| `autoconfig/mail/config-v1.1.xml` | `web.well_known.autoconfig.enabled` |
+| `webfinger` | the project publishes `acct:` identities (`IDEA.md`) |
+| `nodeinfo` | the project federates (`IDEA.md`) |
+| `oauth-protected-resource` | the project enables OAuth for MCP or its API |
+| `oauth-authorization-server` | the project is an OAuth authorization server |
+| `gpc.json` | the project honors Global Privacy Control |
+| `openpgpkey/hu/{hash}`, `openpgpkey/policy` | the security key exists and the contact address is at the served host |
+| `openid-configuration` | the project is an OIDC provider |
+| `assetlinks.json` | Android App Links are used |
+| `apple-app-site-association` | Apple Universal Links, WebCredentials or App Clips are used |
+| `mta-sts.txt` | the host owns inbound mail policy |
+| `est/**` (every EST path) | the project runs an EST service (`IDEA.md`) |
+| `autoconfig/mail/config-v1.1.xml` | the project serves mail autoconfiguration (`IDEA.md`) |
 
-**Optional-entry rule:** optional well-known endpoints MUST be enabled only when the matching product feature, platform integration, or mail/domain ownership is explicitly defined in `IDEA.md` or project config. Do NOT invent or auto-enable them.
+**Optional-entry rule:** optional well-known endpoints MUST exist only when the matching product feature, platform integration, or mail/domain ownership is explicitly defined in `IDEA.md` or project config. Do NOT invent or auto-add them. There is no enable or disable setting for any well-known route.
 
 ### Well-Known Directory Support
 
@@ -17350,54 +17350,13 @@ web:
     # Primary contact — GitHub private vulnerability reporting
     report_url: "https://github.com/{project_org}/{project_name}/security/advisories/new"
     # The secondary/CC contact email is `server.contact.security.email` (PART 12, Contact Configuration); there is no key for it here
-    # Publish the security PGP public key at /.well-known/pgp-key.asc and as the Encryption: line of security.txt.
-    # Boolean, default true: the key is published while a keypair exists. false: pgp-key.asc answers 404 and security.txt has no Encryption: line,
-    # even when a keypair exists (--maintenance pgp delete sets it to false)
-    publish_pgp_key: true
+    # The security PGP public key is served at /.well-known/pgp-key.asc and as the Encryption: line of security.txt for as long as a keypair exists; there is no switch
     # Keyservers the public key is published to: a list of bare host names (no scheme or path), validated at load; [] publishes nowhere. Stored in the config files only
     keyservers:
       - keys.openpgp.org
     # Auto-calculated 1 year from generation
     expires: "{1year}"
-  well_known:
-    # Unknown entries never redirect
-    unsupported_behavior: 404
-    webfinger:
-      # Enable only if project publishes acct: identities/federation
-      enabled: false
-    openid_configuration:
-      # Enable only if project is an OIDC provider
-      enabled: false
-    assetlinks:
-      # Enable only for Android App Links/native association
-      enabled: false
-    apple_app_site_association:
-      # Enable only for Apple Universal Links/WebCredentials
-      enabled: false
-    mta_sts:
-      # Enable only if this host owns inbound mail policy
-      enabled: false
-    est:
-      # Enable only if the project runs an RFC 7030 EST enrollment service ("Well-Known Protocol Exceptions")
-      enabled: false
-    autoconfig:
-      # Enable only if the project serves Mozilla mail autoconfiguration ("Well-Known Protocol Exceptions")
-      enabled: false
-    oauth_protected_resource:
-      # Enable only if the project enables OAuth for MCP or its API (PART 11 -> MCP Endpoint)
-      enabled: false
-    oauth_authorization_server:
-      # Enable only if the project is itself an OAuth authorization server (RFC 8414)
-      enabled: false
-    gpc:
-      # Enable only if the project honors the Global Privacy Control signal
-      enabled: false
-    nodeinfo:
-      # Enable only together with webfinger, for federation
-      enabled: false
-    openpgpkey:
-      # Enable only to publish the security PGP key by Web Key Directory (security contact at the served host)
-      enabled: false
+  # /.well-known has NO settings: every entry exists when its feature exists and is always served; any other path is 404 (fixed)
 ```
 
 **Fields:**
@@ -17478,10 +17437,10 @@ web:
 
 **Well-Known Support Matrix Update:**
 
-| Path | Default | Required When | Source | Content-Type |
+| Path | Present | Required When | Source | Content-Type |
 |------|---------|---------------|--------|--------------|
-| `/.well-known/llms.txt` | Enabled | All projects | Generated from config + routes | `text/plain; charset=utf-8` |
-| `/llms.txt` | Enabled | All projects | Alias to `/.well-known/llms.txt` | `text/plain; charset=utf-8` |
+| `/.well-known/llms.txt` | Always | All projects | Generated from config + routes | `text/plain; charset=utf-8` |
+| `/llms.txt` | Always | All projects | Alias to `/.well-known/llms.txt` | `text/plain; charset=utf-8` |
 
 ### MCP Endpoint (Model Context Protocol)
 
@@ -17561,8 +17520,7 @@ web:
 
 | Element | Type | Description |
 |---------|------|-------------|
-| Supported entries | Read-only table | Shows each allowlisted `/.well-known/...` entry and whether it is required, enabled, or disabled |
-| Optional entry toggles | Toggle list | Enable/disable optional well-known entries such as `webfinger`, `nodeinfo`, `assetlinks.json`, Apple association, `mta-sts.txt`, `oauth-protected-resource`, `oauth-authorization-server`, `gpc.json` or `openpgpkey/` when the project actually uses them |
+| Supported entries | Read-only table | Shows each allowlisted `/.well-known/...` entry and whether it is required, feature-gated or optional (there are no switches: every present entry is always served) |
 | Entry source | Read-only / selector | Shows whether an entry is dynamic, config-backed, data-dir override, or embedded default |
 | Preview | Read-only viewer | Preview the exact rendered body/JSON for the selected entry |
 | Unsupported behavior note | Read-only help text | Unknown `/.well-known/*` entries return `404`; no directory listing |
@@ -17699,7 +17657,7 @@ CREATE TABLE IF NOT EXISTS security_thanks (
 | Endpoint | Method | Auth | Purpose |
 |----------|--------|------|---------|
 | `/.well-known/security.txt` | GET | None | RFC 9116 file — see above |
-| `/.well-known/pgp-key.asc` | GET | None | Project's PGP public key (ASCII-armored). 404 if no keypair exists or `web.security.publish_pgp_key` is `false`. |
+| `/.well-known/pgp-key.asc` | GET | None | Project's PGP public key (ASCII-armored). 404 if no keypair exists. |
 | `/server/security` | GET | None | Security overview page (HTML). Human-readable rendering of everything in `/.well-known/security.txt` — contact channels in RFC 9116 preference order (GitHub private vulnerability reporting, `/server/contact?security_id={id}`, `mailto:` CC address), `Expires`, and the `Encryption` key when a keypair exists — plus plain-language instructions for reporting a vulnerability and a short section for other reports (terms violations, DMCA notices, privacy requests) linking to `/server/contact`. This is the only public page that links to the form. Links to `/server/security/policy`, `/server/security/thanks`, `/.well-known/pgp-key.asc`, and the machine-readable `/.well-known/security.txt`. Rendered from live config — nothing to edit. |
 | `/server/security/policy` | GET | None | Disclosure policy page (HTML). Default content provided; editable from admin panel. Lists the coordinated-disclosure window, in-scope domains, out-of-scope behaviors, safe-harbor language. |
 | `/server/security/thanks` | GET | None | Acknowledgments page. Lists researchers who opted in (real name, handle, or anonymized "Anonymous Researcher #n") with the year and severity: the `security_thanks` entries, newest first (the same entries as the API mirror). |
@@ -17747,7 +17705,7 @@ All three coexist under the admin tree. The admin-panel UI groups them under a s
 | **Export public key** | Download `pgp.pub.asc` directly from the admin panel. Or use the public URL `/.well-known/pgp-key.asc`. |
 | **Export private key** | **Full export, ASCII-armored, decrypted with the operator's confirmation password.** Triggers a sensitive-operation flow (PART 5 → "Sensitive Operations"): re-prompt admin password, log to `audit.log` as `security.private_key_exported`, return the file as a single download. **The download is rate-limited to 1 per hour per admin and the audit entry includes admin username, IP, and reason text the admin must type.** |
 | **Import private key** | Upload an existing `pgp.priv.asc` (e.g., restoring from backup, migrating from another instance). Same sensitive-operation gate. Validates the key's identity matches the project's expected identity (warns on mismatch — admin can override). |
-| **Delete** | Sensitive-operation flow. Deletes both keys, sets `web.security.publish_pgp_key: false`, removes `Encryption:` line from security.txt. Stored and in-flight PGP-encrypted report bodies become un-decryptable (retention still purges them on schedule) — admin warned and must type confirmation. |
+| **Delete** | Sensitive-operation flow. Deletes both keys, removes `Encryption:` line from security.txt. Stored and in-flight PGP-encrypted report bodies become un-decryptable (retention still purges them on schedule) — admin warned and must type confirmation. |
 
 **Keypair properties stored in DB (NOT the keys themselves — those are on disk):**
 
@@ -52259,7 +52217,7 @@ All settings are configurable via the WebUI at `/server/{admin_path}`.
 
 Document:
 - external auth provider settings (OIDC/LDAP/SAML) if enabled
-- well-known namespace settings and optional entries if enabled
+- the well-known entries the project defines (there are no well-known settings)
 - health/public endpoint toggles that operators can change
 ````
 
@@ -52346,7 +52304,7 @@ Programmatic access via `/api/{api_version}/server/{admin_path}` with bearer tok
 ## Public Security Endpoints
 
 - `/.well-known/security.txt`
-- `/.well-known/pgp-key.asc` (when enabled)
+- `/.well-known/pgp-key.asc` (while a security keypair exists)
 - `/.well-known/change-password`
 - `/server/security`
 - `/server/healthz`
@@ -52361,7 +52319,7 @@ Programmatic access via `/api/{api_version}/server/{admin_path}` with bearer tok
 
 ## Well-Known Namespace
 
-- Document which `/.well-known/*` entries are enabled for this project
+- Document which `/.well-known/*` entries this project defines
 - State that unknown entries return `404`
 - Document feature-gated entries such as WebFinger, OpenID Provider Metadata, App Links, Apple association, and MTA-STS only when they are actually enabled
 ```
@@ -52382,12 +52340,12 @@ Programmatic access via `/api/{api_version}/server/{admin_path}` with bearer tok
 
 - Public docs endpoints (`/server/docs/swagger`, `/server/docs/graphql`)
 - API aliases (`/api/swagger`, `/api/graphql`, `/api/healthz`)
-- Any enabled `/.well-known/*` discovery/integration endpoints
+- Any `/.well-known/*` discovery/integration endpoints the project defines
 
 ## Platform Integrations
 
-- Android App Links (`/.well-known/assetlinks.json`) if enabled
-- Apple Universal Links / WebCredentials (`/.well-known/apple-app-site-association`) if enabled
+- Android App Links (`/.well-known/assetlinks.json`) if used
+- Apple Universal Links / WebCredentials (`/.well-known/apple-app-site-association`) if used
 - Autodiscovery, federation, webhooks, or client/agent bootstrap endpoints if the project supports them
 
 ## Operator Notes
@@ -64958,7 +64916,7 @@ Organizations - only for projects with multi-user collaboration.
 | `/server/{admin_path}/web` | Web settings overview |
 | `/server/{admin_path}/web/robots` | robots.txt settings |
 | `/server/{admin_path}/web/security` | security.txt settings |
-| `/server/{admin_path}/web/well-known` | Well-known namespace settings, optional entry toggles, and previews |
+| `/server/{admin_path}/web/well-known` | Well-known entries (read-only) and previews |
 
 ### Admin - Server Admins (`/server/{admin_path}/admins/`)
 
@@ -69505,7 +69463,7 @@ make docker
 - [ ] `/.well-known/security.txt` served (RFC 9116)
 - [ ] `/.well-known/change-password` behaves correctly for authenticated vs unauthenticated users
 - [ ] `/.well-known/pgp-key.asc` is served only when a security-report keypair exists; otherwise 404
-- [ ] Optional `/.well-known/*` entries only exist when their matching feature/integration is explicitly enabled
+- [ ] Optional `/.well-known/*` entries only exist when their matching feature/integration is explicitly defined, and are always served when present
 - [ ] Unknown `/.well-known/*` entries return `404` and never expose a directory listing
 - [ ] Security.txt has valid Contact and Expires fields
 
