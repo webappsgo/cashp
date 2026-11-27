@@ -1206,7 +1206,7 @@ Quick reference: Accept `yes/no`, `true/false`, `1/0`, `on/off`, `enable/disable
 | Store tokens/passwords in plaintext | Passwords: Argon2id; Tokens: SHA-256 hash |
 | Implement usage limits/quotas | Rate limits protect servers; usage limits extract money |
 | Create enterprise/premium tiers | All features free for all users, always |
-| Use plural directory names | Use singular: `handler/`, `model/`, not `handlers/` (the one fixed exception is `src/paths/`: its singular `path` would collide with the standard library `path` package) |
+| Use plural directory names | Use singular: `handler/`, `model/`, not `handlers/` (the fixed exceptions are `src/paths/`, because its singular `path` would collide with the standard library `path` package, and `src/server/metrics/`, the established name of the Prometheus subject) |
 | Run Go locally | Use `make dev` / `make local` (containers only) |
 
 ## Files & Directories Master Rules
@@ -1217,7 +1217,7 @@ Quick reference: Accept `yes/no`, `true/false`, `1/0`, `on/off`, `enable/disable
 
 | Type | Pattern | Example | Avoid |
 |------|---------|---------|-------|
-| **Directories** | lowercase, singular (one fixed exception: `src/paths/`, because `path` collides with the standard library `path` package) | `handler/`, `model/` | `Handlers/`, `Models/` |
+| **Directories** | lowercase, singular (fixed exceptions: `src/paths/`, because `path` collides with the standard library `path` package, and `src/server/metrics/`, the established name of the Prometheus subject) | `handler/`, `model/` | `Handlers/`, `Models/` |
 | **Go files** | lowercase, snake_case | `user_service.go` | `UserService.go` |
 | **Config files** | lowercase, dot-extension | `server.yml`, `mkdocs.yml` | `SERVER.yml` |
 | **Documentation** | UPPERCASE.md | `README.md`, `LICENSE.md` | `readme.md` |
@@ -2769,7 +2769,7 @@ Before I proceed, can you confirm [specific question]?
 8. If a Claude loader file exists but is not in the standard loader format: migrate project-specific content to IDEA.md, then merge remaining valid loader guidance into the efficient loader structure - NEVER overwrite blindly
 9. If TODO.AI.md or TODO.md exists: read both and check for needed updates (treat both files the same; never delete or empty the human-owned TODO.md)
 10. Read `.claude/memory/MEMORY.md` (if non-empty) and load referenced files as needed
-11. Commit all COMMIT, NEVER, and MUST rules to memory
+11. Commit all COMMIT, NEVER, and MUST rules to the assistant's own session memory (never into `.claude/memory/`, which holds project history and never duplicates `AI.md` or `.claude/rules/`)
 ```
 
 **Rule Files to Create/Update:**
@@ -7677,7 +7677,7 @@ func SafeResourcePath(input string) (string, error) {
 }
 ```
 
-**Two validation contracts, never one.** `SafePath` is for configured identifiers and URL prefixes (`admin_path`, base paths): lowercase `[a-z0-9_-]` segments only, so it correctly rejects a dot. `SafeResourcePath` is for file and resource names that legitimately carry dots and case (`/static/css/main.css`, `/robots.txt`, an API `file` parameter). The HTTP path middleware below checks only traversal and encoding of the request path and applies neither contract. Every use of user input as a file name goes through `SafeResourcePath`, then `SafeFilePath`'s base-directory check.
+**Two validation contracts, never one.** `SafePath` is for configured identifiers and URL prefixes (base paths and other configured identifiers): lowercase `[a-z0-9_-]` segments only, so it correctly rejects a dot. `admin_path` additionally applies the stricter `[a-z0-9-]` rule of its own validation table, so an underscore is rejected there. `SafeResourcePath` is for file and resource names that legitimately carry dots and case (`/static/css/main.css`, `/robots.txt`, an API `file` parameter). The HTTP path middleware below checks only traversal and encoding of the request path and applies neither contract. Every use of user input as a file name goes through `SafeResourcePath`, then `SafeFilePath`'s base-directory check.
 
 ### Normalization Examples
 
@@ -11973,7 +11973,7 @@ PHASE 5: Server startup (actual server start)
     ├─ Load task state from database
     ├─ Register built-in tasks (key tasks):
     │   ├─ backup_daily (02:00 daily)
-    │   ├─ ssl_renewal (03:00 daily)
+    │   ├─ ssl_renewal (daily, default 03:00; `server.scheduler.tasks.ssl_renewal.schedule`)
     │   ├─ session_cleanup (every 15m)
     │   ├─ geoip_update (03:00 Sunday)
     │   ├─ public_ip_refresh (startup + every 12h, hardcoded)
@@ -25001,7 +25001,7 @@ at the appropriate level — a healthy server prints nothing.
 
 | Directory | Check Frequency | Renewal Trigger |
 |-----------|-----------------|-----------------|
-| `{config_dir}/ssl/letsencrypt/{fqdn}/` | Daily (03:00) | When 30 days or fewer remain (fixed) |
+| `{config_dir}/ssl/letsencrypt/{fqdn}/` | Daily (default 03:00; `server.scheduler.tasks.ssl_renewal.schedule`) | When 30 days or fewer remain (fixed) |
 | `{config_dir}/ssl/local/{fqdn}/` | Never | Manual only |
 | `/etc/letsencrypt/live/**` | Never | System (certbot) manages |
 
@@ -26645,7 +26645,7 @@ html.theme-light {
 |-------|-------|-------|
 | `reset` | Box sizing, margin and padding reset | Nothing visual |
 | `tokens` | The `:root` custom properties (colors, spacing, radius, type) | The only place a literal color or size is written |
-| `base` | Bare element selectors (`body`, `a`, `h1`..`h6`, `label`, `input`) | Typography, color and spacing of plain elements only; never the layout or internals of a component |
+| `base` | Bare element selectors (`body`, `a`, `h1`..`h6`, `label`, `input`) | Typography, color and spacing of plain elements, plus the one page-shell rule (`body` as a column flex container with `min-height: 100dvh`, `main { flex: 1 }`); never the layout or internals of a component |
 | `components` | Every shared component (`.btn`, `.section-card`, `.form-group`, `.toggle`, `.hub-list`, `.badge`, `.table-wrapper`) | Class selectors only, specificity at most `(0,4,1)` (a state selector such as `.toggle input:checked + .toggle-track` is allowed), self-contained: a component sets its own `display`, size and alignment and never relies on its parent for them. A descendant selector on a generic parent (`.form-group label`) is forbidden: write `.form-group-label` or `label:not(.toggle)` |
 | `pages` | Page-specific placement | Grid placement and spacing of shared components through their documented custom properties (`--toggle-size`); a page never restyles a component's internals and never invents a styled class (see "Classes" in the page shell rules) |
 | `utilities` | Single-purpose helpers (`.visually-hidden`, `.text-start`, `.stack-4`) | Win over every other layer; one declaration each |
@@ -38039,7 +38039,7 @@ it in a compliance-sensitive form.
 | Service | Content-Type | Body |
 |---------|--------------|------|
 | `prometheus` | `text/plain; version=0.0.4` | Full Prometheus text exposition — all required + project metrics |
-| `grafana` | `application/json` | A complete, importable Grafana dashboard definition (Classic dashboard-model JSON: every Grafana version imports it and upgrades it to its own schema) with panels covering every metric category this specification requires (HTTP, database, cache, scheduler, system, business); datasource left as a template variable so it imports against any Prometheus datasource |
+| `grafana` | `application/json` | A complete, importable Grafana dashboard definition (Classic dashboard-model JSON for Grafana 12.0 and newer: `schemaVersion` 42 and `timeseries` panels; older Grafana versions are not supported) with panels covering every metric category this specification requires (HTTP, database, cache, scheduler, system, business); datasource left as a template variable so it imports against any Prometheus datasource |
 | `loki` | `application/json` | Recent structured log entries in Loki push-API stream format: `{"streams":[{"stream":{labels},"values":[["<ns-timestamp>","<line>"],...]}]}` — bounded by `loki.max_entries`/`loki.max_age`, same sanitization as log files (credentials ALWAYS redacted) |
 
 ## Access Control
