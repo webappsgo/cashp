@@ -9,8 +9,9 @@ usable without JavaScript.
 
 On first start, the server bootstraps the primary administrator if none exists.
 The one-time setup token is shown in the startup output and can be redeemed at
-`/server/{admin_path}/setup`. After setup, sign in at
-`/server/{admin_path}/`. Setup tokens are single-use. Protected panel pages
+`/server/{admin_path}/setup`. After setup, sign in at the shared
+`/server/auth/login` page. Unauthenticated requests to the panel redirect to
+that form. Setup tokens are single-use. Protected panel pages
 require an administrator session, and state-changing forms require CSRF
 validation. Debug mode does not bypass authentication.
 

@@ -1336,7 +1336,7 @@ Claude Code creates `.claude/rules/` on first session (see PART 0: Session Initi
 | `testing-rules.md` | 29, 30, 31 | Testing & Development, ReadTheDocs Documentation, I18N & A11Y |
 | `optional-rules.md` | 34-36 | Multi-User, Organizations, Custom Domains (all OPTIONAL) |
 
-**Note:** PART 37 (IDEA.md Reference) and FINAL (Compliance Checklist) are reference-only, not rule files. Only PARTs 34-36 are truly optional (marked "OPTIONAL - NON-NEGOTIABLE WHEN IMPLEMENTED" in spec, and activated only by a declaration in SPEC.md). PART 32.1 (Tor Hidden Service) is REQUIRED - auto-enabled when Tor binary is found. PART 32.2 (I2P Eepsite) is REQUIRED in every server project's code, image and test matrix, and only its RUNTIME activation is opt-in - off by default on bare metal and in a VM, ON by default in a container (computed from container detection); set explicitly with `--i2p`, `I2P_ENABLED` or `server.i2p.enabled`.
+**Note:** PART 37 (IDEA.md Reference) and FINAL (Compliance Checklist) are reference-only, not rule files. Only PARTs 34-36 are truly optional (marked "OPTIONAL - NON-NEGOTIABLE WHEN IMPLEMENTED" in spec, and activated only by a declaration in SPEC.md). PART 32.1 (Tor Hidden Service) is REQUIRED - auto-enabled when Tor binary is found. PART 32.2 (I2P Eepsite) is REQUIRED in every server project's code, image and test matrix, and only its RUNTIME activation is opt-in - off by default on bare metal and in a VM, ON by default in an application container (computed from container detection); set explicitly with `--i2p`, `I2P_ENABLED` or `server.i2p.enabled`.
 
 **Rules File Features:**
 - All `.md` files in `rules/` are automatically discovered recursively
@@ -2466,7 +2466,7 @@ server:
 | 29 | Testing & Development | Testing/dev workflow, **Host Safety in tests**, **AI Docker Compose Rules**, **Content Negotiation Testing** |
 | 30 | ReadTheDocs Documentation | Documentation |
 | 31 | I18N & A11Y | Internationalization, **Translation parity (all binaries)**, **--lang flag** |
-| 32 | Overlay Networks (Tor & I2P) | 32.1 Tor (binary auto-enables), 32.2 I2P eepsite (always built in; only runtime activation is opt-in outside containers) |
+| 32 | Overlay Networks (Tor & I2P) | 32.1 Tor (binary auto-enables), 32.2 I2P eepsite (always built in; only runtime activation is opt-in outside application containers) |
 | 33 | Client & Agent | Client **REQUIRED**, Agent optional - CLI/TUI/GUI, **Scoped Agent Tokens**, **Smart Context**, **First-Run Wizard** |
 | 34 | Multi-User | **OPTIONAL** - Regular User accounts/registration, vanity URLs |
 | 35 | Organizations | **OPTIONAL** - multi-user orgs, vanity URLs |
@@ -4276,7 +4276,7 @@ ls -la docker/
 | 29 | Testing & Development | ✅ Implement fully |
 | 30 | ReadTheDocs Documentation | ✅ Implement fully |
 | 31 | I18N & A11Y | ✅ Implement fully |
-| 32 | Overlay Networks (Tor & I2P) | ✅ Implement fully (32.1 Tor auto; 32.2 I2P always built in, runtime activation opt-in outside containers) |
+| 32 | Overlay Networks (Tor & I2P) | ✅ Implement fully (32.1 Tor auto; 32.2 I2P always built in, runtime activation opt-in outside application containers) |
 | 37 | Project-Specific Sections | ✅ Customize for project |
 | FINAL | Compliance Checklist | ✅ Verify all items |
 
@@ -8600,7 +8600,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | `MODE` | `production` (default; shortcut `prod`) · `development` (shortcuts `dev`, `devel`) · `debug` (explicit opt-in only) |
 | `DEBUG` | Truthy value turns the debug flag on (`--debug` wins; precedence and the `/debug/*` endpoints are defined in PART 6 → Debug Flag). Independent of `MODE`: `MODE=debug` only defaults the flag on |
 | `PID_FILE` | PID file path (`--pid`; precedence: the flag, then `PID_FILE`, then the platform default; PART 8) |
-| `I2P_ENABLED` | Enable the I2P eepsite (`--i2p`; config key `server.i2p.enabled`; the default is on in a container and off elsewhere, PART 31.2) |
+| `I2P_ENABLED` | Enable the I2P eepsite (`--i2p`; config key `server.i2p.enabled`; the default is on in an application container and off elsewhere, PART 31.2) |
 | `SMTP_HOST` | SMTP server hostname (if set, skips autodetect) |
 | `SMTP_PORT` | SMTP server port (default: 587) |
 | `SMTP_USERNAME` | SMTP authentication username |
@@ -9599,7 +9599,7 @@ server:
   fqdn: {hostname}
   # [::] = all interfaces IPv4/IPv6 (dual-stack). Always quote it: a bare [::] is a YAML flow sequence
   address: "[::]"
-  # production or development
+  # production, development or debug (debug is explicit opt-in)
   mode: production
   # Admin panel path (default: administration) - see PART 17
   admin_path: administration
@@ -11274,7 +11274,7 @@ The client binary applies the same pre-scan to its own command flags (PART 32). 
 | **Clean machine output** | With `--output json` (or any non-text format) stdout holds ONLY the document; errors stay on stderr, so `command \| jq` never reads a diagnostic |
 | **A non-zero exit has a reason** | Every non-zero exit is preceded by one line on stderr saying what failed (`Error: {what failed}` for the CLI, `{program}: {what failed}` for the server binary, `ERROR: {what failed}` for a script). User-facing binaries localize it (i18n); a script prints English |
 | **Help and usage** | `--help` and `--version` asked for explicitly: stdout, exit `0`. A usage error (bad flag, missing argument, unknown subcommand) prints the one-line problem and a usage hint to stderr and exits `2` |
-| **Color only on a terminal** | ANSI color and emoji are written to a stream only when that stream is a terminal and `NO_COLOR` is unset (see "NO_COLOR Support"); a pipe or a file always receives plain text |
+| **Color only on a terminal** | ANSI color and emoji are written to a stream only when that stream is a terminal and `NO_COLOR` is unset (see "NO_COLOR Support"); an explicit `output.emoji` governs emojis here too (`true` writes them even with `NO_COLOR`, `false` never) and `TERM=dumb` always wins; a pipe or a file always receives plain text |
 | **Logging is separate** | Log files, console log lines and their levels follow the logging PART; this section governs what a command prints as its own output. A fatal startup failure is printed to stderr before the process exits AND logged |
 | **`--status`** | Healthy: the result on stdout, exit `0`. Unhealthy: the reason on stderr, exit `1` |
 
@@ -11309,7 +11309,7 @@ One table for every binary and script of every project. Codes `65`-`78` are the 
 
 **All binaries (server, client, agent) MUST respect the [NO_COLOR](https://no-color.org/) standard.**
 
-When the `NO_COLOR` environment variable is set and not empty (value doesn't matter), disable ANSI color codes and emojis in terminal output.
+When the `NO_COLOR` environment variable is set and not empty (value doesn't matter), disable ANSI color codes and emojis in terminal output (an explicit `output.emoji` setting wins for emojis).
 
 | Condition | Colors | Emojis |
 |-----------|--------|--------|
@@ -11460,7 +11460,7 @@ NO_COLOR=1 {project_name} --status | grep -E '✅|❌|⚠️|🚀'
 --daemon
 # Enable debug mode (verbose logging, debug endpoints)
 --debug
-# Enable the I2P eepsite (opt-in outside containers, on by default in a container, PART 32.2)
+# Enable the I2P eepsite (opt-in outside application containers, on by default in an application container, PART 32.2)
 --i2p
 # Color output (default: auto, respects NO_COLOR)
 --color {auto|yes|no}
@@ -11505,7 +11505,7 @@ Server Configuration:
 --baseurl PATH                         - URL path prefix (default: /)
 --daemon                               - Run as daemon (detach from terminal)
 --debug                                - Enable debug mode
---i2p                                  - Enable the I2P eepsite (default on in a container, opt-in elsewhere)
+--i2p                                  - Enable the I2P eepsite (default on in an application container, opt-in elsewhere)
 --color {auto|yes|no}                  - Color output (default: auto)
 --lang CODE                            - Language for output (default: auto)
 
@@ -11976,7 +11976,7 @@ PHASE 5: Server startup (actual server start)
     │   │   from the HiddenServiceDir hostname file as soon as tor writes it, and logged once
     │   └─ Error → log WARN, continue without Tor (non-fatal)
 
-    17b. Start I2P (default ON in a container, opt-in elsewhere; only if the resolved server.i2p.enabled is true) - see PART 32.2:
+    17b. Start I2P (default ON in an application container, opt-in elsewhere; only if the resolved server.i2p.enabled is true) - see PART 32.2:
     ├─ resolved enabled false (explicit, or the default outside a container) → skip entirely (no port, no config)
     ├─ enabled, resolve provider:
     │   ├─ i2pd binary found → Model A: create {config_dir}/i2p/, {data_dir}/i2p/site/;
@@ -14101,7 +14101,7 @@ $ kill -TERM $(cat /var/run/myorg/myapp/myapp.pid)
 | `--port` | `PORT` | Listen port |
 | `--address` | `LISTEN` | Listen address |
 | `--mode` | `MODE` | Application mode (production/development/debug) |
-| `--i2p` | `I2P_ENABLED` | Enable the I2P eepsite (config key: `server.i2p.enabled`); built-in default `true` in a container and `false` elsewhere (no image variable sets it) |
+| `--i2p` | `I2P_ENABLED` | Enable the I2P eepsite (config key: `server.i2p.enabled`); built-in default `true` in an application container and `false` elsewhere (no image variable sets it) |
 | (none) | `DATABASE_DIR` | SQLite database directory (Docker: `/data/db/sqlite`, Native: `{data_dir}/db/`) |
 | (none) | `BACKUP_DIR` | Backup directory (defaults to `/mnt/Backups/{internal_org}/{internal_name}` when writable, else `{data_dir}/backup/`; changeable) |
 
@@ -14751,7 +14751,7 @@ func IsValidHost(host string, devMode bool, projectName string) bool {
 | `192.168.1.1` | ✗ | ✗ | IP address |
 | `myhost` | ✗ | ✗ | No dot (single-label) |
 
-**Note:** DOMAIN and HOSTNAME environment variables MUST pass host validation for the current mode. Invalid values are skipped with ONE warning at startup (`DOMAIN` entries and `HOSTNAME` alike) and detection continues to the next source.
+**Note:** DOMAIN and HOSTNAME environment variables MUST pass host validation for the current mode, and an environment value never carries an overlay TLD (`.onion`, `.i2p`, `.exit`): `IsValidHost` accepts those for internal validation only, so the environment loader rejects them before calling it. Invalid values are skipped with ONE warning at startup (`DOMAIN` entries and `HOSTNAME` alike) and detection continues to the next source.
 
 ### SSL/Let's Encrypt FQDN Requirements
 
@@ -17921,13 +17921,13 @@ server:
 - Machine-parseable format
 
 **Console output (stdout/stderr) CAN be pretty:**
-- Emojis allowed (e.g., `✅ Server started`, `❌ Error`, `⚠️ Warning`) - respects `NO_COLOR`
+- Emojis allowed (e.g., `✅ Server started`, `❌ Error`, `⚠️ Warning`) - respect `NO_COLOR` and an explicit `output.emoji`
 - ANSI colors allowed - respects `NO_COLOR` env var (see PART 8)
 - Pretty formatting allowed
 - Used for start/stop/restart/status messages
 - User-facing CLI output can be visually appealing
 
-**Emoji fallbacks (when `NO_COLOR` set or `TERM=dumb`):**
+**Emoji fallbacks (when emojis are off: `NO_COLOR` set without an explicit `output.emoji: true`, `output.emoji: false`, or `TERM=dumb`):**
 
 | With Emojis | Plain Text Fallback |
 |-------------|---------------------|
@@ -18660,7 +18660,9 @@ When GDPR/CCPA (right to erasure) conflicts with HIPAA/SOC2 (retention requireme
 | `/users/data/export/{id}` | GET | Download data export |
 | `/users/data/delete` | POST | Request account deletion (GDPR/CCPA) |
 | `/users/consents` | GET | View consent history |
-| `/users/consents` | PATCH | Update consent preferences |
+| `/users/consents` | POST | Update consent preferences (CSRF-protected form action; the API mirror uses `PATCH`) |
+| `/users/settings` | GET | User settings page |
+| `/users/settings` | POST | Save user settings (CSRF-protected form action; the API mirror uses `PATCH`) |
 | `/server/privacy` | GET | Privacy policy |
 | `/server/dpo` | GET | Data Protection Officer contact (GDPR) |
 
@@ -21173,7 +21175,7 @@ type FeaturesInfo struct {
     // PART 32.1: Tor Hidden Service
     Tor TorInfo `json:"tor"`
 
-    // PART 32.2: I2P Eepsite (built in; opt-in at runtime outside containers)
+    // PART 32.2: I2P Eepsite (built in; opt-in at runtime outside application containers)
     I2P I2PInfo `json:"i2p"`
 
     // PART 20: GeoIP
@@ -21206,7 +21208,7 @@ type TorInfo struct {
 
 // I2PInfo - from I2P manager (PART 32.2). Every field is always present, `state` (the lifecycle, for operators) and `status` (the four-word contract, for clients, mapped from `state`) alike; clients branch on `status`, never on `state`; disabled means enabled false, running false, status "disabled", empty hostname and provider "none".
 type I2PInfo struct {
-    // features.i2p.enabled (true by default in a container, false elsewhere unless opted in)
+    // features.i2p.enabled (true by default in an application container, false elsewhere unless opted in)
     Enabled  bool   `json:"enabled"`
     // Eepsite active
     Running  bool   `json:"running"`
@@ -21933,7 +21935,7 @@ When not in cluster mode:
 | `features.tor.running` | The hidden service is serving |
 | `features.tor.status` | `disabled`, `starting`, `healthy` or `unavailable`; never free text (see "Overlay Network Health") |
 | `features.tor.hostname` | Onion address (if running) |
-| `features.i2p.enabled` | The resolved `server.i2p.enabled` is true (on by default in a container, opt-in elsewhere) AND a provider was found |
+| `features.i2p.enabled` | The resolved `server.i2p.enabled` is true (on by default in an application container, opt-in elsewhere) AND a provider was found |
 | `features.i2p.running` | The eepsite is serving |
 | `features.i2p.status` | `disabled`, `starting`, `healthy` or `unavailable`; never free text (mapped from `features.i2p.state`, see "Overlay Network Health") |
 | `features.i2p.state` | Full lifecycle: `disabled`, `no_provider`, `starting`, `building`, `running`, `error` (the same values as CLI `--status`, PART 32.2) |
@@ -23211,7 +23213,7 @@ func renderNoJSHTML(w http.ResponseWriter, data interface{}) {
 | **Optional routes** | The embedded build-time spec is the full SUPERSET of routes, and every route that depends on a flag or a setting (the root aliases, optional well-known files, optional features) carries `x-mounted-when` naming its condition (for example the setting that enables the feature); INTERNAL routes (metrics, `/debug/*`, Tor control) are never in the OpenAPI document, embedded or served. At startup the server derives the SERVED spec from the embedded one by removing every operation whose condition is false for this run, so the spec a client reads always matches the routes that are actually mounted. The drift test compares the superset with the route table |
 | **JSON only** | OpenAPI spec uses JSON format only (NO YAML) |
 | **Source of truth** | AI.md defines the TEMPLATE routes and the `### API routes` inventory in IDEA.md defines EVERY project-defined route, including any native or compatibility API of the project; together they are the API CONTRACT: routes, methods, auth and shapes. AI.md never enumerates project routes. The code and its annotations implement that contract, and the specs are GENERATED from the code, so they are artifacts, never edited by hand. Drift is detected by a test with three legs: the generated OpenAPI route and method list, the router's registered routes, and the union of the AI.md template routes and the IDEA.md `### API routes` inventory. A route present in one leg and missing from another fails the build, naming the route and the missing place; a project whose IDEA.md has no `### API routes` subsection fails with that message instead of passing vacuously. A deliberate change is made in AI.md or IDEA.md first, then the code, then the specs are regenerated |
-| **Template route inventory** | The template leg of the drift test is read from the project's own `AI.md` at test time, deterministically: a template route is a row of a Markdown table whose header row has a path column (`Endpoint`, `Path` or `Route`) and a method column (`Method` or `Methods`), in any order and with any other columns (rows are read by those headers, never by column position): the path cell is exactly one backticked path starting with `/` and the method cell lists one or more HTTP methods (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`) separated by `/` or `,` (each method of the path is its own route), and the method is always explicit (a row without one is not a route). A row whose method cell is `ALL` and whose path ends in `/*` declares a PREFIX, not routes (the admin panel and admin API rows): the drift test does not expand it, the concrete routes under the prefix are the rows of the tables that define them (each with explicit methods), and the test requires at least one registered route under the prefix and every registered route under it to be such a row; `ALL` is valid only on a prefix row. Route classes: a row whose path starts with `/api/`, or is a root alias of an API route (`/healthz`, `/mcp`), is an API route and is compared with all three legs (an INTERNAL path, below, is compared with the router and the inventory only, never with the OpenAPI leg); every other row (`/`, `/server/healthz`, the Swagger and GraphiQL pages, the admin pages, the preferences forms) is a PAGE-class route, compared with the router's registered routes and, when it renders a page, with the page registry (an action route that only changes state, such as `GET /server/preferences/sync/import`, is a route but not a page and is never in the page registry), and expected in NONE of the OpenAPI document. INTERNAL is a class of path, not a marker on each row: every path of the INTERNAL services (metrics with its `/metrics`, `/api/metrics` and versioned aliases, the `/debug/*` routes, the Tor control routes; the INTERNAL rows of the PART 1 endpoint-pattern table) counts as a template route when it has a row, and the drift test expects it in the route table and in NONE of the OpenAPI document, llms.txt, GraphQL and MCP; a path cell with an alias lists each path as its own route; optional-segment brackets such as `/metrics[/{service}]` expand to two routes, the path without and the path with the bracketed segment. A row in a fenced code block or in a table introduced as an illustrative example (for example the generic REST row `/api/{api_version}/{resource}`) is not a template route. `{api_version}` is the API version in use, `{admin_path}` the configured admin path, a leading `{base}` (the Scoped Agents API table only) is replaced by the Base Route of each enabled scope (admin always, user with PART 34, org with PART 35), any other `{name}` segment matches a path parameter. A row under a section marked OPTIONAL counts only when the project enables that feature (its `x-mounted-when` condition); a row whose description names its own condition (an alias that exists `when server.healthz.root.enabled is true`) is optional in the same way and carries that condition as its `x-mounted-when`. A table without a method column (the frontend page lists, static files, the well-known support matrix) is not a route inventory either: those are `GET`/`HEAD` pages covered by the page registry and conformance tests, not by the drift parser, and any route that accepts a `POST` form is listed in an inventory table with an explicit `POST` row. A table that writes the method inside the route cell (`GET /path`) instead of a method column illustrates the page/API pairing and is not an inventory: its routes are inventoried by the section tables that define them. A route table in any other form is not a route inventory: a new template route is added to AI.md in this form, and nothing is copied into a project |
+| **Template route inventory** | The template leg of the drift test is read from the project's own `AI.md` at test time, deterministically: a template route is a row of a Markdown table whose header row has a path column (`Endpoint`, `Path` or `Route`) and a method column (`Method` or `Methods`), in any order and with any other columns (rows are read by those headers, never by column position): the path cell is exactly one backticked path starting with `/` and the method cell lists one or more HTTP methods (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`) separated by `/` or `,` (each method of the path is its own route), and the method is always explicit (a row without one is not a route). A row whose method cell is `ALL` and whose path ends in `/*` declares a PREFIX, not routes (the admin panel and admin API rows): the drift test does not expand it, the concrete routes under the prefix are the rows of the tables that define them (each with explicit methods), and the test requires at least one registered route under the prefix and every registered route under it to be such a row; `ALL` is valid only on a prefix row. Route classes: a row whose path starts with `/api/`, or is a root alias of an API route (`/mcp`), is an API route and is compared with all three legs (an INTERNAL path, below, is compared with the router and the inventory only, never with the OpenAPI leg); every other row (`/`, `/server/healthz` and its root alias `/healthz` (the alias of the frontend handler, never of the API one), the Swagger and GraphiQL pages, the admin pages, the preferences forms) is a PAGE-class route, compared with the router's registered routes and, when it renders a page, with the page registry (an action route that only changes state, such as `GET /server/preferences/sync/import`, is a route but not a page and is never in the page registry), and expected in NONE of the OpenAPI document. INTERNAL is a class of path, not a marker on each row: every path of the INTERNAL services (metrics with its `/metrics`, `/api/metrics` and versioned aliases, the `/debug/*` routes, the Tor control routes; the INTERNAL rows of the PART 1 endpoint-pattern table) counts as a template route when it has a row, and the drift test expects it in the route table and in NONE of the OpenAPI document, llms.txt, GraphQL and MCP; an alias is its own row (a path cell never holds two paths); optional-segment brackets such as `/metrics[/{service}]` expand to two routes, the path without and the path with the bracketed segment. A row in a fenced code block or in a table introduced as an illustrative example (for example the generic REST row `/api/{api_version}/{resource}`) is not a template route. `{api_version}` is the API version in use, `{admin_path}` the configured admin path, a representation suffix (`.txt`) of an inventoried route is not a separate route (`/api/{api_version}/server/healthz.txt` is the `.txt` form of the inventoried `GET /api/{api_version}/server/healthz`), a leading `{base}` (the Scoped Agents API table only) is replaced by the Base Route of each enabled scope (admin always, user with PART 34, org with PART 35), any other `{name}` segment matches a path parameter. A row under a section marked OPTIONAL counts only when the project enables that feature (its `x-mounted-when` condition); a row whose description names its own condition (an alias that exists `when server.healthz.root.enabled is true`) is optional in the same way and carries that condition as its `x-mounted-when`. A table without a method column (the frontend page lists, static files, the well-known support matrix) is not a route inventory either: those are `GET`/`HEAD` pages covered by the page registry and conformance tests, not by the drift parser, and any route that accepts a `POST` form is listed in an inventory table with an explicit `POST` row. A table that writes the method inside the route cell (`GET /path`) instead of a method column illustrates the page/API pairing and is not an inventory: its routes are inventoried by the section tables that define them. A route table in any other form is not a route inventory: a new template route is added to AI.md in this form, and nothing is copied into a project |
 | **Match site theme** | Both UIs styled to match site theme (light/dark/auto) |
 | **Standardized locations** | ALWAYS `src/swagger/` and `src/graphql/` (NEVER in root `.`) |
 
@@ -23747,6 +23749,7 @@ Need additional compatible endpoints?"
 | `/metrics[/{service}]` | GET | Bearer token (per-service) | Root alias when `server.metrics.root.enabled: true` (default true); same handler, never a redirect |
 | `/server/{admin_path}` | GET | Session | Admin dashboard; an unauthenticated request redirects to `/server/auth/login` |
 | `/server/{admin_path}/*` | ALL | Session | Admin panel pages |
+| `/api/{api_version}` | GET | None | API root (no trailing slash; `/api/{api_version}/` redirects `301` to it): returns the same envelope document as `/api/autodiscover` |
 | `/api/autodiscover` | GET | None | Discovery document: name, version, public origins, hidden-service addresses and the CLI/agent update versions. It publishes no settings, config schema or option list (non-versioned; "Autodiscover response"); on a Tor request `urls` is empty and only `onion` is set |
 | `/api/swagger` | GET | None | OpenAPI JSON spec — direct alias for current `{api_version}` |
 | `/api/graphql` | POST, GET | None | GraphQL queries — direct alias for current `{api_version}` (POST, and GET with `query` for queries only, exactly like the versioned route) |
@@ -25030,6 +25033,7 @@ Startup (for configured FQDN)
 | `PATCH /api/{api_version}/users` | `POST /users` | Profile update form |
 | `GET /api/{api_version}/users/tokens` | `GET /users/tokens` | Token list page |
 | `GET /api/{api_version}/users/settings` | `GET /users/settings` | User settings page |
+| `PATCH /api/{api_version}/users/settings` | `POST /users/settings` | Settings form (CSRF-protected, works without JavaScript) |
 | `GET /api/{api_version}/users/security` | `GET /users/security` | Security settings page |
 | `GET /api/{api_version}/orgs` | `GET /orgs` | User's org list |
 | `GET /api/{api_version}/orgs/{slug}` | `GET /orgs/{slug}` | Org detail page |
@@ -29801,15 +29805,15 @@ src/server/template/partial/
 **Usage in page templates:**
 ```go
 {{ define "content" }}
-<div class="search-section">
+<section class="section-card">
   {{ template "search-box" . }}
-</div>
+</section>
 
-<div class="results">
+<section class="section-card">
   {{ range .Results }}
     {{ template "result-card" . }}
   {{ end }}
-</div>
+</section>
 
 {{ template "pagination" .Pagination }}
 {{ end }}
@@ -34244,7 +34248,7 @@ Admin Panel Header:
 | `restore.max_file_size` | Text | `"512M"` | No | Max size of any single extracted file |
 | `restore.max_ratio` | Number | `100` | No | Max expanded-to-compressed ratio (`100` = `100:1`); extraction aborts above it |
 
-#### Update Section (`/server/{admin_path}/update`)
+#### Update Section (`/server/{admin_path}/updates`)
 
 | Setting | Control | Default | Restart | Description |
 |---------|---------|---------|---------|-------------|
@@ -43071,7 +43075,7 @@ RUN chmod 755 /usr/local/bin/*
 # Note: Tor available (binary installed) but server binary controls Tor startup (see PART 32)
 # DATABASE_DIR: SQLite location (binary auto-detects container, but explicit is clearer)
 # MODE is never baked into the production image — binary defaults to production; the production compose sets neither MODE nor DEBUG, the dev and test compose files set MODE: development (only Dockerfile.dev bakes MODE=development)
-# I2P_ENABLED is never baked either: the binary's own default is on in a container, so an operator's explicit flag, variable or config value always overrides it (PART 31.2)
+# I2P_ENABLED is never baked either: the binary's own default is on in an application container, so an operator's explicit flag, variable or config value always overrides it (PART 31.2)
 ENV TZ=America/New_York \
     DATABASE_DIR=/data/db/sqlite
 
@@ -43628,7 +43632,7 @@ RUN chmod +x /usr/local/bin/{project_name} /usr/local/bin/entrypoint.sh
 # Default environment
 # DATABASE_DIR: SQLite location (binary auto-detects container, but explicit is clearer)
 # MODE is never baked into the production image — binary defaults to production; the production compose sets neither MODE nor DEBUG, the dev and test compose files set MODE: development (only Dockerfile.dev bakes MODE=development)
-# I2P_ENABLED is never baked either: the binary's own default is on in a container, so an operator's explicit flag, variable or config value always overrides it (PART 31.2)
+# I2P_ENABLED is never baked either: the binary's own default is on in an application container, so an operator's explicit flag, variable or config value always overrides it (PART 31.2)
 ENV PORT=80 \
     DEBUG=false \
     TZ=America/New_York \
@@ -43808,7 +43812,7 @@ fi
 # Tor is NOT a supervisor program: the app owns the Tor process (PART 32) and starts its own dedicated, isolated instance as the
 # service user when the tor binary installed in the image is found, with its torrc and data under the app's own directories
 
-# I2P_ENABLED is not exported here: the binary's own default is ON in a container. Set I2P_ENABLED=false
+# I2P_ENABLED is not exported here: the binary's own default is ON in an application container. Set I2P_ENABLED=false
 # (or server.i2p.enabled: false) to turn it off. The app prefers the i2pd binary and falls back to SAM.
 
 # Start supervisor (manages postgresql + valkey + app; the app manages Tor itself)
@@ -43833,7 +43837,7 @@ exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
 | `DB_NAME` | `{project_name}` | PostgreSQL database name |
 | `DB_USER` | `{project_name}` | PostgreSQL username |
 | `DB_PASSWORD` | random, generated at first init | PostgreSQL password; never a project-name default. The app connects over the unix socket, so set it only when something connects over TCP |
-| `I2P_ENABLED` | (unset) | I2P eepsite (default ON in a container, set `false` to turn it off; prefers i2pd binary, falls back to SAM) |
+| `I2P_ENABLED` | (unset) | I2P eepsite (default ON in an application container, set `false` to turn it off; prefers i2pd binary, falls back to SAM) |
 
 **App Connection Strings (internal):**
 
@@ -49389,7 +49393,7 @@ rm -rf "$TEST_DIR"
 
 | Rule | Description |
 |------|-------------|
-| **A VM is required for** | Behavior that depends on its own kernel or a real boot: kernel parameters, modules and non-namespaced sysctls, mounts, filesystems, LVM or LUKS, firewall behavior against a real kernel, bootloader and initramfs, a power-cycle reboot, and the "running in a VM" detection branch (for example, I2P is off by default in a VM and on in a container) |
+| **A VM is required for** | Behavior that depends on its own kernel or a real boot: kernel parameters, modules and non-namespaced sysctls, mounts, filesystems, LVM or LUKS, firewall behavior against a real kernel, bootloader and initramfs, a power-cycle reboot, and the "running in a VM" detection branch (for example, I2P is off by default in a VM and on in an application container) |
 | **A container is enough for** | Service install, the init-system lifecycle, an ordinary reboot (`incus restart`) and networking inside the instance: all of `tests/incus.sh systemd` and `openrc` stay in containers |
 | **Same tool, same rules** | A VM is launched with `incus launch ... --vm` under the same naming (`{project_name}-XXXXXXXX`), `trap cleanup EXIT INT TERM`, resource caps and end-of-task check as an Incus container. Other hypervisors (libvirt, VirtualBox) follow the same rules through the backends of "VM Hypervisors" |
 | **Caps** | `-c limits.cpu=`, `-c limits.memory=` and an explicit root disk `-d root,size=` (no larger than the test needs, for example `10GiB`) |
@@ -50967,7 +50971,7 @@ echo "VM tests completed successfully ($MODES on $BACKEND)"
 | Check | Expected |
 |-------|----------|
 | Own kernel, not a container | `/proc/cpuinfo` has the `hypervisor` flag and `/proc/1/cgroup` names neither `lxc` nor `docker` |
-| I2P default in a VM | with no explicit setting: `enabled: false`, `status: disabled`, no `checks.i2p` key (opt-in outside containers) |
+| I2P default in a VM | with no explicit setting: `enabled: false`, `status: disabled`, no `checks.i2p` key (opt-in outside application containers) |
 | Cold power cycle | after the power off and power on the service comes back by itself with a new PID and answers its health route (a power loss, stronger than the `incus restart` reboot of `tests/incus.sh`) |
 | Clean install | `--service --install` on the pristine image, with nothing installed beyond the test tools, `tor`, `i2pd` and the binary |
 | Project kernel-level checks | whatever IDEA.md declares as kernel-dependent (firewall rules, mounts, filesystems) runs here and nowhere else |
@@ -54537,7 +54541,7 @@ func TestAccessibility(t *testing.T) {
 
 # PART 32: OVERLAY NETWORKS (TOR & I2P)
 
-> **This PART covers two overlay-network integrations:** **PART 32.1 (Tor Hidden Service)** — REQUIRED, auto-enabled when the `tor` binary is found, no toggle — and **PART 32.2 (I2P Eepsite)** — OPTIONAL: off by default on bare metal and in a VM, on by default in a container. Both serve the app over an anonymity network at an `http://` address that is itself the cryptographic identity; neither ever uses HTTPS, HSTS, or an upgrade redirect (see PART 12 → overlay HTTP semantics). The dedicated backend port for each is allocated smartly — only after a provider is confirmed available, so "no provider → no port, no generated config."
+> **This PART covers two overlay-network integrations:** **PART 32.1 (Tor Hidden Service)** — REQUIRED, auto-enabled when the `tor` binary is found, no toggle — and **PART 32.2 (I2P Eepsite)** — OPTIONAL: off by default on bare metal and in a VM, on by default in an application container. Both serve the app over an anonymity network at an `http://` address that is itself the cryptographic identity; neither ever uses HTTPS, HSTS, or an upgrade redirect (see PART 12 → overlay HTTP semantics). The dedicated backend port for each is allocated smartly — only after a provider is confirmed available, so "no provider → no port, no generated config."
 
 ## PART 32.1: Tor Hidden Service
 
@@ -56569,13 +56573,13 @@ Tor Hidden Service: Connected
 
 ---
 
-## PART 32.2: I2P Eepsite (REQUIRED in the build — opt-in at runtime outside containers)
+## PART 32.2: I2P Eepsite (REQUIRED in the build — opt-in at runtime outside application containers)
 
 > **Trust chain integration:** an `.b32.i2p` request is trusted for FQDN resolution exactly like a `.onion` request — the eepsite host is served by the app's own I2P provider, so no reverse-proxy header or IP check applies. See **PART 12 → overlay HTTP semantics** for request detection, `BuildURL` / `GetURLVars` behavior, and the privacy rules (no HTTPS upgrade, no HSTS, no cert).
 
 ### Overview
 
-**I2P support is always built in (code, image and tests); it is its ACTIVATION that is opt-in. On bare metal and in a VM it is off by default; in a container it is ON by default.** A container image is isolated and always ships `i2pd` (the image contract), so there is nothing to protect by asking; a host may already run its own router or SAM bridge, so the operator opts in there. This is the difference from Tor (PART 32.1), which is auto-enabled whenever the `tor` binary is found. The eepsite is created **only** when I2P is enabled (`server.i2p.enabled: true` / `I2P_ENABLED=true` / `--i2p`, or the computed default of `true` inside a container) **and** a provider is available.
+**I2P support is always built in (code, image and tests); it is its ACTIVATION that is opt-in. On bare metal and in a VM it is off by default; in an application container it is ON by default.** A container image is isolated and always ships `i2pd` (the image contract), so there is nothing to protect by asking; a host may already run its own router or SAM bridge, so the operator opts in there. This is the difference from Tor (PART 32.1), which is auto-enabled whenever the `tor` binary is found. The eepsite is created **only** when I2P is enabled (`server.i2p.enabled: true` / `I2P_ENABLED=true` / `--i2p`, or the computed default of `true` inside a container) **and** a provider is available.
 
 **I2P provides one capability here:**
 1. **Eepsite** — server-side `.b32.i2p` hosting over the I2P network.
@@ -56591,7 +56595,7 @@ Tor Hidden Service: Connected
 3. **Neither available → log a warning and skip** (mirrors Tor's "binary not found → disabled, not an error").
 
 **Key Architecture Points:**
-- **Opt-in outside containers, on by default in a container** — when disabled there is no eepsite, no port, no `i2pd.conf` and no SAM session.
+- **Opt-in outside application containers, on by default in an application container** — when disabled there is no eepsite, no port, no `i2pd.conf` and no SAM session.
 - **Server binary owns the provider** — Model A: full i2pd process lifecycle; Model B: the SAM session lifecycle.
 - **Dedicated backend port** — the eepsite maps `.b32.i2p:{virtual_port}` → `127.0.0.1:{i2p_backend_port}`, a random-unused loopback port. SAM `STREAM FORWARD` takes only the backend `PORT`: the router forwards every incoming stream to it whatever destination port the client names, so `virtual_port` only fixes the port shown in the address and URL (default 80, the port a client uses by convention). **Unlike Tor, there is no PROXY-protocol header** (SAM/i2pd do not prepend one), so the backend is a **plain loopback listener**, separate from the clearnet port.
 - **Destination identity persists** — the key lives under `{data_dir}/i2p/site/` (one SAM `PRIV` line, written by the app for both models); the `.b32.i2p` address survives restarts. `i2pd.conf` is derived state, regenerated each run.
@@ -56599,7 +56603,7 @@ Tor Hidden Service: Connected
 
 ### Configuration
 
-**I2P is off by default outside a container, and on by default inside one** (the built-in default is computed from container detection, PART 8: `true` in a container, `false` elsewhere; the image sets no `I2P_ENABLED` variable, so an operator's explicit setting is never confused with the default). No provider is contacted and no port is allocated unless `enabled: true`. The canonical config path is `server.i2p.enabled` (env `I2P_ENABLED`, flag `--i2p`), grouped under `server` like `server.tor`; `features.i2p.*` names the same state only as response fields in health output and is never a config key. Precedence follows PART 8: `--i2p` / `--i2p=false`, then an `I2P_ENABLED` the operator set, then an explicit `server.i2p.enabled` in server.yml, then the computed default.
+**I2P is off by default outside an application container, and on by default inside an application container** A system container (Incus, LXC, LXD, systemd-nspawn: a full init) is not an application container and behaves like a VM here: I2P is off by default. (the built-in default is computed from container detection, PART 8: `true` in an application container, `false` elsewhere; the image sets no `I2P_ENABLED` variable, so an operator's explicit setting is never confused with the default). No provider is contacted and no port is allocated unless `enabled: true`. The canonical config path is `server.i2p.enabled` (env `I2P_ENABLED`, flag `--i2p`), grouped under `server` like `server.tor`; `features.i2p.*` names the same state only as response fields in health output and is never a config key. Precedence follows PART 8: `--i2p` / `--i2p=false`, then an `I2P_ENABLED` the operator set, then an explicit `server.i2p.enabled` in server.yml, then the computed default.
 
 ```yaml
 server:
@@ -57689,7 +57693,7 @@ func ValidateI2PConfig(config *I2PConfig) []ValidationError {
 
 | Scenario | Behavior |
 |----------|----------|
-| I2P disabled (the default outside a container; in a container the default is enabled) | No provider contacted, no port, no config — eepsite off |
+| I2P disabled (the default outside an application container; in an application container the default is enabled) | No provider contacted, no port, no config — eepsite off |
 | Enabled, i2pd found | Model A: i2pd spawned with its own `i2pd.conf`, SAM session + `STREAM FORWARD`, `.b32.i2p` derived from `site-keys.dat` |
 | Enabled, no i2pd, SAM reachable | Model B: SAM session + STREAM FORWARD to backend port |
 | Enabled, no provider | Log WARN, continue without I2P (not an error) |
@@ -61597,7 +61601,7 @@ Flags:
 
 --mode {production|development|debug}  - Application mode
 --debug                                - Enable debug mode
---i2p                                  - Enable the I2P eepsite (default on in a container, opt-in elsewhere)
+--i2p                                  - Enable the I2P eepsite (default on in an application container, opt-in elsewhere)
 --color {auto|yes|no}                  - Color output (default: auto)
 --lang CODE                            - Language for output (default: auto)
 --status                               - Show agent health
@@ -69146,7 +69150,7 @@ make docker
 
 ### Phase 11: Conditional & Project-Specific Features (PARTS 32-36)
 
-**Interpretation:** PART 32.1 (Tor) is conditional on Tor availability and auto-enabled, PART 32.2 (I2P) is always built in (code, image and tests) with only its runtime activation opt-in outside containers, PART 33 is required for all projects, and PARTS 34-36 are optional per project.
+**Interpretation:** PART 32.1 (Tor) is conditional on Tor availability and auto-enabled, PART 32.2 (I2P) is always built in (code, image and tests) with only its runtime activation opt-in outside application containers, PART 33 is required for all projects, and PARTS 34-36 are optional per project.
 
 **PART 32.1: Tor Hidden Service**
 - [ ] Auto-enabled when tor binary found
@@ -69162,8 +69166,8 @@ make docker
   - [ ] `features.tor.status` (disabled/starting/healthy/unavailable)
   - [ ] `features.tor.hostname` ({onion_address})
 
-**PART 32.2: I2P Eepsite (REQUIRED in the build — opt-in at runtime outside containers)**
-- [ ] Off by default on bare metal and in a VM (opt-in via `server.i2p.enabled` / `I2P_ENABLED=true` / `--i2p`); ON by default in a container (computed default; the image sets no `I2P_ENABLED`)
+**PART 32.2: I2P Eepsite (REQUIRED in the build — opt-in at runtime outside application containers)**
+- [ ] Off by default on bare metal and in a VM (opt-in via `server.i2p.enabled` / `I2P_ENABLED=true` / `--i2p`); ON by default in an application container (computed default; the image sets no `I2P_ENABLED`)
 - [ ] Provider resolution: i2pd binary preferred, external SAM bridge fallback
 - [ ] Dedicated i2pd process (Model A, not a system router) when i2pd found
 - [ ] `.b32.i2p` address generation from persisted destination key
