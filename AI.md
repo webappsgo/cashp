@@ -36970,7 +36970,7 @@ Every project MUST include these scheduled tasks:
 
 | Task | Default Schedule | Purpose | Skippable |
 |------|-----------------|---------|-----------|
-| `ssl_renewal` | Daily at 03:00 | Renew `{config_dir}/ssl/letsencrypt/{fqdn}/` certs when 30 days or fewer remain (fixed, not configurable) | No |
+| `ssl_renewal` | Daily at 03:00 | Renew `{config_dir}/ssl/letsencrypt/{fqdn}/` certs when 30 days or fewer remain (the 30-day window is fixed; the run time is `server.scheduler.tasks.ssl_renewal.schedule`) | No |
 | `geoip_update` | Weekly (Sunday 03:00) | Download/update ip-location-db GeoIP databases | Yes |
 | `blocklist_update` | Daily at 04:00 | Download/update IP/domain blocklists | Yes |
 | `security_cleanup` | Daily at 03:30 | Delete closed security reports `server.security.reports.retention_days` (default `365`) after `closed_at`, and delete the retired PGP private key (`pgp.priv.old.asc.enc`) 30 days after a rotation | No |
