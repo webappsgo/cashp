@@ -9952,6 +9952,7 @@ Before proceeding, confirm you understand:
 | `/debug/memory` | GET | Memory statistics (`runtime.MemStats`) |
 | `/debug/goroutines` | GET | Goroutine count and stack summary |
 | `/debug/error500` | GET | Deterministic 500 through the normal error renderer (the E2E suite's trigger for the themed 500 page) |
+| `/debug/components` | GET | Component gallery: every shared component in every state (review and browser tests) |
 
 ### Debug Implementation
 
@@ -25666,6 +25667,12 @@ footer p {
 | **Typography** | Base 16 px, line-height 1.5, a heading scale via CSS variables, `0.875rem` monospace for tokens and code, `font-size >= 16px` on inputs (iOS zoom) |
 | **Contrast and focus** | Text 4.5:1 and UI parts 3:1 in BOTH themes; visible `:focus-visible` ring; `prefers-reduced-motion` honored |
 | **Opaque surfaces** | Modals, drawers, dropdowns and popovers have solid backgrounds; page content never shows through |
+| **No overlap, no touching** | No two text-bearing or interactive elements overlap; boxes may intersect only for an intended overlay (modal, drawer, toast, popover, a badge on a tile). Sibling cards and sections are separated by `--space-6`, form groups by `--space-4`, and a button row is followed by `--space-6`: two adjacent blocks with a gap of 0 are a defect |
+| **Controls render as designed** | A custom control (toggle, tile picker, segmented control, custom select) renders every part at its declared size and inside its container; no absolutely positioned part (a thumb, a check mark, a badge) overlaps the control's own label. Every `[role="switch"]`, `[role="radio"]` and `[role="tab"]` has a visible, non-collapsed visual and a hit area of at least 44 x 44 px |
+| **No raw keys or placeholders** | Visible text never matches a translation-key shape (`^[a-z0-9_]+(\.[a-z0-9_]+)+$`) and never contains `undefined`, `null`, `NaN`, `[object Object]`, `{{`, `}}` or `TODO` |
+| **Clickable looks clickable** | A link in running text is underlined or otherwise distinguishable beyond color; a link list entry (hub, nav, table action) shows an underline or a chevron; every interactive element has hover and `:focus-visible` states; a disabled control looks disabled and says why (help text or `title`) |
+| **One alignment per column** | Headings, labels, descriptions and controls of a column share one start edge and are start-aligned (`text-align: start`); centered text is for hero blocks, empty states and the footer only. A centered paragraph inside a left-aligned card is a defect |
+| **Stable layout** | Images and embeds carry `width` and `height` (or `aspect-ratio`) so nothing shifts when they load (CLS below 0.1); icons share one size per role (`1em` inline, `1.25rem` in buttons and tiles); a broken image never shows |
 
 **Review matrix (REQUIRED for every new or changed page, and automated where possible):**
 
@@ -25677,7 +25684,7 @@ footer p {
 | **States** | empty, loading, error, success flash, disabled, JavaScript off |
 | **Pass criteria** | No horizontal scroll; nothing clipped or overlapping; every target >= 44x44 px; no empty or unlabeled control; no heading repeated; screenshot looks intentional at every viewport |
 
-Automated layout tests (headless browser at the viewports above) assert: `scrollWidth <= innerWidth`; no element's bounding box extends past the viewport; every `<select>` has options; every form control has a label; the open nav drawer covers the full viewport height and lists every nav link.
+Automated layout tests (headless browser at the viewports above) assert: `scrollWidth <= innerWidth`; no element's bounding box extends past the viewport; every `<select>` has options; every form control has a label; the open nav drawer covers the full viewport height and lists every nav link. The same run, on every registered page and error page, in dark and light, asserts: no overlap between text-bearing or interactive boxes outside the intended overlays; no zero gap between adjacent cards, sections or a button row and the next block; every custom control part (`.toggle-track`, tile, segmented option) has a non-zero rendered size and lies inside its container; no visible text matches the raw-key shape or a placeholder ("No raw keys or placeholders"); computed contrast of every text node against its effective background is at least 4.5:1 (3:1 for large text and UI parts), checked with an accessibility engine such as axe-core; every interactive element has a non-zero hit area of at least 44 x 44 px; the browser console reports no error or warning; and the layout shift score stays below 0.1. These checks need a headless browser and Node: they run in the integration tier, in an image that carries them (the Go image has Node and npm; a Rust project runs them from that image too).
 
 ---
 
@@ -26341,6 +26348,31 @@ html.theme-light {
 
 ---
 
+## CSS Architecture (Cascade Layers)
+
+**One layer order, declared once at the top of `common.css`, removes specificity wars: a generic rule can no longer beat a component (a `.form-group label` rule once collapsed every toggle).**
+
+```css
+@layer reset, tokens, base, components, pages, utilities;
+```
+
+| Layer | Holds | Rules |
+|-------|-------|-------|
+| `reset` | Box sizing, margin and padding reset | Nothing visual |
+| `tokens` | The `:root` custom properties (colors, spacing, radius, type) | The only place a literal color or size is written |
+| `base` | Bare element selectors (`body`, `a`, `h1`..`h6`, `label`, `input`) | Typography, color and spacing of plain elements only; never the layout or internals of a component |
+| `components` | Every shared component (`.btn`, `.section-card`, `.form-group`, `.toggle`, `.hub-list`, `.badge`, `.table-wrapper`) | Class selectors only, specificity at most `(0,4,1)` (a state selector such as `.toggle input:checked + .toggle-track` is allowed), self-contained: a component sets its own `display`, size and alignment and never relies on its parent for them. A descendant selector on a generic parent (`.form-group label`) is forbidden: write `.form-group__label` or `label:not(.toggle)` |
+| `pages` | Page-specific placement | Grid placement and spacing of shared components through their documented custom properties (`--toggle-size`); a page never restyles a component's internals and never invents a styled class (see "Classes" in the page shell rules) |
+| `utilities` | Single-purpose helpers (`.visually-hidden`, `.text-start`, `.stack-4`) | Win over every other layer; one declaration each |
+
+| Rule | Detail |
+|------|--------|
+| **No unlayered CSS** | Unlayered rules beat every layer, so every rule in every stylesheet sits in a layer; each file starts with its `@layer` block |
+| **Customize through properties** | A component exposes custom properties for what may vary; overriding its selectors from another file is a defect |
+| **No `!important`, no ID selectors** | The print stylesheet's `!important` is the only exception and lives in `utilities` |
+| **Examples are unwrapped** | The CSS examples in this document are shown without their `@layer` wrapper to stay readable; in a project every rule sits inside its layer |
+| **Lint gate** | `stylelint` runs in `make test` (from the Go image, which has Node and npm) and fails on an unlayered rule, `!important`, an ID selector, a selector above `(0,4,1)` in `components`, and a descendant selector whose subject is a bare element under a component class |
+
 ## Reuse Before Creating
 
 **Before writing new code for anything — a function, a variable/constant, a UI component, or a style — check whether an equivalent already exists in the project and reuse or extend it. Only create something new when nothing existing covers the need.** This is a general project-wide rule; it governs every artifact type, not just CSS/UI, and it is not restricted to any one feature.
@@ -26546,6 +26578,25 @@ fetch('/api/save', { method: 'POST', body: data })
 | **Contrast** | The off-state track border is `--color-muted` (at least 3:1 against the card, WCAG 1.4.11) and the thumb contrasts with the track in both states; a track whose border equals its surface is a defect |
 | **Alignment** | The label and any description below it are start-aligned (never centered) and share one left edge with the page's other controls |
 | **Conformance test** | A browser test opens every page that contains a `.toggle` at 320, 768 and 1280 px and asserts that each `.toggle-track` renders at least `2.5rem x 1.5rem` and that its thumb lies inside it |
+
+### Component State Matrix (REQUIRED)
+
+**Every shared component styles and tests every state it can be in, with tokens only (no literal colors); a state that is not styled is a defect, not a default.**
+
+| Component | States that MUST be styled and tested |
+|-----------|---------------------------------------|
+| Button | default, hover, active, `:focus-visible`, disabled, loading (`aria-busy`, spinner, stable width) |
+| Link | default, hover, `:focus-visible`, current page (`aria-current="page"`) |
+| Input, select, textarea | default, hover, focus, invalid (`aria-invalid` plus a message), disabled, read-only |
+| Toggle, checkbox, radio | off, on, focus, off+disabled, on+disabled, indeterminate (checkbox) |
+| Tile or card picker | default, hover, selected (check mark), focus, disabled |
+| Badge, status | ok, warning, error, info, neutral (never color alone: an icon or text too) |
+| Alert, toast | info, success, warning, error (`role="status"` or `role="alert"`) |
+| Table | empty, one row, many rows (scrolls inside `.table-wrapper`), sorted column |
+| Modal, popover | open, closing, focus trapped, backdrop |
+| Hub entry | default, hover, `:focus-visible` |
+
+**Component gallery (`/debug/components`, debug flag only):** one page that renders every shared component in every state above, in both themes and both directions. Reviewers use it to see the whole library at once, and the automated layout tests run against it in addition to the real pages, so a broken component fails before any page uses it.
 
 ### Modals
 
