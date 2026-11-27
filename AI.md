@@ -26483,15 +26483,69 @@ fetch('/api/save', { method: 'POST', body: data })
 
 ### Toggle Switches
 
-**CSS-only toggle using hidden checkbox:**
+**CSS-only toggle using hidden checkbox. The toggle is self-contained: its layout never depends on a parent, and no generic form-label rule may restyle it.**
 
 ```html
 <label class="toggle">
-  <input type="checkbox" name="setting">
-  <span class="slider"></span>
-  Enable Feature
+  <input type="checkbox" name="setting" role="switch" aria-checked="false">
+  <span class="toggle-track">
+    <span class="toggle-thumb"></span>
+  </span>
+  <span class="toggle-label">Enable Feature</span>
 </label>
 ```
+
+```css
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  cursor: pointer;
+  text-align: start;
+}
+.toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.toggle-track {
+  display: block;
+  position: relative;
+  flex: 0 0 2.5rem;
+  width: 2.5rem;
+  height: 1.5rem;
+  background: var(--color-bg-active);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-muted);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.toggle input:checked + .toggle-track { background: var(--color-primary); border-color: var(--color-primary); }
+.toggle-thumb {
+  position: absolute;
+  top: 2px; left: 2px;
+  width: calc(1.5rem - 6px);
+  height: calc(1.5rem - 6px);
+  background: var(--color-text);
+  border-radius: var(--radius-full);
+  transition: transform var(--transition-fast);
+}
+.toggle input:checked + .toggle-track .toggle-thumb { transform: translateX(1rem); background: var(--color-on-error); }
+.toggle input:focus-visible + .toggle-track { box-shadow: var(--focus-ring-offset); }
+.toggle-label { flex: 1; }
+```
+
+| Rule | Detail |
+|------|--------|
+| **Why `display: block` and `flex: 0 0`** | The track is a `<span>`: an inline span ignores `width` and `height`, so any rule that turns the label into a block (a generic `.form-group label { display: block }`) would collapse the track and draw the absolutely positioned thumb over the text. The track therefore sets its own `display`, and a generic form-label rule MUST exclude toggles (`label:not(.toggle)`) |
+| **Contrast** | The off-state track border is `--color-muted` (at least 3:1 against the card, WCAG 1.4.11) and the thumb contrasts with the track in both states; a track whose border equals its surface is a defect |
+| **Alignment** | The label and any description below it are start-aligned (never centered) and share one left edge with the page's other controls |
+| **Conformance test** | A browser test opens every page that contains a `.toggle` at 320, 768 and 1280 px and asserts that each `.toggle-track` renders at least `2.5rem x 1.5rem` and that its thumb lies inside it |
 
 ### Modals
 
@@ -27932,7 +27986,7 @@ Preferences aren't tied to identity — any two guests who set the same `theme`/
 | 12 | **Auth and CSRF** | None required — guest cookies. `POST` forms carry the normal CSRF token; the API mirror needs none (no ambient authority: it accepts and sets only these UI cookies). Import is a `GET` on purpose so a shared link works; it can set only the exportable set (rule 1), so it can never change credentials or consent, and it sets those cookies only where rule 18 allows. Standard rate limits apply |
 | 13 | **Export response** | The export block (full URL and short code as read-only selectable text, each with one Copy control) is rendered inline on `/server/preferences/sync` on every load — never behind a button, toggle, accordion or separate step. Web `GET /server/preferences/sync` is content-negotiated like every page: HTML → the sync page; `text/plain` → the lines `URL: ...` and `Code: ...`; JSON → the API body below. Copy is a client-side action (clipboard) and never submits a form; the export link and code use CSS `user-select: all` so one click selects the whole value for a manual copy, and the Copy control is an optional JS enhancement over that baseline — the page is fully usable without JS |
 | 14 | **Import field** | An always-visible field named `code` (textarea or text input, accepts a pasted full URL, query string or short code) in the sync page's own form, `<form method="POST" action="/server/preferences/sync">`, whose only submit button is **Import**. A non-empty `code` is resolved per rule 5 and applied per rule 8, then `303` per rules 9–10; an empty `code` is a no-op. `GET /server/preferences/sync/import` stays for shared links and API parity (rule 5 unchanged). JS may enhance (clipboard paste) but never changes the request |
-| 15 | **Page layout and buttons** | `/server/preferences` is ONE `<form method="POST" action="/server/preferences">` carrying the CSRF token and every section: appearance (`theme`), language (`lang`), cookie-consent and CCPA controls, every `{project_name}_pref_{key}` control — all sections always visible, none collapsed or revealed by a button. A **More preferences** card, outside the form, links every registered preferences page (see "Preferences and Help Hubs"). The form has exactly three action buttons (the header theme toggle is a separate mini-form on other pages and is OMITTED from the header on this page, whose own form carries the theme control; the header markup is otherwise identical on every page): **Save** (submit; applies every changed field, then `303` per rules 9–10), **Cancel** (a link to the rule 10 redirect target; discards unsaved edits, sends no write) and **Reset** (a `type="button"` with `popovertarget` that opens a native HTML `popover` — no JS; the popover holds the warning, an **Erase everything** submit with `action=reset`, and a dismiss control using `popovertargetaction="hide"`; those two belong to Reset, not to the page's button set; forgets the visitor completely: every noncredential cookie this app set — `theme`, `lang`, `{project_name}_pref_*`, `cookie_consent`, `ccpa_opt_out`, `{project_name}_build`, plus any other noncredential cookie the project defines (announcement dismissals, flash messages, age-verification or content-acknowledgment cookies, forwarding preferences) — is deleted (`Max-Age=0`, same `Path`/attributes as rule 8), and the `303` carries `Clear-Site-Data: "storage"` to wipe localStorage/sessionStorage/IndexedDB without JS. Defaults apply and the consent banner returns on the next page. Never deletes session, CSRF or other credential cookies — signing out is a separate action. The popover warning states exactly what is erased. Only Reset confirms — Save and Cancel never ask for confirmation. The popover is styled with CSS, and a direct `POST action=reset` behaves identically on the server). No per-section save buttons and no "Sync", "Export", "Import" or "Show" buttons: sync has its own page. Every other preferences page (`/server/preferences/sync`, `/server/preferences/tokens` where the project has owner tokens, and project pages) is NOT part of this form: each lives on its own page, reached from the More preferences card, and those pages' own forms are exempt from this button limit. Reset never deletes credential cookies: session, CSRF and, when the project defines owner tokens, the owner-token cookie |
+| 15 | **Page layout and buttons** | `/server/preferences` is ONE `<form method="POST" action="/server/preferences">` carrying the CSRF token and every section: appearance (`theme`), language (`lang`), cookie-consent and CCPA controls, every `{project_name}_pref_{key}` control — all sections always visible, none collapsed or revealed by a button. A **More preferences** card, outside the form, links every registered preferences page (see "Preferences and Help Hubs"). The form has exactly three action buttons (the header theme toggle is a separate mini-form on other pages and is OMITTED from the header on this page, whose own form carries the theme control; the header markup is otherwise identical on every page): **Save** (submit; applies every changed field, then `303` per rules 9–10), **Cancel** (a link to the rule 10 redirect target; discards unsaved edits, sends no write) and **Reset** (a `type="button"` with `popovertarget` that opens a native HTML `popover` — no JS; the popover holds the warning, an **Erase everything** submit with `action=reset`, and a dismiss control using `popovertargetaction="hide"`; those two belong to Reset, not to the page's button set; forgets the visitor completely: every noncredential cookie this app set — `theme`, `lang`, `{project_name}_pref_*`, `cookie_consent`, `ccpa_opt_out`, `{project_name}_build`, plus any other noncredential cookie the project defines (announcement dismissals, flash messages, age-verification or content-acknowledgment cookies, forwarding preferences) — is deleted (`Max-Age=0`, same `Path`/attributes as rule 8), and the `303` carries `Clear-Site-Data: "storage"` to wipe localStorage/sessionStorage/IndexedDB without JS. Defaults apply and the consent banner returns on the next page. Never deletes session, CSRF or other credential cookies — signing out is a separate action. The popover warning states exactly what is erased. Only Reset confirms — Save and Cancel never ask for confirmation. The popover is styled with CSS, and a direct `POST action=reset` behaves identically on the server). No per-section save buttons and no "Sync", "Export", "Import" or "Show" buttons: sync has its own page. Every other preferences page (`/server/preferences/sync`, `/server/preferences/tokens` where the project has owner tokens, and project pages) is NOT part of this form: each lives on its own page, reached from the More preferences card, and those pages' own forms are exempt from this button limit. Reset never deletes credential cookies: session, CSRF and, when the project defines owner tokens, the owner-token cookie **Button styling and spacing:** Save is the page's only `.btn-primary`; Cancel is `.btn-secondary`; Reset is an outlined `.btn-danger` and sits apart from the other two (its own group at the end of the row with `margin-inline-start: auto`, at least `--space-4` from Cancel, never beside Save as an equal); the tab order is Save, Cancel, Reset. The action row is followed by `--space-6` of space, so it never touches the More preferences card, and no button uses a success color for Save. |
 | 16 | **Web save never `400`** | `400 VALIDATION_FAILED` (rule 11) is API-only. A web `POST /server/preferences` or `POST /server/preferences/sync` always answers `303` (rule 9) — including empty submits, unchecked checkboxes (absent fields), invalid values (dropped) and a bad `code`. The only `4xx` is a missing/invalid CSRF token (`403`), so every preferences form MUST always render the token and post only to the canonical route, never to the `/api/{api_version}/…` mirror |
 | 17 | **Consent and CCPA controls** | The page form's cookie-consent toggles (`consent_preferences`, `consent_analytics`; `essential` is always on and not a field) and the CCPA opt-out toggle (`ccpa_opt_out`, rendered only when `server.privacy.data.sold` is `true`; otherwise absent and never written) are web-form-only controls handled by `POST /server/preferences`, with a hidden `consent_form=1` marker rendered inside the form. They are applied only when `consent_form=1` is present — an unchecked checkbox then means off, while a POST without the marker (the header theme toggle) never touches consent or CCPA. Applying writes `cookie_consent` (JSON per PART 16 consent state, with a fresh timestamp in Unix seconds) and `ccpa_opt_out` with the rule 8 attributes. Import and the API mirror never write them, Reset deletes them (rule 15), and they are never exported (rule 1). The privacy page's own CCPA form is the one other writer of `ccpa_opt_out` (`POST /server/ccpa`), as the cookie banner is the other writer of `cookie_consent` (`POST /server/consent`) |
 | 18 | **Consent gate** | An explicit preference action (Save, Import, an API write) is not itself consent to the Preferences cookie category, and a visitor who has taken no consent action has the category off. `theme`, `lang` and every `{project_name}_pref_{key}` cookie belong to the **Preferences** cookie category, not to the essential one, so import, save and sync set them only on a device whose `cookie_consent` has `preferences: true` (the same per-device consent that is never exported, rule 1). The gate sits in the one shared implementation, after validation and before any cookie is written, for the web routes and the API mirror alike. The gate governs preference WRITES only: a `?lang=` link without consent still sets the language for that one response and writes no cookie, because it is a request parameter, not a preference write. When the category is not accepted (no `cookie_consent` cookie, or `preferences: false`): nothing is written, `applied` is empty, every valid value is reported in `ignored`, and the API `data` carries `"consent_required": true`. The web route still answers `303` (rules 9 and 16), never a `4xx`, and the redirect carries `consent_required=1` as a query parameter that the landing page reads, never stores, and turns into a notice pointing at the cookie-consent toggle of rule 17. An import link opened on a new device therefore applies nothing until that device's visitor accepts Preferences and opens the link again; the server keeps no pending state. While the cookies are absent the page renders with the defaults (the language detected from `Accept-Language`). **The header toggles are gated too.** The no-JavaScript header theme POST and the language switcher are preference writes like any other: with no consent they write nothing, answer `303` with `consent_required=1` (the notice of rule 17 appears) and the theme or language does not change. Only the JS instant preview (the theme block of `static/js/app.js`) may change the `<html>` class for the CURRENT page view, and it stores nothing. **Cookie visibility is one rule for every preference cookie** (`theme`, `lang`, `{project_name}_pref_{key}`): not HttpOnly, because the preview script reads them, and set only after consent; `owner_token` is the one HttpOnly cookie in this family |
@@ -29112,6 +29166,7 @@ func renderFallbackError(w http.ResponseWriter, r *http.Request, status int) {
 |------|-------------|
 | **Same theme classes** | Both layouts use `theme-dark`, `theme-light` on `<html>` |
 | **Same CSS variables** | Theme colors defined once in `common.css`, used everywhere |
+| **Surfaces** | A card, panel or popover surface is `--color-bg-card` or `--color-bg-secondary`; `--color-border`, `--color-bg-hover` and `--color-bg-active` are never a card surface. A conformance test computes the contrast of every text token against every surface it can appear on: text at least 4.5:1, UI components (borders, track outlines, icons) at least 3:1 |
 | **Same color schemes** | `dark.css` and `light.css` apply to both public and admin |
 | **No layout-specific themes** | Do NOT create `admin-dark.css` or `public-light.css` |
 | **No class conflicts** | Theme class names are global and consistent |
@@ -31887,6 +31942,7 @@ func trackingScript(r *http.Request) template.HTML {
 
 | Rule | Detail |
 |------|--------|
+| **Affordance** | `.hub-link` is a block link and the whole row is the click target (at least 44 px tall): the title uses the link color and is underlined or ends with a chevron, hover and `:focus-visible` states exist, and `.hub-desc` uses `--color-muted` at 4.5:1 or better on the card. A hub entry that looks like plain text is a defect |
 | **Complete** | The hub links every registered page of its tree, exactly once, in `order`. `/server/help` links `/server/help/mcp` and every other registered help page; `/server/preferences` links `/server/preferences/tokens`, `/server/preferences/sync` and every project page |
 | **Registry is the source** | The same registry drives the hub, the sitemap exclusions, the footer links (Help, Preferences point at the hubs) and the `pages` list in the help JSON. Nothing else lists these pages |
 | **Action routes are not pages** | Routes that only change state (`POST /server/preferences/token/reveal`, `GET /server/preferences/sync/import`) are registered as routes but are not pages: they are not in the page registry and are never linked from navigation (the import link is a shared URL that a visitor opens). Only the retired standalone export and import pages answer `404` like any unknown route |
@@ -42447,6 +42503,10 @@ test:
 		mkdir -p \"\$${TMPDIR:-/tmp}/$(PROJECT_ORG)\" && \
 		COVDIR=\$$(mktemp -d \"\$${TMPDIR:-/tmp}/$(PROJECT_ORG)/$(INTERNAL_NAME)-XXXXXX\") && \
 		go mod download && \
+		go vet ./... && \
+		staticcheck ./... && \
+		govulncheck ./... && \
+		if ls tests/*.sh >/dev/null 2>&1; then shellcheck tests/*.sh && shfmt -d -i 2 -ci tests/*.sh; fi && \
 		mkdir -p \$$COVDIR/data && \
 		TMPDIR=\$$COVDIR go test -v -cover ./... -args -test.gocoverdir=\$$COVDIR/data && \
 		go tool covdata textfmt -i=\$$COVDIR/data -o=\$$COVDIR/coverage.out && \
@@ -42578,9 +42638,10 @@ All Docker builds use persistent Go module caching to avoid re-downloading depen
 1. Downloads Go modules (cached)
 2. Runs tests inside Docker container (`casjaysdev/go:latest`)
 3. Mounts project directory to `/app`
-4. Runs `go test` with coverage
+4. Runs every gate CI runs, first: `go vet`, `staticcheck`, `govulncheck`, and `shellcheck` plus `shfmt -d` on `tests/*.sh`; then `go test` with coverage
 5. Tests all packages (`./...`)
 6. Container removed after completion (`--rm`)
+7. A green `make test` means CI's quality gates pass for the same commit: the gate set is identical, and the pre-commit gate tests the tree being committed (uncommitted changes outside the commit are stashed, or a clean checkout of the commit is used), never a working tree that CI cannot see
 
 ### `make dev`
 
@@ -52585,7 +52646,7 @@ make test
 | **Default language** | English (en) when no preference detected |
 | **Fallback chain** | `?lang= query param (used for this response; it also writes the cookie only when the Preferences consent category is accepted) → lang cookie → Accept-Language header → default (en)` |
 | **100% coverage** | Every user-facing string uses a translation key - no hardcoded text |
-| **Missing key fallback** | If a key is missing in the active language, fall back to English (`en`) |
+| **Missing key fallback** | If a key is missing in the active language, fall back to English (`en`). A key that is missing from `en.json` itself is a BUILD failure: a test scans every template (`t "key"`), Go or Rust source and JavaScript string for translation keys and fails on any key `en.json` does not define. At runtime the raw key is never rendered (a page showing `preferences.owner_tokens.description` is a defect) |
 | **Unsupported language fallback** | If `--lang` or `Accept-Language` specifies an unsupported language, silently fall back to English (`en`) — never error or crash |
 | **Key validation** | Build-time check ensures all languages have the same keys as `en.json` |
 

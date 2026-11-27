@@ -15,9 +15,10 @@ the running server and is the authoritative API contract for that build.
 | `GET` | `/server/livez` | Public | Liveness probe |
 | `GET` | `/server/version` | Public | Build identity |
 | `GET` | `/api/{api_version}/server/autodiscover` | Public | Client bootstrap information |
-| `GET` | `/api/{api_version}/server/about` | Public | Localized About source and format |
-| `GET` | `/api/{api_version}/server/privacy` | Public | Localized Privacy source and format |
-| `GET` | `/api/{api_version}/server/terms` | Public | Localized Terms source and format |
+| `GET` | `/api/{api_version}/server/about` | Public | About content source, title, and format |
+| `GET` | `/api/{api_version}/server/privacy` | Public | Privacy settings, cookies, data sharing, retention, tracking, and conditional CCPA status |
+| `GET` | `/api/{api_version}/server/terms` | Public | Localized Terms source, title, and format |
+| `GET` | `/api/{api_version}/server/help` | Public | Public Help Markdown source and registered help pages |
 | `GET` | `/api/{api_version}` | Public | Homepage content and instance API links |
 | `GET` | `/api/autodiscover` | Public | Unversioned autodiscovery alias |
 | `GET` | `/api/{api_version}/server/healthz` | Public | Versioned health alias |
@@ -83,10 +84,10 @@ against the same schema as the server-rendered settings pages.
 |---|---|---|---|
 | `GET`, `PATCH` | `/api/{api_version}/server/{admin_path}/settings` | Server Admin token | Read or update supported server settings |
 
-The public `GET /api/{api_version}/server/terms` endpoint returns the
-localized Terms source, its format, and title. The authenticated settings
-mirror also exposes `branding.content.terms`; edits are persisted to the
-branding area file and used immediately by the server-rendered Terms page.
+The settings mirror exposes public Help content and the project MCP help
+section. It also exposes `branding.content.terms`; edits are persisted to the
+appropriate private area file and are used immediately by the corresponding
+server-rendered page.
 
 ## Billing routes
 

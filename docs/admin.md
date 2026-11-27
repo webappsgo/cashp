@@ -29,8 +29,8 @@ command. Settings sections include
 branding, TLS, email, notifications, scheduler, backups, updates, maintenance,
 security, network services, moderation, invites, cluster nodes, and public page
 content. The Pages settings edit the public Help Markdown and project-specific
-MCP guide section in `yaml.d/pages.yml`, and the Terms editor
-writes `server.branding.content.terms` to `yaml.d/branding.yml`. The Terms page
+MCP guide section in `yaml.d/pages.yml`, and the Terms editor writes
+`server.branding.content.terms` to `yaml.d/branding.yml`. The Terms page
 can be reset to its built-in United States text. The
 running server's route list and settings schema are authoritative for the
 configured build.
