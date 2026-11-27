@@ -68,9 +68,10 @@ precedence, environment variables, and settings.
 ## API
 
 The server includes health and readiness probes, client autodiscovery,
-account and organization APIs, billing and support APIs, and administration
-endpoints. The running server's generated OpenAPI document is the exact route
-contract. See the [API reference](docs/api.md).
+account and organization APIs, tenant hosting and managed database APIs,
+billing and support APIs, and administration endpoints. The running server's
+generated OpenAPI document is the exact route contract. See the [API
+reference](docs/api.md).
 
 ## Other
 

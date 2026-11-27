@@ -151,7 +151,7 @@ IDEA.md is the project PLAN. AI.md (this file) is the authoritative template bas
 
 **A feature IDEA.md defines that AI.md has no contract for** (for example operator-level billing or federation) is built from IDEA.md under the full AI.md baseline: security, authentication, database, API conventions, configuration, audit, i18n and every PART the feature touches. AI.md defines no protocol for it and forbids nothing about it. The project's SPEC.md states the feature's technical contract (data, endpoints, signatures, retries, conflict handling) and is the only place that does; the feature never loosens a baseline rule, and a baseline rule it cannot meet is a SPEC.md exception (PART 0).
 
-**Billing** (plans, subscriptions, payment providers, invoices, dunning, usage metering, tax) is such a feature. When IDEA.md defines it, the reference for the SPEC.md billing contract is `~/.claude/TEMPLATES/BILLING.md`, and the `billing-builder` agent implements it. CAVEAT: that file is an optional, machine-level reference outside this specification: it may be absent, it is never copied into a project, it only informs the SPEC.md contract and never overrides AI.md (AI.md wins every conflict), and when it is absent the project's SPEC.md states the billing contract itself. The project's SPEC.md (with the user's approval) is where the provider list is chosen: it may drop or add providers relative to that file, and a provider the user removes there is never reintroduced from the reference. A project that defines no billing ignores it.
+**Billing** (plans, subscriptions, payment providers, invoices, dunning, usage metering, tax) is such a feature. The "Free & open source" and "No artificial limits" rules (PART 0) bar the template itself from paid tiers, an enterprise edition and monetization quotas on its own features; a billing feature that IDEA.md defines is the owner's product feature, never gates a template feature and never turns a rate limit into a usage limit. When IDEA.md defines it, the reference for the SPEC.md billing contract is `~/.claude/TEMPLATES/BILLING.md`, and the `billing-builder` agent implements it. CAVEAT: that file is an optional, machine-level reference outside this specification: it may be absent, it is never copied into a project, it only informs the SPEC.md contract and never overrides AI.md (AI.md wins every conflict), and when it is absent the project's SPEC.md states the billing contract itself. The project's SPEC.md (with the user's approval) is where the provider list is chosen: it may drop or add providers relative to that file, and a provider the user removes there is never reintroduced from the reference. A project that defines no billing ignores it.
 
 | IDEA.md MAY | IDEA.md MAY NOT |
 |-------------|-----------------|
@@ -1556,7 +1556,7 @@ Aider uses a conventions file. Create `.aider/CONVENTIONS.md` with sections refe
 
 **Windsurf Rules (.windsurf/rules/):**
 
-Windsurf uses same structure as Cursor. Create `.mdc` files with same groupings as `.cursor/rules/`.
+Windsurf uses the same groupings as Cursor but its own format: plain `.md` files in `.windsurf/rules/` with `trigger` frontmatter (`.mdc` is Cursor's format; see the Windsurf rules documentation).
 
 **Generic AI Rules (.ai/):**
 
@@ -1565,7 +1565,7 @@ Fallback for other AI tools. Create `.ai/rules/` with `.md` files using same gro
 **All AI config directories use the same logical grouping** - only the file extension differs:
 - Claude Code: `.md`
 - Cursor: `.mdc`
-- Windsurf: `.mdc`
+- Windsurf: `.md` with `trigger` frontmatter
 - Aider: Single `CONVENTIONS.md`
 - Generic: `.md`
 
@@ -8630,7 +8630,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 
 **Directory variables are applied on EVERY startup, never "once".** Precedence: flag, then environment variable, then the platform default (PART 4). They locate `server.yml` and the rest of the app's files, so they cannot live inside `server.yml` and are never written to it.
 
-**`DATABASE_DIR` locates the SQLite files.** `{db_dir}` is `DATABASE_DIR` when it is set, otherwise `{data_dir}/db`; the default SQLite file is `{db_dir}/server.db` (and `{db_dir}/users.db` where the project has it). Every path in this specification written as `{data_dir}/db/server.db` is that default with `DATABASE_DIR` unset; the container image sets `DATABASE_DIR=/data/db/sqlite`, so the same file is `/data/db/sqlite/server.db` there. A configured `server.database.url` always wins over the default path.
+**`DATABASE_DIR` locates the SQLite files.** `{db_dir}` is `DATABASE_DIR` when it is set, otherwise `{data_dir}/db` natively and in a container alike (container detection is not part of the default); the default SQLite file is `{db_dir}/server.db` (and `{db_dir}/users.db` where the project has it). Every path in this specification written as `{data_dir}/db/server.db` is that default with `DATABASE_DIR` unset; the container image sets `DATABASE_DIR=/data/db/sqlite`, so the same file is `/data/db/sqlite/server.db` there. A configured `server.database.url` always wins over the default path.
 
 ### Init-Only Variables (First Run Only)
 
@@ -12050,7 +12050,7 @@ PHASE 5: Server startup (actual server start)
 22. Enter main loop (block until shutdown signal received)
 ```
 
-**Overlay networks start asynchronously.** Steps 17a and 17b only start the Tor and I2P managers and return at once: no overlay bootstrap, hidden-service creation or destination creation ever delays step 18, so the HTTP listener is up while an overlay is still coming up (Tor bootstrap can take minutes). Health reports the overlay as `starting` until it is `healthy`, or `unavailable` once `server.tor.bootstrap_timeout` (I2P: its own timeout) elapses without success, exactly as "Overlay Network Health" defines; a stalled or failed overlay is a single WARN and never blocks, restarts or fails the server (only the overlay's own monitor restarts a crashed Tor process at runtime, "Tor Process Lifecycle"; a bootstrap timeout is reported, not retried by restarting the server). The `.onion` and `.b32.i2p` addresses are read from the hostname and destination files the managers write shortly after they start (before bootstrap completes): the startup banner shows an address only when it is already known at step 20 (waiting at most 5 seconds for the file, never for bootstrap), and an address that is not known yet is omitted from the banner and logged once, as a single INFO line, when it appears.
+**Overlay networks start asynchronously.** Steps 17a and 17b only start the Tor and I2P managers and return at once: no overlay bootstrap, hidden-service creation or destination creation ever delays step 18, so the HTTP listener is up while an overlay is still coming up (Tor bootstrap can take minutes). Health reports the overlay as `starting` until it is `healthy`, or `unavailable` once `server.tor.bootstrap_timeout` (I2P: its own timeout) elapses without success, exactly as "Overlay Network Health" defines; a stalled or failed overlay is a single WARN and never blocks, restarts or fails the server (only the overlay's own monitor restarts a crashed Tor process at runtime, "Tor Process Lifecycle"; a bootstrap timeout is reported, not retried by restarting the server). The `.onion` and `.b32.i2p` addresses are read from each overlay's `hostname` file (Tor writes its own; the I2P manager writes `{data_dir}/i2p/site/hostname` with only the public `.b32.i2p` address derived from the destination in `site-keys.dat`, and the private key never leaves `site-keys.dat`) shortly after they start (before bootstrap completes): the startup banner shows an address only when it is already known at step 20 (waiting at most 5 seconds for the file, never for bootstrap), and an address that is not known yet is omitted from the banner and logged once, as a single INFO line, when it appears.
 
 | Step | Runs As | Why |
 |------|---------|-----|
@@ -13298,6 +13298,7 @@ CREATE INDEX IF NOT EXISTS idx_learned_origins_observed ON learned_origins(obser
 -- ----------------------------------------------------------------------------
 -- Scheduler (background task tracking)
 -- ----------------------------------------------------------------------------
+-- SQLite names; in a remote database the same tables are srv_scheduler_tasks and srv_scheduler_history (PART 10 "Table names")
 CREATE TABLE IF NOT EXISTS scheduler_tasks (
     -- Task name: "backup_daily", "backup_hourly", "geoip_update", "cleanup"
     id          TEXT PRIMARY KEY,
@@ -14136,7 +14137,7 @@ $ kill -TERM $(cat /var/run/myorg/myapp/myapp.pid)
 | `--address` | `LISTEN` | Listen address |
 | `--mode` | `MODE` | Application mode (production/development/debug) |
 | `--i2p` | `I2P_ENABLED` | Enable the I2P eepsite (config key: `server.i2p.enabled`); built-in default `true` in an application container and `false` elsewhere (no image variable sets it) |
-| (none) | `DATABASE_DIR` | SQLite database directory (Docker: `/data/db/sqlite`, Native: `{data_dir}/db/`) |
+| (none) | `DATABASE_DIR` | SQLite database directory (default `{data_dir}/db/`; the Docker image sets `/data/db/sqlite`) |
 | (none) | `BACKUP_DIR` | Backup directory (defaults to `/mnt/Backups/{internal_org}/{internal_name}` when writable, else `{data_dir}/backup/`; changeable) |
 
 **External backup mounts:** In production, `BACKUP_DIR` should typically point to external storage (NAS, separate disk, etc.) rather than staying under `{data_dir}`. Example: `BACKUP_DIR=/mnt/Backups/{internal_org}/{internal_name}`. The fallback `{data_dir}/backup/` is for development/testing only.
@@ -14157,17 +14158,12 @@ func GetConfigDir(flagValue string) string {
 }
 
 // GetDatabaseDir returns SQLite database directory
-// Docker: /data/db/sqlite (separate from app data)
-// Native: {data_dir}/db/ (under app data dir)
+// Default: {data_dir}/db/ everywhere; the container image sets DATABASE_DIR=/data/db/sqlite explicitly, so container detection is not part of the default
 func GetDatabaseDir(dataDir string) string {
     if envValue := os.Getenv("DATABASE_DIR"); envValue != "" {
         return envValue
     }
-    // Docker uses separate /data/db/sqlite directory
-    if isContainer() {
-        return "/data/db/sqlite"
-    }
-    // Native uses {data_dir}/db/
+    // The default is the same natively and in a container
     return filepath.Join(dataDir, "db")
 }
 
@@ -15360,7 +15356,7 @@ the stale client and evicts its caches in one response.
 
 | Rule | Detail |
 |------|--------|
-| **Build-stamp cookie** | Every HTML response sets `{project_name}_build={asset_stamp}` (`Path=/`, `Max-Age=31536000`, `Secure` (omitted on an I2P request: the overlay cookie rule of PART 8 wins), `SameSite=Lax`, NOT HttpOnly-sensitive — the stamp is public). Essential cookie — no consent required. |
+| **Build-stamp cookie** | Every successful top-level HTML document response (the same cases as "Top-level documents only" below) sets `{project_name}_build={asset_stamp}` (`Path=/`, `Max-Age=31536000`, `Secure` (omitted on an I2P request: the overlay cookie rule of PART 8 wins), `SameSite=Lax`, NOT HttpOnly-sensitive — the stamp is public). Essential cookie — no consent required. |
 | **Mismatch → purge** | If an HTML request carries a `{project_name}_build` cookie whose value ≠ the running stamp, the response adds `Clear-Site-Data: "cache", "storage"` — evicts the HTTP cache, all Cache API caches, and unregisters service workers in one shot. |
 | **`"cookies"` is FORBIDDEN here** | It would destroy the session and every cookie-stored preference (theme, language, consent). The session-revoke `Clear-Site-Data` keeps `"cookies"`; the version purge never includes it. |
 | **Naturally one-shot** | The same response re-sets the cookie to the new stamp, so the next request matches and no purge loop is possible. First-ever visit (no cookie) never purges. |
@@ -15385,7 +15381,7 @@ Called from the HTML middleware only — never on static, API, or `/sw.js` respo
 
 | Rule | Detail |
 |------|--------|
-| **Top-level documents only** | Emit the header only when `Sec-Fetch-Dest: document` and `Sec-Fetch-Mode: navigate` (or those headers are absent on an old browser) - never for iframes, prefetch, XHR/fetch, `HEAD`, redirects (3xx) or error responses (4xx/5xx) |
+| **Top-level documents only** | The build-stamp cookie is compared and refreshed in these cases only, so an error response never refreshes the cookie and a stale client still receives the purge on its next successful navigation. Emit the header only when `Sec-Fetch-Dest: document` and `Sec-Fetch-Mode: navigate` (or those headers are absent on an old browser) - never for iframes, prefetch, XHR/fetch, `HEAD`, redirects (3xx) or error responses (4xx/5xx) |
 | **No IndexedDB dependency** | The app MUST NOT hold long-lived IndexedDB connections open (the `storage` wipe blocks on them); open, use and close per operation |
 | **Client watchdog** | `app.js` starts a 10 s boot timer (cleared when the first render completes). On expiry, and at most once per tab (`sessionStorage` flag `{project_name}_recovered`), it unregisters every service worker, deletes every Cache API cache and reloads. A second expiry replaces the page body with an error panel that `app.js` builds itself (no network, no cache, no static file): the translated strings the page stores for the worker's offline page (PART 16: `title`, `heading`, `message` and `reload`, the label of the reload link), with the English defaults only before any were stored; it never loops |
 | **Never a dependency** | The page works with the purge header ignored: HTML is `no-store`, assets are stamped, so a missed purge costs one revalidation, never a stuck page |
@@ -16477,7 +16473,7 @@ The `"cookies"` directive is never used: it would erase the theme, language and 
 - HSTS — RFC 6797. Default `max-age=63072000` (2 years) per the HSTS Preload List requirement (`hstspreload.org`). `includeSubDomains` and `preload` directives included by default.
 - **`preload` is an opt-out commitment.** Once a domain is on the public preload list (built into Chrome/Firefox/Safari/Edge), removal can take 6-12 months even after disabling. Operator MAY disable preload via `web.hsts.preload: false` if the site is not yet ready (no SSL on every subdomain, etc.). Default ON because zero-config secure means committing to TLS forever.
 - `web.hsts.max_age_seconds` is configurable; values <31536000 (1 year) make the site preload-ineligible. Setting to 0 disables HSTS entirely for emergencies — produces a warning at startup.
-- Permissions-Policy is **declared by the project and always emitted**; it is not configurable in `server.yml` (see "Permissions-Policy" below). Features the spec itself uses are scoped to `self`; advertising-tracking proposals (`interest-cohort`, `browsing-topics`, `attribution-reporting`) are always disabled; everything else (camera, microphone, geolocation, USB, MIDI, sensors, screen capture, etc.) is disabled unless the project's `IDEA.md` declares that it uses the feature.
+- Permissions-Policy is **declared by the project and always emitted**; it is not configurable in `server.yml` (see "Permissions-Policy" below). Features the spec itself uses are scoped to `self`; advertising-tracking proposals (`interest-cohort`, `browsing-topics`, `attribution-reporting`) are never emitted (the browser default keeps them off); everything else (camera, microphone, geolocation, USB, MIDI, sensors, screen capture, etc.) is disabled unless the project's `IDEA.md` declares that it uses the feature.
 
 ### Permissions-Policy (declared by the project, always emitted)
 
@@ -16486,12 +16482,12 @@ The `"cookies"` directive is never used: it would erase the theme, language and 
 | Set | Features | Value |
 |-----|----------|-------|
 | **Locked** (default) | `accelerometer`, `camera`, `display-capture`, `geolocation`, `gyroscope`, `hid`, `idle-detection`, `magnetometer`, `microphone`, `midi`, `screen-wake-lock`, `serial`, `usb`, `xr-spatial-tracking` | `()` |
-| **Tracking proposals** | `attribution-reporting`, `browsing-topics` | `()` ALWAYS, even if `IDEA.md` asks for them (PART 11 → "Public Endpoint Safety Principle") |
+| **Tracking proposals** | `attribution-reporting`, `browsing-topics` | Never emitted, even if `IDEA.md` asks for them: current Chromium does not recognize them (`Unrecognized feature`), and the browser default already keeps them off (PART 11 → "Public Endpoint Safety Principle") |
 | **Used by the spec itself** | `autoplay`, `encrypted-media`, `fullscreen`, `payment`, `picture-in-picture`, `publickey-credentials-get` (WebAuthn and Passkeys), `storage-access` | `(self)` |
 
 **Project declaration:** a locked feature becomes `(self)` only when the project's `IDEA.md` declares that it uses it, with one flag per feature named `uses_{feature}` (hyphens become underscores): `"uses_geolocation": true`, `uses_camera`, `uses_microphone`, `uses_display_capture`, and so on. A declared feature is therefore always enabled, and an undeclared one is always locked; an operator cannot flip either.
 
-**Generation rule:** the binary joins the features into one `feature1=value1, feature2=value2, …` string. Only feature names that current Chromium, Firefox and Safari recognize are emitted: a name Chromium does not recognize (`ambient-light-sensor`, `battery`, `web-share`, `interest-cohort`) makes it log `Unrecognized feature` in the console on every page, so those four are never in the header (a feature omitted from `Permissions-Policy` keeps the browser default, which for these is already restricted or unavailable). A test loads a page in headless Chromium and fails on any `Unrecognized feature` console message.
+**Generation rule:** the binary joins the features into one `feature1=value1, feature2=value2, …` string. Only feature names that current Chromium, Firefox and Safari recognize are emitted: a name Chromium does not recognize (`ambient-light-sensor`, `battery`, `web-share`, `interest-cohort`, `attribution-reporting`, `browsing-topics`) makes it log `Unrecognized feature` in the console on every page, so those six are never in the header (a feature omitted from `Permissions-Policy` keeps the browser default, which for these is already restricted or unavailable). A test loads a page in headless Chromium and fails on any `Unrecognized feature` console message.
 
 **In development mode, headers are issued unchanged — but CSP runs in `Content-Security-Policy-Report-Only` mode (see below) so violations are logged without breaking the app.**
 
@@ -19673,7 +19669,7 @@ These rules apply to **all responses** when the request is detected as a Tor req
 | **Email** | Show `server.tor.contact_email` only; if unset, omit email entirely from all responses (security.txt, contact pages, error pages, footers). Never fall back to the clearnet contact email. |
 | **URLs** | All absolute URLs in responses must use `tor.onion_address`. Never embed clearnet FQDN. Applies to: `security.txt`, `llms.txt`, OpenAPI `servers[0].url`, GraphQL endpoint, OAuth redirect URIs, email verification links, pagination links. |
 | **Clearnet links** | Any link that would normally point to the clearnet site must use the onion address or be omitted entirely. |
-| **Third-party and user-authored links** | An operator- or user-authored external link (a privacy-policy URL, a profile website, a Markdown link) is rendered as plain text without a link, and an external avatar (Gravatar included) is replaced by the built-in default avatar, so a Tor visitor's browser never contacts a clearnet host. `/api/autodiscover` answers a Tor request with an empty `urls` (never a clearnet origin) and the onion address only in its dedicated `onion` field: overlay addresses are never in `urls`. A personal-data export keeps the stored values: it is a download, not a page. |
+| **Third-party and user-authored links** | An operator- or user-authored external link (a privacy-policy URL, a profile website, a Markdown link) is rendered as plain text without a link, and an external avatar (Gravatar included) is replaced by the built-in default avatar, so a Tor visitor's browser never contacts a clearnet host. `/api/autodiscover` answers a Tor request with an empty `urls` (never a clearnet origin) and the onion address only in its dedicated `onion` field, and only when `server.tor.expose` is `true`: overlay addresses are never in `urls`. A personal-data export keeps the stored values: it is a download, not a page. |
 | **Personal email on public pages** | A user's opted-in public-profile email is suppressed on Tor responses: `server.tor.contact_email` stays the only address shown |
 | **CORS** | The onion address is added to the CORS allow-list automatically when `tor.onion_address` is set. The clearnet origin must NOT appear in Tor response CORS headers. |
 | **OAuth / external auth** | Redirect URIs must use the onion address. If the OAuth provider does not support `.onion` redirect URIs, that provider is disabled for Tor requests with a `503` error. |
@@ -21329,7 +21325,7 @@ type StatsInfo struct {
 
 | Check | Probe | `error` when |
 |-------|-------|--------------|
-| `checkDatabase()` | `SELECT 1` through the primary, 2 s timeout | The query fails or times out |
+| `checkDatabase()` | A trivial query on the write handle and on the read handle, each under a 2 s deadline | Either query fails or times out |
 | `checkCache()` | `SET`, `GET` and `DEL` of the key `healthz:probe` on the configured cache (the in-process cache is probed the same way), 1 s timeout | Any step fails or the value read back differs |
 | `checkDisk()` | Create and remove a probe file in `{data_dir}`, then read the free space of that volume | The probe write fails, or less than 64 MiB is free |
 | `checkScheduler()` | The scheduler goroutine's heartbeat is newer than twice the shortest task interval | The heartbeat is older, or the scheduler is not running |
@@ -23799,7 +23795,7 @@ Need additional compatible endpoints?"
 | `/server/{admin_path}` | GET | Session | Admin dashboard; an unauthenticated request redirects to `/server/auth/login` |
 | `/server/{admin_path}/*` | ALL | Session | Admin panel pages |
 | `/api/{api_version}` | GET | None | API root (no trailing slash; `/api/{api_version}/` redirects `301` to it): returns the same envelope document as `/api/autodiscover` |
-| `/api/autodiscover` | GET | None | Discovery document: name, version, public origins, hidden-service addresses and the CLI/agent update versions. It publishes no settings, config schema or option list (non-versioned; "Autodiscover response"); on a Tor request `urls` is empty and only `onion` is set |
+| `/api/autodiscover` | GET | None | Discovery document: name, version, public origins, hidden-service addresses and the CLI/agent update versions. It publishes no settings, config schema or option list (non-versioned; "Autodiscover response"); on a Tor request `urls` is empty and `onion` is set only when `server.tor.expose` is `true` (otherwise the response carries no overlay address) |
 | `/api/swagger` | GET | None | OpenAPI JSON spec — direct alias for current `{api_version}` |
 | `/api/graphql` | POST, GET | None | GraphQL queries — direct alias for current `{api_version}` (POST, and GET with `query` for queries only, exactly like the versioned route) |
 | `/api/mcp` | POST | Bearer (required) | MCP endpoint — direct alias for current `{api_version}`; same auth as the API |
@@ -25541,6 +25537,7 @@ fi
   --icon-md: 1.25rem;
   --icon-lg: 1.5rem;
   --icon-xl: 2rem;
+  --icon-hero: 4rem;
 }
 .btn { min-height: var(--control-height, var(--size-md)); }
 .btn-sm { --control-height: var(--size-md); }
@@ -25734,6 +25731,7 @@ footer p {
 | **No raw keys or placeholders** | Visible text never matches a translation-key shape (`^[a-z0-9_]+(\.[a-z0-9_]+)+$`) and never contains `undefined`, `null`, `NaN`, `[object Object]`, `{{`, `}}` or `TODO` |
 | **Clickable looks clickable** | A link in running text is underlined or otherwise distinguishable beyond color; a link list entry (hub, nav, table action) shows an underline or a chevron; every interactive element has hover and `:focus-visible` states; a disabled control looks disabled and says why (help text or `title`) |
 | **One alignment per column** | Headings, labels, descriptions and controls of a column share one start edge and are start-aligned (`text-align: start`); centered text is for hero blocks, empty states and the footer only. A centered paragraph inside a left-aligned card is a defect |
+| **Icons are sized** | Every `<svg>` is sized by the base rule or a size class ("Icons and SVG"); none renders larger than `--icon-hero` unless it is an `.illustration`; the main content (the form or result the page exists for) starts within the first viewport |
 | **Stable layout** | Images and embeds carry `width` and `height` (or `aspect-ratio`) so nothing shifts when they load (CLS below 0.1); icons share one size per role (`1em` inline, `1.25rem` in buttons and tiles); a broken image never shows |
 
 **Review matrix (REQUIRED for every new or changed page, and automated where possible):**
@@ -25746,7 +25744,7 @@ footer p {
 | **States** | empty, loading, error, success flash, disabled, JavaScript off |
 | **Pass criteria** | No horizontal scroll; nothing clipped or overlapping; every target >= 44x44 px (below `md`; an `sm` control at `md` and up is at least 24x24 px); no empty or unlabeled control; no heading repeated; screenshot looks intentional at every viewport |
 
-Automated layout tests (headless browser at the viewports above) assert: `scrollWidth <= innerWidth`; no element's bounding box extends past the viewport; every `<select>` has options; every form control has a label; the open nav drawer covers the full viewport height and lists every nav link. The same run, on every registered page and error page, in dark and light, asserts: no overlap between text-bearing or interactive boxes outside the intended overlays; no zero gap between adjacent cards, sections or a button row and the next block; every custom control part (`.toggle-track`, tile, segmented option) has a non-zero rendered size and lies inside its container; no visible text matches the raw-key shape or a placeholder ("No raw keys or placeholders"); computed contrast of every text node against its effective background is at least 4.5:1 (3:1 for large text and UI parts), checked with an accessibility engine such as axe-core; every interactive element has a hit area of at least 44 x 44 px below `md` (24 x 24 px for an `sm` control at `md` and up); every component size (`sm`, `md`, `lg`, `xl`) of the gallery renders at its declared height; the browser console reports no error or warning; and the layout shift score stays below 0.1. These checks need a headless browser and Node: they run in the integration tier, in an image that carries them (the Go image has Node and npm; a Rust project runs them from that image too).
+Automated layout tests (headless browser at the viewports above) assert: `scrollWidth <= innerWidth`; no element's bounding box extends past the viewport; every `<select>` has options; every form control has a label; the open nav drawer covers the full viewport height and lists every nav link. The same run, on every registered page and error page, in dark and light, asserts: no overlap between text-bearing or interactive boxes outside the intended overlays; no zero gap between adjacent cards, sections or a button row and the next block; every custom control part (`.toggle-track`, tile, segmented option) has a non-zero rendered size and lies inside its container; no visible text matches the raw-key shape or a placeholder ("No raw keys or placeholders"); computed contrast of every text node against its effective background is at least 4.5:1 (3:1 for large text and UI parts), checked with the vendored axe-core script; every interactive element has a hit area of at least 44 x 44 px below `md` (24 x 24 px for an `sm` control at `md` and up); every component size (`sm`, `md`, `lg`, `xl`) of the gallery renders at its declared height; the browser console reports no error or warning; and the layout shift score stays below 0.1. These checks run in the same pure-Go chromedp harness as the browser E2E tests (PART 28, no Node toolchain): the test code lives in `tests/e2e/` behind the `e2e` build tag, the accessibility checks use a pinned `axe.min.js` vendored under `tests/e2e/vendor/` and injected with `chromedp.Evaluate`, and they run from `./tests/e2e.sh`, never from `make test`.
 
 ---
 
@@ -26346,7 +26344,7 @@ document.addEventListener('click', function(e) {
 | `public.css` | `pages` | Placement and spacing of the public pages and the public header and footer | Third, on public pages |
 | `admin.css` | `pages` | The same for the admin panel (only where the admin panel exists) | Third, on admin pages instead of `public.css` |
 
-No other stylesheet exists: a project never adds a file per page. The HTML links the files in this order and the service worker precaches the same list; the layer order, not the file order, decides the cascade.
+No other stylesheet is written by hand: a project never adds a file per page. The server also GENERATES stylesheets from its configuration and the tokens, each served as `/static/css/{name}.css` with an `ETag` from its inputs and never stored in the repository: `runtime.css` (layer `tokens`, linked right after `common.css`; the configurable runtime values such as `--toast-duration` and `--toast-duration-warning`, rendered from `server.notifications.webui`) and, only where the Swagger and GraphQL pages exist, `swagger-theme.css` and `graphql-theme.css` (built by `src/swagger/theme.go` and `src/graphql/theme.go` from the same tokens and linked only on those pages). The HTML links the files in this order and the service worker precaches the same list; the layer order, not the file order, decides the cascade.
 
 ### Additional tokens
 
@@ -26362,6 +26360,10 @@ No other stylesheet exists: a project never adds a file per page. The HTML links
   --container-md: 56rem;
   --container-lg: 72rem;
   --container-xl: 87.5rem;
+  --drawer-width: 17.5rem;
+  --duration-drawer: 300ms;
+  --print-bg: #ffffff;
+  --print-text: #000000;
   --size-sm: 2rem;
   --size-md: 2.75rem;
   --size-lg: 3.25rem;
@@ -26370,6 +26372,7 @@ No other stylesheet exists: a project never adds a file per page. The HTML links
   --icon-md: 1.25rem;
   --icon-lg: 1.5rem;
   --icon-xl: 2rem;
+  --icon-hero: 4rem;
 }
 ```
 
@@ -26449,7 +26452,7 @@ No other stylesheet exists: a project never adds a file per page. The HTML links
 | Toast | `.toast`, `.toast-progress`, `.toast-close` | `-success`, `-info`, `-warning`, `-error` | none | none |
 | Modal, popover | `.modal`, `.modal-body`, `.modal-actions` on `<dialog>` or `[popover]` | none | none | `[open]`, `:popover-open` |
 | Table | `.table-wrapper`, `.data-table` | none | `sm` | `[aria-sort]` |
-| Navigation | `.nav-links`, `.nav-link`, hamburger drawer | none | none | `[aria-current]`, `[aria-expanded]` |
+| Navigation | `.nav-links`, `.nav-link`, and the drawer: `.nav-panel`, `.nav-toggle`, `.nav-overlay`, `.nav-checkbox`, `.nav-close` | none | none | `[aria-current]`, `[aria-expanded]` |
 | Header, footer | `.site-header`, `.site-brand`, `.site-header-actions`, `.site-header-link`, `.site-footer`, `.footer-onion`, `.footer-i2p` | none | none | none |
 | Hub list | `.hub-list`, `.hub-item`, `.hub-link`, `.hub-title`, `.hub-desc` | none | none | `:focus-visible` |
 | Info list | `.info-list`, `.info-label`, `.info-value` | none | none | none |
@@ -26465,18 +26468,51 @@ No other stylesheet exists: a project never adds a file per page. The HTML links
 |-------------------|------------------------------|------------|
 | Cookie banner | `.cookie-banner`, `.btn-accept`, `.btn-decline` | Cookie banner section |
 | Navigation drawer | `.nav-panel`, `.nav-toggle`, `.nav-overlay`, `.nav-checkbox` | Navigation section |
-| Status | `.status-ok`, `.status-warning`, `.status-error`, `.status-banner` | Status and health sections |
-| Code and copy | `.code-block`, `.copy-btn`, `.long-string`, `.ip-address`, `.api-token`, `.hash` | Code block section |
-| Stats and lists | `.stats-grid`, `.feature-list`, `.feature-enabled`, `.node-list` | Landing and cluster sections |
+| Status | `.status-ok`, `.status-warning`, `.status-error`, `.status-banner`, `.status-text`, `.spinner` | Status and health sections |
+| Code and copy | `.code-block`, `.copy-btn`, `.copy-icon`, `.copy-text`, `.copy-value`, `.long-string`, `.onion-address`, `.i2p-address`, `.monospace-data`, `.ip-address`, `.api-token`, `.hash` | Code block section |
+| Stats and lists | `.stats-grid`, `.feature-list`, `.feature-enabled`, `.feature-disabled`, `.node-list` | Landing and cluster sections |
 | Admin shell | `.topbar`, `.sidebar`, `.admin-footer`, `.dropdown-item`, `.notification-bell`, `.profile-menu`, `.avatar` | Admin panel section |
 | Form feedback | `.field-error` | Form sections |
 | Skip link | `.skip-link` | Accessibility section |
+
+**Project components.** The catalog and this table are the template's. A project adds its own feature components (an airport card, a map canvas, a search result) to `components.css` under the same naming, token and layer rules, lists them in a `### UI components` table of IDEA.md (name, block and elements, variants, states) and gives each a `/debug/components` entry; a page never writes a one-off class. A size the template has no token for (a map canvas height) is a project token `--{project}-{name}` defined in the `tokens` layer of `common.css`.
+
+**Page placement (`public.css`, `admin.css`).** These files hold only layout of the page: `.page-{name}` on `<main>`, which may set the documented custom properties of the layout primitives (`--stack-gap`, `--cluster-gap`, `--grid-min`) and `grid-template-areas` or `grid-area` on the page's own wrapper elements; it never restyles a component and never customizes `.container`.
 
 **Exempt from the class, token and lint rules of this section:**
 
 - Third-party theme CSS shown as an illustration (`.md-typeset`, `.swagger-ui`, `.opblock`, `.admonition`, `.graphiql-container`, CodeMirror). Its own palette is mapped from the project tokens; it never adds a second palette.
 - Examples labelled `WRONG`, which exist to show what the lint rejects (for example `.my-export-btn`). They are never copied into a stylesheet.
+- The literal sizes in the CSS examples of this specification are illustrative; the stylesheet writes each as its token (`0.25rem` is `--space-1`, `0.5rem` is `--space-2`, `0.75rem` is `--space-3`, `1rem` is `--space-4`, `4px` is `--radius-sm`, `1px` is `--border-width`), and the lint is the contract, not the example.
+- The one `@media print` block may use `!important` to override screen rules, and only there.
 - Component custom properties with a fallback (`--cluster-gap`, `--control-height`, `--grid-min`, `--stack-gap`, `--toast-duration`); they are set by the component, not defined in `:root`.
+
+### Icons and SVG (every SVG has a size)
+
+**An inline `<svg>` without width and height takes the full width of its container, which is how a 20 px search icon became a viewport-sized artwork that pushed the page content out of view. No SVG is ever left unsized: the base layer gives every bare `<svg>` the `md` icon size, and a size class changes it.**
+
+```css
+@layer base {
+  svg { flex-shrink: 0; max-inline-size: 100%; }
+  svg:not([width]):not([height]) { inline-size: var(--icon-md); block-size: var(--icon-md); }
+}
+@layer components {
+  .icon { inline-size: var(--icon-md); block-size: var(--icon-md); }
+  .icon-sm { inline-size: var(--icon-sm); block-size: var(--icon-sm); }
+  .icon-lg { inline-size: var(--icon-lg); block-size: var(--icon-lg); }
+  .icon-xl { inline-size: var(--icon-xl); block-size: var(--icon-xl); }
+  .icon-hero { inline-size: var(--icon-hero); block-size: var(--icon-hero); }
+  .illustration { inline-size: min(100%, var(--measure)); block-size: auto; }
+}
+```
+
+| Rule | Detail |
+|------|--------|
+| **Sizes** | `--icon-sm` 1 rem, `--icon-md` 1.25 rem (default), `--icon-lg` 1.5 rem, `--icon-xl` 2 rem, `--icon-hero` 4 rem (empty states and hero marks). Nothing larger is an icon |
+| **Roles** | Inline in text and in buttons, tiles and the header: `.icon` (or the bare default). Empty state and feature mark: `.icon-hero`. A search, brand or hero graphic that must be larger is an `.illustration` inside a wrapper with a width, never a bare `<svg>` |
+| **Colour** | `currentColor` for `fill` or `stroke`, never a literal color, so both themes and the contrast rule apply |
+| **Accessibility** | Decorative: `aria-hidden="true"` and `focusable="false"`. Meaningful: `role="img"` and an accessible name; an icon-only control carries the `aria-label` on the control |
+| **Test** | The layout test fails when any rendered `<svg>` is larger than `--icon-hero` in either dimension and is not inside an `.illustration`, and when any page shows no main content within the first viewport because one element fills it |
 
 ### Themes, direction, motion and contrast
 
@@ -26656,7 +26692,7 @@ html.theme-light {
 | `reset` | Box sizing, margin and padding reset | Nothing visual |
 | `tokens` | The `:root` custom properties (colors, spacing, radius, type) | The only place a literal color or size is written |
 | `base` | Bare element selectors (`body`, `a`, `h1`..`h6`, `label`, `input`) | Typography, color and spacing of plain elements, plus the one page-shell rule (`body` as a column flex container with `min-height: 100dvh`, `main { flex: 1 }`); never the layout or internals of a component |
-| `components` | Every shared component (`.btn`, `.section-card`, `.form-group`, `.toggle`, `.hub-list`, `.badge`, `.table-wrapper`) | Class selectors only, specificity at most `(0,4,1)` (a state selector such as `.toggle input:checked + .toggle-track` is allowed), self-contained: a component sets its own `display`, size and alignment and never relies on its parent for them. A descendant selector on a generic parent (`.form-group label`) is forbidden: write `.form-group-label` or `label:not(.toggle)` |
+| `components` | Every shared component (`.btn`, `.section-card`, `.form-group`, `.toggle`, `.hub-list`, `.badge`, `.table-wrapper`) | Class selectors only, specificity at most `(0,4,1)` (a state selector such as `.toggle input:checked + .toggle-track` is allowed), self-contained: a component sets its own `display`, size and alignment and never relies on its parent for them. A descendant selector is allowed only when its parent is the component's OWN block class and its subject is an element that component owns (`.info-list dt`, `.data-table th`, `.toggle input`); one whose parent is a generic or foreign component (`.form-group label`, `.section-card h2`) is forbidden: write `.form-group-label` or `label:not(.toggle)` |
 | `pages` | Page-specific placement | Grid placement and spacing of shared components through their documented custom properties (`--toggle-size`); a page never restyles a component's internals and never invents a styled class (see "Classes" in the page shell rules) |
 | `utilities` | Single-purpose helpers (`.visually-hidden`, `.text-start`, `.stack-4`) | Win over every other layer; one declaration each |
 
@@ -26666,7 +26702,7 @@ html.theme-light {
 | **Customize through properties** | A component exposes custom properties for what may vary; overriding its selectors from another file is a defect |
 | **No `!important`, no ID selectors** | The print stylesheet's `!important` is the only exception and lives in `utilities` |
 | **Examples are unwrapped** | The CSS examples in this document are shown without their `@layer` wrapper to stay readable; in a project every rule sits inside its layer |
-| **Lint gate** | `stylelint` runs in `make test` (from the Go image, which has Node and npm) and fails on an unlayered rule, `!important`, an ID selector, a selector above `(0,4,1)` in `components`, and a descendant selector whose subject is a bare element under a component class |
+| **Lint gate** | `stylelint` runs in `make test` (from the Go image, which has Node and npm) and fails on an unlayered rule, `!important`, an ID selector, a selector above `(0,4,1)` in `components`, and a descendant selector whose subject is a bare element under a generic or foreign component class (a component's own block may style its own `dt`, `dd`, `th`, `td`, `input` and `label`) |
 
 ## Reuse Before Creating
 
@@ -29549,8 +29585,9 @@ func renderFallbackError(w http.ResponseWriter, r *http.Request, status int) {
 | **Same theme classes** | Both layouts use `theme-dark`, `theme-light` on `<html>` |
 | **Same CSS variables** | Theme colors defined once in `common.css`, used everywhere |
 | **Surfaces** | A card, panel or popover surface is `--color-bg-card` or `--color-bg-secondary`; `--color-border`, `--color-bg-hover` and `--color-bg-active` are never a card surface. A conformance test computes the contrast of every text token against every surface it can appear on: text at least 4.5:1, UI components (borders, track outlines, icons) at least 3:1 |
-| **Same color schemes** | `dark.css` and `light.css` apply to both public and admin |
+| **Same color schemes** | The dark and light token sets in `common.css` apply to both public and admin; there is no `dark.css` or `light.css` file |
 | **No layout-specific themes** | Do NOT create `admin-dark.css` or `public-light.css` |
+| **No-cookie default** | A visitor with no theme cookie gets `web.ui.theme` (shipped default `dark`); `theme-auto` is rendered only when the cookie or `web.ui.theme` says `auto` |
 | **No class conflicts** | Theme class names are global and consistent |
 | **No ambiguity** | One set of theme rules for the entire project |
 
@@ -30081,7 +30118,7 @@ Without the script: Esc and overflow detection are unavailable, but the scrim, t
   position: fixed;
   inset-block: 0;
   inset-inline-end: 0;
-  width: min(280px, 85vw);
+  width: min(var(--drawer-width), 85vw);
   height: 100dvh;
   overflow-y: auto;
   padding-bottom: env(safe-area-inset-bottom);
@@ -30090,7 +30127,7 @@ Without the script: Esc and overflow detection are unavailable, but the scrim, t
   /* Hidden with transform + visibility, NEVER a negative offset (it widens the page) */
   transform: translateX(100%);
   visibility: hidden;
-  transition: transform 0.3s ease, visibility 0s linear 0.3s;
+  transition: transform var(--duration-drawer) ease, visibility 0s linear var(--duration-drawer);
   z-index: var(--z-drawer);
 }
 [dir="rtl"] .nav-panel { transform: translateX(-100%); }
@@ -30109,7 +30146,7 @@ Without the script: Esc and overflow detection are unavailable, but the scrim, t
 .nav-checkbox:checked ~ .nav-panel {
   transform: none;
   visibility: visible;
-  transition: transform 0.3s ease;
+  transition: transform var(--duration-drawer) ease;
 }
 
 .nav-checkbox:checked ~ .nav-overlay {
@@ -30134,7 +30171,7 @@ Without the script: Esc and overflow detection are unavailable, but the scrim, t
 | **Opaque panel** | The drawer background is a solid theme color. Hero text or pills showing through the menu is a bug |
 | **Every link, in order** | The panel lists the same links as the desktop nav (the screenshot showed one link). Active page marked with `aria-current="page"` |
 | **Stacking** | Define the z-index tokens once in `:root` and use only them: `--z-raised` 10 (header), `--z-dropdown` 100, `--z-banner` 250 (site banners: above page content, below the scrim, drawers and modals), `--z-overlay` 300 (scrim), `--z-drawer` 350, `--z-modal` 400, `--z-toast` 500; no magic numbers such as `9999`. Scrim and drawer must sit above `<main>` and the hero in the same stacking context |
-| **Dimensions** | `height: 100dvh`, `width: min(280px, 85vw)`, `overflow-y: auto`, `padding-bottom: env(safe-area-inset-bottom)`. RTL: slides from the left (`[dir="rtl"]`) |
+| **Dimensions** | `height: 100dvh`, `width: min(var(--drawer-width), 85vw)`, `overflow-y: auto`, `padding-bottom: env(safe-area-inset-bottom)`. RTL: slides from the left (`[dir="rtl"]`) |
 | **While open** | Page behind does not scroll (`body:has(.nav-checkbox:checked) { overflow: hidden }`); the scrim dims the whole viewport; a scrim tap closes it (no JavaScript needed) and Esc closes it when the `app.js` enhancement is present |
 | **Fixed elements** | The drawer, scrim, modal, toast, banner and popover are the ONLY `position: fixed` elements; header, nav and footer scroll with the page |
 
@@ -30194,8 +30231,8 @@ main {
 
   /* Reset backgrounds for ink saving */
   body {
-    background: white !important;
-    color: black !important;
+    background: var(--print-bg) !important;
+    color: var(--print-text) !important;
   }
 
   /* Ensure content is full width */
@@ -30447,7 +30484,7 @@ Full CSS rules (custom properties, theming, layout): see "CSS Rules" earlier in 
 
 | Theme | When Active | Default | Color Scheme |
 |-------|-------------|---------|--------------|
-| **Dark** | User selects dark OR system dark + auto mode | **YES** | Dark theme colors (see `dark.css`) |
+| **Dark** | User selects dark OR system dark + auto mode | **YES** | Dark theme colors (see the dark token set in `common.css`) |
 | **Light** | User selects light OR system light + auto mode | No | Light theme colors (see `light.css`) |
 | **Auto** | Follows system preference (light/dark) | No | System `prefers-color-scheme` |
 
@@ -31531,7 +31568,7 @@ server:
 | Attacker steals the session cookie via XSS | ✗ No (CSRF can't help — session theft is its own problem). Defense is `HttpOnly` cookie + CSP. |
 | Attacker submits a request with a stolen Bearer token | ✗ No (Bearer auth bypasses CSRF by design). Defense is token rotation, scoping, and rate limiting. |
 | Public BACKEND endpoint (`/api/**`, no auth) POST'd to from anywhere | n/a (backend is outside CSRF scope, nothing to abuse). A public FRONTEND form (contact, guest preferences) is NOT exempt: it carries the token and a missing or invalid one is `403` |
-| Browser-issued report to `/api/{api_version}/server/reports/*` | n/a (PART 14 reports are deliberately public; rate-limited per-IP) |
+| Browser-issued report to `/api/{api_version}/server/reports/{type}` | n/a (PART 14 reports are deliberately public; rate-limited per-IP) |
 
 ## Footer Customization
 
@@ -32346,7 +32383,7 @@ These rules tighten "Header Layout" above. A header that breaks one of them is a
 |-----|------|
 | 1 | **Allowed elements, in this order, and nothing else:** the brand link, `<nav class="nav-links">`, the hamburger label (below the desktop breakpoint), then `.site-header-actions` containing exactly: the Guest Header (the preferences link, then the theme-toggle form) when nobody is signed in or Multi-User is off; otherwise the notification bell and the profile menu, whose dropdown holds the theme toggle ("Notification Bell", "Profile Icon"). No language selector, no search box (a project's search lives in `<main>`), no install button, no sign-in or sign-up buttons in `.site-header-actions` (the Login link is a nav link, rule 2), no sponsor or social icons, no second preferences link for mobile. The one addition is the operator's `branding.content.header` fragment ("Page Content"): when the operator sets it, it is rendered as the last child of `<header>`, after `.site-header-actions`; with the entry unset nothing is rendered. The conformance test renders every page with it unset, and one more render with it set asserts the fragment is the last child and that nothing else in the header changed. This list is the content of `<header>`: the `nav-toggle` checkbox, the drawer panel and the scrim are not header elements but siblings of `<header>` in `<body>` (as in the example), and the `~` selectors need only those three to share that parent |
 | 2 | **Nav is application sections only:** Home plus the project's own sections, plus the Login link (and Register when registration is open) while nobody is signed in and Multi-User is on; labels of one or two words, plain `<a>` elements, no dropdowns. About, Help, Privacy, Terms, Preferences and API or documentation links belong to the footer; the Contact form is linked nowhere (see "/server/contact" → "Who can reach the form"). The current page carries `aria-current="page"` and `.active`. A project with many sections groups them behind a landing page instead of growing the bar |
-| 3 | **Mobile:** one hamburger (checkbox plus label, no JavaScript) opens the drawer; the preferences link and the theme toggle stay in the bar and never move into the drawer; the drawer holds exactly the nav links |
+| 3 | **Mobile:** one hamburger (checkbox plus label, no JavaScript) opens the drawer; the preferences link and the theme toggle stay in the bar and never move into the drawer; the drawer holds the nav links plus the `.nav-close` label |
 | 4 | **No JavaScript required:** the theme toggle is a form `POST` whose target is the server-computed next mode; no `<noscript>` copy of a control; option and button labels come from the value enum (`dark`, `light`, `auto` → their translated names), never by position |
 | 5 | **Brand:** the branding logo (with `alt` equal to the application name) or the application name as text, linking to `/`; one brand element |
 | 6 | **Skip links:** "Skip to main content" and "Skip to navigation" are the first focusable elements of every page |
@@ -35453,6 +35490,7 @@ The admin panel MUST include a scheduler section with:
 | `/api/{api_version}/server/{admin_path}/scheduler` | GET | List scheduled tasks |
 | `/api/{api_version}/server/{admin_path}/scheduler/{id}` | GET | Get task details |
 | `/api/{api_version}/server/{admin_path}/scheduler/{id}` | PATCH | Update task |
+| `/server/{admin_path}/scheduler/{id}` | POST | Update task settings from the no-JavaScript form (`303` back to the scheduler page; the API keeps `PATCH`) |
 | `/api/{api_version}/server/{admin_path}/scheduler/{id}/run` | POST | Run task now |
 | `/api/{api_version}/server/{admin_path}/scheduler/{id}/enable` | POST | Enable task |
 | `/api/{api_version}/server/{admin_path}/scheduler/{id}/disable` | POST | Disable task |
@@ -36894,7 +36932,7 @@ Do not reply to this email.
 
 | Aspect | Rule |
 |--------|------|
-| Measured | The same probe as `checks.database` in `/server/healthz` (PART 13): a trivial query on the write handle and on the read handle, each under a 5-second deadline |
+| Measured | The same probe as `checks.database` in `/server/healthz` (PART 13): a trivial query on the write handle and on the read handle, each under a 2-second deadline |
 | Trigger | `server.notifications.database_error.failures` (default `3`) consecutive failed probes; `{since}` is the time of the FIRST failure of that run, `{error}` the last error with any credentials removed |
 | Cadence | Built-in scheduler task `database_check` on its own schedule `server.scheduler.tasks.database_check.schedule` (default `@every 1m`), the one cadence key: there is no separate `check_interval`; no external cron |
 | Deduplication | One WARN and email when the trigger is first met; repeated at most once per `server.notifications.database_error.repeat` (default `24h`) while probes keep failing |
@@ -37517,7 +37555,7 @@ server:
     # Catch-up window: run missed tasks if within this duration
     catch_up_window: 1h
 
-    # Built-in tasks (can adjust schedule, cannot disable critical tasks)
+    # Built-in tasks: the schedule can be adjusted; the critical tasks ssl_renewal, session_cleanup and token_cleanup cannot be disabled (the same for every project); every other built-in can be disabled
     tasks:
       # Daily at 03:00 (after backup at 02:00)
       ssl_renewal:
@@ -37860,6 +37898,7 @@ With `max_backups: 1` the previous full also stays on disk until the next run, b
 | `/api/{api_version}/server/{admin_path}/scheduler` | GET | List all tasks |
 | `/api/{api_version}/server/{admin_path}/scheduler/{id}` | GET | Get task details |
 | `/api/{api_version}/server/{admin_path}/scheduler/{id}` | PATCH | Update task settings |
+| `/server/{admin_path}/scheduler/{id}` | POST | Update task settings from the no-JavaScript form (`303` back to the scheduler page; the API keeps `PATCH`) |
 | `/api/{api_version}/server/{admin_path}/scheduler/{id}/run` | POST | Run task immediately |
 | `/api/{api_version}/server/{admin_path}/scheduler/{id}/enable` | POST | Enable task |
 | `/api/{api_version}/server/{admin_path}/scheduler/{id}/disable` | POST | Disable task |
@@ -37929,7 +37968,7 @@ GeoIP databases are NEVER embedded in the binary — they are downloaded on firs
 
 ## Database Sources (ip-location-db) — Canonical, Single Source Per Category
 
-All databases come from [sapics/ip-location-db](https://github.com/sapics/ip-location-db), distributed as GitHub Release assets (`https://github.com/sapics/ip-location-db/releases/download/latest/{file}`; upstream moved distribution there on June 18, 2026) — no API key, account, or license agreement required at download time. The old jsDelivr `@ip-location-db/*` npm packages stopped updating on June 17, 2026 and MUST NOT be used. Every file has a checksum at `https://github.com/sapics/ip-location-db/releases/download/checksum/{file}.sha256`; the downloader MUST verify it before replacing a live database. The published checksum can lag or disagree with the file (upstream has shipped a `.sha256` that did not match its `.mmdb`): on a mismatch the downloader re-fetches both once after a short delay, and if they still disagree it keeps the live database and reports the check `degraded`. With no live database it installs the file only if it opens as a valid MMDB with sane metadata, logs one warning that it is unverified, reports `degraded`, and retries on the next update, so a checksum fault never leaves the project with no database and never turns health into `503`. Every downloaded data URL, including each `extra_sources` blocklist (a list can disappear, for example a 404), follows "Startup Never Fails": a failed or missing source degrades only its own feature and never stops the server.
+All databases come from [sapics/ip-location-db](https://github.com/sapics/ip-location-db), distributed as GitHub Release assets (`https://github.com/sapics/ip-location-db/releases/download/latest/{file}`; upstream moved distribution there on June 18, 2026) — no API key, account, or license agreement required at download time. The old jsDelivr `@ip-location-db/*` npm packages stopped updating on June 17, 2026 and MUST NOT be used. No checksum is used: upstream's published `.sha256` files have shipped values that do not match their `.mmdb` files, so a checksum gate would keep valid databases from ever installing. A downloaded file is validated by opening it as an MMDB instead: it must open, carry the expected `database_type`, have sane `build_epoch`, `node_count` and `record_size` metadata, and answer a lookup of a known public address (`8.8.8.8`, or `2001:4860:4860::8888` for an IPv6 database) without error. A valid file replaces the live database atomically (written under a temporary name in the same directory, then renamed). An invalid or failed download keeps the live database and reports the check `degraded`; with no live database the feature runs as GeoIP unavailable (`degraded`) and the download is retried on the next update, so a download fault never turns health into `503`. Every downloaded data URL, including each `extra_sources` blocklist (a list can disappear, for example a 404), follows "Startup Never Fails": a failed or missing source degrades only its own feature and never stops the server.
 
 **Go library:** use `github.com/oschwald/maxminddb-golang` — NOT `geoip2-golang`. ip-location-db embeds custom `database_type` strings (`asn ipv4`, `city ipv6`, `country ipvAll`, etc.) that `geoip2.Open()` rejects with `InvalidDatabaseError`. Decode into project-defined structs matching the field tables below.
 
@@ -40180,7 +40219,7 @@ backup only: highest priority wins, and it consumes no monthly, weekly or daily 
 | **Base protection** | Retention never deletes a full that is the `base_backup` of a retained incremental |
 | **Verification** | An incremental is verified like a full, plus: the base file exists and the `sha256` field of ITS manifest equals `base_sha256` |
 | **First run** | No previous full: skip the daily incremental |
-| **Password change** | The base full's `key_id` is read from its cleartext header ("Encrypted archive format", PART 22), never from the encrypted manifest, so it is readable whatever password is configured. The run re-derives a key from the CURRENT password with the base's own salt and Argon2id parameters, computes `key_id` and compares: equal = same password, different = the password changed. A header that does not parse (bad magic or parameters) is a corrupt base, not a change. Either way the run skips the daily incremental (as on the first run), creates a new full under the current password and logs it (INFO for a change, WARN for a corrupt base); the integrity of the old base is the job of `--maintenance backup test`. A restorable pair is one full plus the incremental based on it, and a pair always shares ONE password. The server stores only the CURRENT password, so verifying (`--maintenance backup test`) or restoring an archive made under an older password needs the operator to supply that password. After a change there are two pairs: the old full with its old incremental (old password) until the old full ages out of retention, and the new full (new password) alone until the next run writes an incremental based on it, which then replaces the old incremental |
+| **Password change** | The base full's `key_id` is read from its cleartext header ("Encrypted archive format", PART 22), never from the encrypted manifest, so it is readable whatever password is configured. The run re-derives a key from the CURRENT password with the base's own salt and Argon2id parameters, computes `key_id` and compares: equal = same password, different = the password changed. A header that does not parse (bad magic or parameters) is a corrupt base, not a change. Either way the run skips the daily incremental (as on the first run), creates a new full under the current password and logs it (INFO for a change, WARN for a corrupt base); the integrity of the old base is the job of `--maintenance backup test`. A restorable pair is one full plus the incremental based on it, and a pair always shares ONE password. The server stores only the CURRENT password, so verifying (`--maintenance backup test`) or restoring an archive made under an older password needs the operator to supply that password. After a change there are two pairs: the old full with its old incremental (old password) until the old full ages out of retention, and the new full (new password) alone until the next run writes an incremental based on it, which then replaces the old incremental, so the daily-incremental slot always holds exactly one file and a run never keeps two |
 
 **Restore (`--maintenance restore [file]`):** the file is optional; with none, the newest full backup in `{backup_dir}` ("Default archive selection") is restored after a typed confirmation.
 
@@ -40508,7 +40547,7 @@ POST /api/{api_version}/server/{admin_path}/backup/restore
 | `beta` | Pre-release | `*-beta` | `202512051430-beta` |
 | `devel` | Pre-release | `devel` (rolling tag, deleted and recreated nightly) | `devel` |
 
-**Channel names:** `devel` is the canonical name of the rolling channel. `daily`, `rolling`, `dev`, and `development` are accepted anywhere a channel is read (`--update branch`, `update.branch`, `cli.yml`) and normalized to `devel` before it is stored or compared, so a stored value is always `stable`, `beta`, or `devel`. `stable` follows the version tags with or without a `v` prefix (`v1.0.1` and `1.0.1`); `beta` follows the `*-beta` tags.
+**Channel names:** `devel` is the canonical name of the rolling channel. `daily`, `rolling`, `dev`, and `development` are accepted anywhere a channel is read (`--update branch`, `update.branch`, `cli.yml`) and normalized to `devel` before it is stored or compared, so a stored value is always `stable`, `beta`, or `devel`. `stable` follows the stable `v*` release tags (`v1.0.1`); versions are compared without the `v` prefix (`1.0.1`); `beta` follows the `*-beta` tags.
 
 ### Examples
 
@@ -42477,7 +42516,7 @@ func (ws *windowsService) Execute(args []string, r <-chan svc.ChangeRequest, s c
 - **NEVER guess or assume** - must be explicitly created by the user, and never written by AI
 - Canonical single-line official site source when present
 - If `site.txt` exists, it wins over `IDEA.md`, README, env vars, CI secrets, and other fallbacks
-- `IDEA.md` `official_site` only resolves the `{official_site}` placeholder in README and docs; it is NOT an operational source. The placeholder resolves in the same order as the operational value: `site.txt` first, then IDEA.md `official_site`. A populated `site.txt` therefore also supplies the README and docs URL examples when IDEA.md omits `official_site`; with neither, the placeholder is unset and the examples use relative paths. The embedded `OfficialSite` and the CLI's default server come only from `site.txt`, `OFFICIAL_SITE` or CI secrets, so with none of them the CLI requires `--server` even when IDEA.md has a value. When both exist, `IDEA.md` should match `site.txt`; `site.txt` is the easy-to-update operational override
+- `IDEA.md` `official_site` only resolves the `{official_site}` placeholder in README and docs; it is NOT an operational source. The placeholder resolves in its own order: `site.txt` first, then IDEA.md `official_site` (the operational order, `site.txt`, then `OFFICIAL_SITE`, then CI secrets, is separate and never reads IDEA.md). A populated `site.txt` therefore also supplies the README and docs URL examples when IDEA.md omits `official_site`; with neither, the placeholder is unset and the examples use relative paths. The embedded `OfficialSite` and the CLI's default server come only from `site.txt`, `OFFICIAL_SITE` or CI secrets, so with none of them the CLI requires `--server` even when IDEA.md has a value. When both exist, `IDEA.md` should match `site.txt`; `site.txt` is the easy-to-update operational override
 - If not present, CLI/Agent users must always specify `--server` flag
 - Sources checked in order:
   1. File: `site.txt` in project root
@@ -49814,7 +49853,7 @@ rm -rf "$TEST_DIR"
 | **`--rm` always** | Every `docker run` uses `--rm`, for debugging, one-off checks and build runs alike. The only exemption is a detached (`-d`) test server or sidecar kept alive so its logs can be read after a failure; it is still named by convention and is removed by exact name before the task ends. An exited container in `docker ps -a` means a run skipped `--rm`: remove it by exact name (Docker Container Rules) and fix the command |
 | **Named by convention** | `--name "{project_name}-XXXXXXXX"` (8 random characters), so every container of the project is found with `docker ps -a --filter "name=^{project_name}-"`. A script that must stop a container later records its name in a variable |
 | **Shared run prefix** | Ad-hoc runs reuse the Makefile prefix flags: `--rm --no-healthcheck`, `--memory`, `--cpus`, `--cpu-shares` and the cache mounts. `--no-healthcheck` stops the toolchain image's service `HEALTHCHECK` from polling a one-shot container. Examples in this specification may show a shortened `docker run` (without `--name` or the shared prefix) to keep one subject visible; the rule governs every command a project ships (Makefile, scripts, docs, CI), where the full flags are written out |
-| **One container per phase** | Steps that belong together run in ONE `docker run ... sh -c "a && b && c"`, never a container per step (`go mod tidy`, then `go mod download`, then `gofmt`, then `go vet`, then one package's tests). Checks a Makefile target does not cover are batched into one container as well. The Makefile targets follow the same rule: `build`, `local` and `dev` each run in ONE container, the cross-compile loop over every platform included |
+| **One container per phase** | Steps that belong together run in ONE `docker run ... sh -c "a && b && c"`, never a container per step (`go mod tidy`, then `go mod download`, then `gofmt`, then `go vet`, then one package's tests). Checks a Makefile target does not cover are batched into one container as well. The Makefile targets follow the same rule: `build`, `test` and `release` each run in ONE container, the cross-compile loop over every platform included |
 | **Gate once per change set** | `make test` runs ONCE, after the edits for a change are finished. A failure is fixed, then the full gate runs again; no container per hypothesis, per file or per formatting fix |
 | **One at a time** | At most ONE toolchain container (a `make` target, a `tests/*.sh` script or an ad-hoc run) per repository at any moment; a second one never starts while the first is running. Sub-agents and forks never start containers: the main session runs the gate |
 | **Bounded** | Every container run has a time ceiling: the Makefile prefix wraps `docker run` in `timeout -k 30 $(DOCKER_TIMEOUT)` (default `3600`), and a script or an ad-hoc run does the same. A hung `go vet`, test or build is stopped by the ceiling instead of holding a container, CPU and memory for hours; a run that hits it is diagnosed, never retried with the same value. The signal is forwarded to the container's PID 1, and anything that survives is removed by exact name (Docker Container Rules) |
@@ -50275,7 +50314,7 @@ test:
 
 ### How to Achieve the Coverage Gates (≥60% unit, 100% endpoints)
 
-**0. Keep the process entry thin and testable.** The unit gate counts every package, the root `src` package included, so orchestration left in `main()` drags the percentage down while only the compiled binary can reach it. `src/main.go` holds only `main()`: it calls `config.Load(os.Args[1:])` (flag parsing and configuration building live in `src/config`, which unit tests reach), copying the build metadata `Version`, `CommitID`, `BuildEpoch` and `OfficialSite` from `src/version.go` into the result, and then calls `app.Run(ctx, cfg) error`, where `cfg` is the `config.ServerConfig` value, the aggregate runtime configuration built by `config.Load` (the naming rule's `ServerConfig`): it has a field for every section of the merged configuration that the project defines (server and web, the project's own sections such as `search` or `engine` only when IDEA.md defines them, and the area-file settings of PART 5), so `app.Run` needs nothing else from `main`; `config.Load` only parses flags and environment and resolves paths, and `app.Run` reads `server.yml`, the drop-ins and `secrets.yml` at startup step 13 (PART 8), after path setup, privilege transition, logging and PID handling; and `app` is the package `github.com/{project_org}/{internal_name}/src/app`, which never imports `main`. `app.Run` (startup, signal handling, graceful shutdown) is in that package, which unit tests reach: the test calls `run` with a cancelable context and a listener on `127.0.0.1:0`, waits for the ready signal, makes one request, cancels the context and asserts a clean return. Phase 2 still tests the compiled binary; its coverage never counts toward the Phase 1 percentage.
+**0. Keep the process entry thin and testable.** The unit gate counts every package, the root `src` package included, so orchestration left in `main()` drags the percentage down while only the compiled binary can reach it. `src/main.go` holds only `main()`: it calls `config.Load(os.Args[1:])` (flag parsing and configuration building live in `src/config`, which unit tests reach), copying the build metadata `Version`, `CommitID`, `BuildEpoch` and `OfficialSite` from `src/version.go` into the result, and then calls `app.Run(ctx, cfg) error`, where `cfg` is the `config.ServerConfig` value, the aggregate runtime configuration built by `config.Load` (the naming rule's `ServerConfig`): it has a field for every section of the merged configuration that the project defines (the file-backed fields are filled by `app.Run` at startup step 13, not by `config.Load`) (server and web, the project's own sections such as `search` or `engine` only when IDEA.md defines them, and the area-file settings of PART 5), so `app.Run` needs nothing else from `main`; `config.Load` only parses flags and environment and resolves paths, and `app.Run` reads `server.yml`, the drop-ins and `secrets.yml` at startup step 13 (PART 8), after path setup, privilege transition, logging and PID handling; and `app` is the package `github.com/{project_org}/{internal_name}/src/app`, which never imports `main`. `app.Run` (startup, signal handling, graceful shutdown) is in that package, which unit tests reach: the test calls `run` with a cancelable context and a listener on `127.0.0.1:0`, waits for the ready signal, makes one request, cancels the context and asserts a clean return. Phase 2 still tests the compiled binary; its coverage never counts toward the Phase 1 percentage.
 
 **1. Test All Code Paths:**
 ```go
@@ -50406,9 +50445,9 @@ verify_all_endpoints_tested
 
 | When | Run This | Purpose |
 |------|----------|---------|
-| **During development** | `make test` (Phase 1 — toolchain gate) | Fast feedback, verify source logic |
-| **Before committing** | `make test` (Phase 1 required) | Toolchain gate must pass before every commit |
-| **Before release** | `make test` + `./tests/incus.sh` | Phase 1 + Phase 2 binary validation (manual) |
+| **During development** | `make test` (Phase 1 toolchain gate, then the Phase 2 basic tier) | Feedback on source logic and on the compiled binary |
+| **Before committing** | `make test` (Phase 1 and the basic tier required) | The gate must pass before every commit |
+| **Before release** | `make test` + `./tests/incus.sh` | The gate plus the full-app check (manual) |
 | **In CI/CD** | Phase 1 only | Toolchain gate; Phase 2 is manual |
 
 **Test Execution Order:**
@@ -51808,7 +51847,7 @@ The table is illustrative — the rule is universal: enumerate IDEA.md's feature
 
 | Command | Runs | When |
 |---------|------|------|
-| `make test` | Unit + route tests only — the commit gate; NEVER runs E2E | Before every commit |
+| `make test` | Gates, unit and route tests, then the basic binary checks (`tests/run_tests.sh`) — the commit gate; NEVER runs E2E | Before every commit |
 | `./tests/e2e.sh` | Full E2E suite (all three tiers) | On demand: beta testing, pre-release, after major frontend work |
 
 `./tests/e2e.sh` follows the same manual, developer-initiated pattern as `./tests/incus.sh` and is Docker-wrapped: the E2E container needs Chromium (`chromedp/headless-shell` as a sidecar, or Chromium installed in the test image). In CI, E2E is at most a manually triggered job (`workflow_dispatch`) that uploads failure artifacts — it is never a required check and never blocks commits, merges, or releases. The sidecar starts under the `{project_name}-` name prefix, and `tests/e2e.sh` removes it in its `trap cleanup EXIT INT TERM` handler even when the run fails: a sidecar never outlives the script.
@@ -64474,7 +64513,7 @@ server:
 ### SAML Single Logout (SLO)
 
 - **SP-initiated:** with `slo_enabled: true`, local logout builds a signed `LogoutRequest`, ends the local session, and redirects the browser to the IdP SLO endpoint (`idp_slo_url`, Redirect binding). The IdP returns a `LogoutResponse` to `/server/auth/saml/{provider}/slo/callback`.
-- **IdP-initiated:** the IdP POSTs a signed `LogoutRequest` to `/server/auth/saml/{provider}/slo`; the server validates the signature, terminates the matching local session(s) by `NameID`/session index, and returns a signed `LogoutResponse`.
+- **IdP-initiated:** the IdP POSTs a signed `LogoutRequest` to `/server/auth/saml/{provider}/slo/callback`; the server validates the signature, terminates the matching local session(s) by `NameID`/session index, and returns a signed `LogoutResponse`.
 - SLO requires signed logout messages; unsigned `LogoutRequest`/`LogoutResponse` are rejected.
 
 ### API-mode SAML Flow
@@ -65164,7 +65203,7 @@ PATCH /api/{api_version}/users/settings
 | `/api/mcp`, `/mcp`, `/api/{api_version}/server/mcp` | POST | Bearer REQUIRED on every MCP request (`401` without one); what the token may do is the API's own scope and per-operation rules | MCP endpoint — see "MCP Endpoint"; the credential is the API's Bearer token |
 | `/api/autodiscover` | GET | None | Discovery document: `name`, `version`, `api.current_version`, `urls`, the exposed `onion` and `i2p`, and the CLI/agent update versions; no settings or schema. On a Tor request `urls` is empty and only `onion` is set ("Autodiscover response") |
 | `/api/{api_version}/server/healthz` | GET | None | Public JSON health |
-| `/api/{api_version}/server/reports/*` | POST | None | Public reports sink (CSP, NEL, deprecation, intervention, crash, error, default). See PART 34 → "Public Reports Scope". Browsers cannot present credentials when emitting these reports. Rate-limited per-IP. |
+| `/api/{api_version}/server/reports/{type}` | POST | None | Public reports sink (CSP, NEL, deprecation, intervention, crash, error, default). See PART 34 → "Public Reports Scope". Browsers cannot present credentials when emitting these reports. Rate-limited per-IP. |
 | `/server/security` | GET | None | Security overview page (HTML) — human-readable security.txt + reporting instructions. See PART 11 → "Security Reports". |
 | `/server/security/policy` | GET | None | Disclosure policy page (HTML). See PART 11 → "Security Reports". |
 | `/server/security/thanks` | GET | None | Acknowledgments / hall-of-fame (HTML). See PART 11. |
@@ -65838,6 +65877,7 @@ Moderation only - Server Admin does not manage org members/roles.
 | `/api/{api_version}/server/{admin_path}/scheduler` | GET | List scheduled tasks |
 | `/api/{api_version}/server/{admin_path}/scheduler/{id}` | GET | Get task details |
 | `/api/{api_version}/server/{admin_path}/scheduler/{id}` | PATCH | Update task |
+| `/server/{admin_path}/scheduler/{id}` | POST | Update task settings from the no-JavaScript form (`303` back to the scheduler page; the API keeps `PATCH`) |
 | `/api/{api_version}/server/{admin_path}/scheduler/{id}/run` | POST | Run task now |
 | `/api/{api_version}/server/{admin_path}/scheduler/{id}/enable` | POST | Enable task |
 | `/api/{api_version}/server/{admin_path}/scheduler/{id}/disable` | POST | Disable task |

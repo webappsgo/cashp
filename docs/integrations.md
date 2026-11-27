@@ -74,11 +74,17 @@ and can install updates when automatic installation is enabled.
 
 The product requirements include web servers and PHP, application runtimes,
 container and VM backends, mail and DNS services, security scanners, and
-registrar integrations. Package mappings and service abstractions live in the
-repository, but the main HTTP composition does not expose all of those as
-host-management APIs yet. Do not infer that a host service is configured or
-managed merely because its package or setting exists. The route inventory in
-OpenAPI shows the APIs currently mounted by a running build.
+registrar integrations. The main HTTP composition exposes tenant-scoped
+hosting APIs for domain claims, sites, DNS zones and records, transfer
+accounts, hosted mail and mailboxes, application deployments, and usage. The
+matching server-rendered pages are available below `/users/` and
+`/orgs/{slug}/` for signed-in tenants. Hosting domain claims use the separate
+`/users/hosting/domains` and `/orgs/{slug}/hosting/domains` paths, apart from
+account custom-domain management. These APIs and pages manage tenant
+resources through the configured service backends; package mappings alone do
+not mean that every host service is configured or available. The generated
+OpenAPI document shows the routes mounted by a running build; see the [API
+reference](api.md#tenant-hosting-routes) for the route families.
 
 ## Related
 

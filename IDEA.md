@@ -844,3 +844,11 @@ returns a file export.
 | `/api/{api_version}/users/database-instances/{id}/users/{username}/rotate` | POST | Authenticated tenant | Rotate a database user password | Empty body → one-time credential |
 | `/api/{api_version}/orgs/{slug}/database-instances/{id}/users/{username}/grants` | PUT | Organization member; writes require organization admin | Grant or revoke database access | Database and grant → updated grants |
 | `/api/{api_version}/users/database-instances/{id}/users/{username}/grants` | PUT | Authenticated tenant | Grant or revoke database access | Database and grant → updated grants |
+| `/api/{api_version}/users/hosting/domains` | GET | Authenticated tenant | List hosting-domain claims | Empty body → claimed domain list |
+| `/api/{api_version}/users/hosting/domains` | POST | Authenticated tenant | Claim a domain for hosting | Domain and verification method → claim and proof token |
+| `/api/{api_version}/users/hosting/domains/{domain}/verify` | POST | Authenticated tenant | Verify hosting-domain ownership | Empty body → verified claim |
+| `/api/{api_version}/users/hosting/domains/{domain}` | DELETE | Authenticated tenant | Release a hosting-domain claim | `confirm=true` → success; dependent resources prevent release |
+| `/api/{api_version}/orgs/{slug}/hosting/domains` | GET | Organization member | List organization hosting-domain claims | Empty body → claimed domain list |
+| `/api/{api_version}/orgs/{slug}/hosting/domains` | POST | Organization admin or owner | Claim a domain for organization hosting | Domain and verification method → claim and proof token |
+| `/api/{api_version}/orgs/{slug}/hosting/domains/{domain}/verify` | POST | Organization admin or owner | Verify organization hosting-domain ownership | Empty body → verified claim |
+| `/api/{api_version}/orgs/{slug}/hosting/domains/{domain}` | DELETE | Organization admin or owner | Release an organization hosting-domain claim | `confirm=true` → success; dependent resources prevent release |

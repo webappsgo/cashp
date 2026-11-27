@@ -133,6 +133,58 @@ the tenant from the authenticated account and organization membership; callers
 cannot select a tenant in the request body. The generated OpenAPI document
 provides exact methods and schemas.
 
+## Tenant hosting routes
+
+Hosting routes are mounted for each signed-in user and organization member at
+`/api/{api_version}/users/...` and
+`/api/{api_version}/orgs/{slug}/...`. Organization writes require an
+administrator or owner; members may read tenant hosting data. The server
+resolves tenant identity from the session and organization membership rather
+than accepting a tenant ID from the request.
+
+| Methods | Path suffix | Purpose |
+|---|---|---|
+| `GET`, `POST` | `/hosting/domains` | List claimed domains or start DNS/HTTP ownership verification |
+| `POST` | `/hosting/domains/{domain}/verify` | Verify a claimed domain |
+| `DELETE` | `/hosting/domains/{domain}` | Release a claim; requires `?confirm=true` and no dependent resources |
+| `GET`, `POST` | `/sites` | List or create sites |
+| `GET`, `PATCH`, `DELETE` | `/sites/{id}` | Read, update, or delete a site; deletion requires `?confirm=true` |
+| `GET` | `/sites/{id}/usage` | Read site disk and bandwidth usage |
+| `GET` | `/sites/{id}/releases` | List site deployment history |
+| `POST` | `/sites/{id}/deploy`, `/sites/{id}/rollback` | Deploy or roll back a site release |
+| `POST` | `/sites/{id}/enable`, `/sites/{id}/disable` | Enable or disable a site |
+| `GET`, `POST` | `/sites/{id}/transfer-accounts` | List or create FTP/SFTP access accounts |
+| `GET`, `DELETE` | `/sites/{id}/transfer-accounts/{accountID}` | Read or remove an access account |
+| `GET`, `POST` | `/dns/zones` | List or create DNS zones |
+| `GET`, `PATCH`, `DELETE` | `/dns/zones/{id}` | Read, update, or delete a zone |
+| `GET`, `POST` | `/dns/zones/{id}/records` | List or create DNS records |
+| `GET`, `PATCH`, `DELETE` | `/dns/records/{id}` | Read, update, or delete a DNS record |
+| `GET` | `/dns/zones/{id}/file` | Download a zone file |
+| `GET`, `POST` | `/mail/domains` | List or enable hosted mail domains |
+| `GET`, `DELETE` | `/mail/domains/{id}` | Read or remove a hosted mail domain |
+| `GET` | `/mail/domains/{id}/dns` | Read mail DNS records |
+| `GET`, `POST` | `/mail/domains/{id}/mailboxes` | List or create mailboxes |
+| `PATCH`, `DELETE` | `/mail/mailboxes/{id}` | Update or delete a mailbox |
+| `POST` | `/mail/mailboxes/{id}/password` | Change a mailbox password |
+| `GET`, `POST` | `/mail/domains/{id}/aliases` | List or create mail aliases |
+| `DELETE` | `/mail/aliases/{id}` | Delete a mail alias |
+| `GET`, `POST` | `/mail/mailboxes/{mailboxID}/messages` | List messages or send mail |
+| `GET` | `/mail/mailboxes/{mailboxID}/security` | Read scanner status |
+| `GET`, `DELETE` | `/mail/mailboxes/{mailboxID}/messages/{id}` | Read or delete a message |
+| `GET`, `POST` | `/apps` | List or create applications |
+| `GET`, `PATCH`, `DELETE` | `/apps/{id}` | Read, update, or delete an application |
+| `POST` | `/apps/{id}/deploy`, `/apps/{id}/rollback`, `/apps/{id}/start`, `/apps/{id}/stop`, `/apps/{id}/scale` | Deploy, roll back, start, stop, or scale an application |
+| `GET` | `/apps/{id}/releases`, `/apps/{id}/logs`, `/apps/{id}/env` | Read releases, logs, or environment variables |
+| `PUT`, `DELETE` | `/apps/{id}/env/{key}` | Set or remove an environment variable |
+| `GET` | `/usage` | Read aggregate tenant hosting usage |
+
+Matching no-JavaScript pages are under `/users/{sites,dns,mail,apps,usage}`
+and `/orgs/{slug}/{sites,dns,mail,apps,usage}`, with domain claims at
+`/users/hosting/domains` and `/orgs/{slug}/hosting/domains`. Site deployment and
+transfer-account pages are nested below each site; mailbox pages are nested
+below the mail section. Exact schemas and response envelopes are available in
+the running server's generated OpenAPI document.
+
 ## Agent routes
 
 When the agent component is enabled, agents are managed under the owner scope:
