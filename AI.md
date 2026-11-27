@@ -7206,7 +7206,7 @@ require (
 **Notes:**
 - Version numbers are examples - always use latest stable versions
 - Not all projects need all modules - include only what you use
-- Clean up unused dependencies: handled automatically by `make build/local/dev`
+- Clean up unused dependencies: handled automatically by `make build` and `make release`
 - MongoDB uses native driver, not database/sql
 - **NEVER run `go` directly - always use Makefile targets (`make build`, `make test`, etc.)**
 
@@ -13513,22 +13513,6 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     -- Appear in user search results
     searchable      INTEGER NOT NULL DEFAULT 1,
 
-    -- Notification Settings (Email)
-    -- Security alerts (CANNOT be disabled)
-    email_security  INTEGER NOT NULL DEFAULT 1,
-    -- Email when mentioned
-    email_mentions  INTEGER NOT NULL DEFAULT 1,
-    -- Product updates and news
-    email_updates   INTEGER NOT NULL DEFAULT 1,
-    -- never, daily, weekly
-    email_digest    TEXT NOT NULL DEFAULT 'weekly',
-
-    -- Notification Settings (Push)
-    -- Browser push notifications
-    push_enabled    INTEGER NOT NULL DEFAULT 0,
-    -- Push when mentioned
-    push_mentions   INTEGER NOT NULL DEFAULT 1,
-
     -- Appearance Settings
     -- dark (default), light, auto
     theme           TEXT NOT NULL DEFAULT 'dark',
@@ -19677,11 +19661,10 @@ These rules apply to **all responses** when the request is detected as a Tor req
 
 ### Tor Variant of `/.well-known/security.txt`
 
-When `tor.onion_address` is set, a separate `security.txt` is generated for Tor requests:
+When `tor.onion_address` is set, a separate `security.txt` is generated for Tor requests. The clearnet `{report_url}` is never in it (every absolute URL in a Tor response uses the onion host or is omitted):
 
 ```
 # Served at http://{tor.onion_address}/.well-known/security.txt
-Contact: {report_url}
 Contact: http://{tor.onion_address}/server/contact?security_id={security_id}
 {tor_contact_line}
 Policy: http://{tor.onion_address}/server/security/policy
@@ -21818,7 +21801,7 @@ Statistics
 | Rule | Detail |
 |------|--------|
 | **One feature per line** | `{Label}: {status}` plus ` - {hostname}` when the feature has an address. Never one line per sub-field (`enabled`/`running`/`status`/`hostname` are NOT separate lines) |
-| **Status words** | `healthy`, `starting`, `disabled`, `error: {short message}` (from `features.*.status`, for non-overlay features only: Tor and I2P use their fixed status words and never free text); a boolean feature shows `enabled` / `disabled` |
+| **Status words** | `healthy`, `starting`, `disabled`, `error: {short message}` (from `features.*.status`, for non-overlay features only: Tor and I2P use their fixed status words and never free text, and a Tor or I2P failure is the word `unavailable` in JSON, text and CLI output alike, with the reason in the log only); a boolean feature shows `enabled` / `disabled` |
 | **Durations** | `format.Duration()` — `2 days 5 hours`, never `2d 5h 30m` or raw seconds |
 | **Timestamps** | `%B %d, %Y at %H:%M:%S %Z` — never ISO 8601, never `Z`-suffixed machine form |
 | **Counts** | thousands separators (`1,234,567`) |
@@ -23568,7 +23551,7 @@ See the **"Themes (NON-NEGOTIABLE - PROJECT-WIDE)"** section for the complete th
 
 2. **Theme Switching:**
    - Provide theme toggle in UI (light/dark/auto) as a small POST form that sets the `theme` cookie server-side - works without JS
-   - External JS enhancement intercepts the toggle to apply the theme class without a page reload
+   - An optional external JS enhancement applies the theme class instantly as a preview; it never replaces the submit, so the cookie is always set server-side
    - Apply theme class to root element (`theme-light`, `theme-dark`)
 
 3. **Accessibility:**
@@ -23795,7 +23778,7 @@ Need additional compatible endpoints?"
 | `/server/{admin_path}` | GET | Session | Admin dashboard; an unauthenticated request redirects to `/server/auth/login` |
 | `/server/{admin_path}/*` | ALL | Session | Admin panel pages |
 | `/api/{api_version}` | GET | None | API root (no trailing slash; `/api/{api_version}/` redirects `301` to it): returns the same envelope document as `/api/autodiscover` |
-| `/api/autodiscover` | GET | None | Discovery document: name, version, public origins, hidden-service addresses and the CLI/agent update versions. It publishes no settings, config schema or option list (non-versioned; "Autodiscover response"); on a Tor request `urls` is empty and `onion` is set only when `server.tor.expose` is `true` (otherwise the response carries no overlay address) |
+| `/api/autodiscover` | GET | None | Discovery document: name, version, public origins, hidden-service addresses and the CLI/agent update versions. It publishes no settings, config schema or option list (non-versioned; "Autodiscover response"); on a Tor request `urls` is empty and `onion` is set only when `server.tor.expose` is `true`; `i2p` follows `server.i2p.expose` the same way; with exposure off the response carries no overlay address, on any request |
 | `/api/swagger` | GET | None | OpenAPI JSON spec — direct alias for current `{api_version}` |
 | `/api/graphql` | POST, GET | None | GraphQL queries — direct alias for current `{api_version}` (POST, and GET with `query` for queries only, exactly like the versioned route) |
 | `/api/mcp` | POST | Bearer (required) | MCP endpoint — direct alias for current `{api_version}`; same auth as the API |
@@ -26344,7 +26327,7 @@ document.addEventListener('click', function(e) {
 | `public.css` | `pages` | Placement and spacing of the public pages and the public header and footer | Third, on public pages |
 | `admin.css` | `pages` | The same for the admin panel (only where the admin panel exists) | Third, on admin pages instead of `public.css` |
 
-No other stylesheet is written by hand: a project never adds a file per page. The server also GENERATES stylesheets from its configuration and the tokens, each served as `/static/css/{name}.css` with an `ETag` from its inputs and never stored in the repository: `runtime.css` (layer `tokens`, linked right after `common.css`; the configurable runtime values such as `--toast-duration` and `--toast-duration-warning`, rendered from `server.notifications.webui`) and, only where the Swagger and GraphQL pages exist, `swagger-theme.css` and `graphql-theme.css` (built by `src/swagger/theme.go` and `src/graphql/theme.go` from the same tokens and linked only on those pages). The HTML links the files in this order and the service worker precaches the same list; the layer order, not the file order, decides the cascade.
+No other stylesheet is written by hand: a project never adds a file per page. The server also GENERATES stylesheets from its configuration and the tokens, each served as `/static/css/{name}.css` with an `ETag` from its inputs and never stored in the repository: `runtime.css` (layer `tokens`, linked right after `common.css`; the configurable runtime values such as `--toast-duration` and `--toast-duration-warning`, rendered from `server.notifications.webui`) and, only where the Swagger and GraphQL pages exist, `swagger-theme.css` and `graphql-theme.css` (built by `src/swagger/theme.go` and `src/graphql/theme.go` from the same tokens and linked only on those pages). The HTML links the files in this order and the service worker precaches the hand-written files (`PRECACHE_ASSETS`); the generated stylesheets are never precached because their content follows the configuration: they are fetched network-first and cached at runtime under their `?v=` stamp (for `runtime.css` the stamp includes the configuration hash); the layer order, not the file order, decides the cascade.
 
 ### Additional tokens
 
@@ -26378,7 +26361,7 @@ No other stylesheet is written by hand: a project never adds a file per page. Th
 
 | Rule | Detail |
 |------|--------|
-| **Grammar** | `--{category}-{role}[-{variant}]`: categories are `color`, `font`, `line`, `space`, `radius`, `shadow`, `z`, `transition`, `focus`, `border`, `opacity`, `tap`, `measure`, `container`, `size`, `icon`; lower case, hyphen separated, no other category |
+| **Grammar** | `--{category}-{role}[-{variant}]`: categories are `color`, `font`, `line`, `space`, `radius`, `shadow`, `z`, `transition`, `duration`, `drawer`, `print`, `focus`, `border`, `opacity`, `tap`, `measure`, `container`, `size`, `icon`; lower case, hyphen separated, no other category |
 | **Semantic over raw** | A component reads a role (`--color-bg-card`, `--color-text`, `--color-muted`, `--color-primary`), never a literal and never a value copied from another token. The `tokens` layer is the only place a literal color, size or duration is written |
 | **Two border tokens** | `--color-border` is decorative (dividers, card edges) and may be below 3:1; a border that DEFINES a control (input, select, textarea, outlined button, toggle track, check box, tile) uses `--color-border-strong`, which is at least 3:1 against every surface in both themes. A palette value never overrides the 3:1 rule: when they conflict, the token is changed |
 | **Component properties** | A component may expose its own customization point named `--{component}-{property}` (`--toggle-size`, `--grid-min`, `--control-height`); it defaults to a token and a page sets it through the `pages` layer |
@@ -26466,13 +26449,14 @@ No other stylesheet is written by hand: a project never adds a file per page. Th
 
 | Feature component | Classes (block and elements) | Defined in |
 |-------------------|------------------------------|------------|
-| Cookie banner | `.cookie-banner`, `.btn-accept`, `.btn-decline` | Cookie banner section |
+| Cookie banner | `.cookie-banner` (fixed at the bottom edge: `inset-inline: 0`, `inset-block-end: 0`, `z-index: var(--z-banner)`; one of the allowed fixed elements), `.cookie-banner-content`, `.cookie-message`, `.cookie-buttons`, `.policy-link`, `.btn-accept`, `.btn-decline` | Cookie banner section |
 | Navigation drawer | `.nav-panel`, `.nav-toggle`, `.nav-overlay`, `.nav-checkbox` | Navigation section |
 | Status | `.status-ok`, `.status-warning`, `.status-error`, `.status-banner`, `.status-text`, `.spinner` | Status and health sections |
 | Code and copy | `.code-block`, `.copy-btn`, `.copy-icon`, `.copy-text`, `.copy-value`, `.long-string`, `.onion-address`, `.i2p-address`, `.monospace-data`, `.ip-address`, `.api-token`, `.hash` | Code block section |
 | Stats and lists | `.stats-grid`, `.feature-list`, `.feature-enabled`, `.feature-disabled`, `.node-list` | Landing and cluster sections |
 | Admin shell | `.topbar`, `.sidebar`, `.admin-footer`, `.dropdown-item`, `.notification-bell`, `.profile-menu`, `.avatar` | Admin panel section |
 | Form feedback | `.field-error` | Form sections |
+| Theme toggle | `.theme-toggle-form`, `.theme-button` | Header and Preferences sections |
 | Skip link | `.skip-link` | Accessibility section |
 
 **Project components.** The catalog and this table are the template's. A project adds its own feature components (an airport card, a map canvas, a search result) to `components.css` under the same naming, token and layer rules, lists them in a `### UI components` table of IDEA.md (name, block and elements, variants, states) and gives each a `/debug/components` entry; a page never writes a one-off class. A size the template has no token for (a map canvas height) is a project token `--{project}-{name}` defined in the `tokens` layer of `common.css`.
@@ -26484,7 +26468,7 @@ No other stylesheet is written by hand: a project never adds a file per page. Th
 - Third-party theme CSS shown as an illustration (`.md-typeset`, `.swagger-ui`, `.opblock`, `.admonition`, `.graphiql-container`, CodeMirror). Its own palette is mapped from the project tokens; it never adds a second palette.
 - Examples labelled `WRONG`, which exist to show what the lint rejects (for example `.my-export-btn`). They are never copied into a stylesheet.
 - The literal sizes in the CSS examples of this specification are illustrative; the stylesheet writes each as its token (`0.25rem` is `--space-1`, `0.5rem` is `--space-2`, `0.75rem` is `--space-3`, `1rem` is `--space-4`, `4px` is `--radius-sm`, `1px` is `--border-width`), and the lint is the contract, not the example.
-- The one `@media print` block may use `!important` to override screen rules, and only there.
+- The `@media print` block and the single `@media (prefers-reduced-motion: reduce)` block may use `!important` to override screen rules, and only there.
 - Component custom properties with a fallback (`--cluster-gap`, `--control-height`, `--grid-min`, `--stack-gap`, `--toast-duration`); they are set by the component, not defined in `:root`.
 
 ### Icons and SVG (every SVG has a size)
@@ -26525,7 +26509,7 @@ No other stylesheet is written by hand: a project never adds a file per page. Th
 | **Print** | One `@media print` block in `utilities`: white background, black text, no nav, no toast, no banner, links show their URL |
 | **Focus** | One `:focus-visible` rule in `base` draws `--focus-ring`; a component never removes an outline without a replacement of at least the same contrast |
 
-**CSS lint rules (in addition to "CSS Architecture"):** no literal color, `font-size`, `margin`, `padding`, `gap` or `border-radius` value outside the `tokens` layer; logical properties only; no ID selector; no `!important` outside print; no class that is not in the catalog, the primitives, the utilities or a page hook.
+**CSS lint rules (in addition to "CSS Architecture"):** no literal color, `font-size`, `margin`, `padding`, `gap` or `border-radius` value outside the `tokens` layer; logical properties only; no ID selector; no `!important` outside the print and reduced-motion blocks; no class that is not in the catalog, the primitives, the utilities or a page hook.
 
 ## CSS Variable Reference
 
@@ -26700,9 +26684,9 @@ html.theme-light {
 |------|--------|
 | **No unlayered CSS** | Unlayered rules beat every layer, so every rule in every stylesheet sits in a layer; each file starts with its `@layer` block |
 | **Customize through properties** | A component exposes custom properties for what may vary; overriding its selectors from another file is a defect |
-| **No `!important`, no ID selectors** | The print stylesheet's `!important` is the only exception and lives in `utilities` |
+| **No `!important`, no ID selectors** | The `!important` of the print block and of the reduced-motion block is the only exception; both live in `utilities` |
 | **Examples are unwrapped** | The CSS examples in this document are shown without their `@layer` wrapper to stay readable; in a project every rule sits inside its layer |
-| **Lint gate** | A CSS lint test runs in `make test` (Phase 1, no Node and no `package.json`): a unit test in the package that embeds the static files parses every embedded stylesheet with a pure-Go CSS parser (`github.com/tdewolff/parse/v2/css`) and fails on an unlayered rule, `!important`, an ID selector, a selector above `(0,4,1)` in `components`, and a descendant selector whose subject is a bare element under a generic or foreign component class (a component's own block may style its own `dt`, `dd`, `th`, `td`, `input` and `label`) |
+| **Lint gate** | A CSS lint test runs in `make test` (Phase 1, no Node and no `package.json`): a unit test in the package that embeds the static files parses every embedded stylesheet with a pure-Go CSS parser (`github.com/tdewolff/parse/v2/css`) and fails on an unlayered rule, `!important`, an ID selector, a selector above `(0,4,1)` in `components`, and a descendant selector whose subject is a bare element under a generic or foreign component class (a component's own block may style its own `dt`, `dd`, `th`, `td`, `input` and `label`), plus every check of "CSS lint rules" above (token-bound values, logical properties, cataloged classes); the two lists together are the complete gate |
 
 ## Reuse Before Creating
 
@@ -27320,7 +27304,7 @@ function showToast(message, type = 'info') {
 </div>
 ```
 
-No JS required — the button is a real form submit whose target is the server-computed next mode (dark → light → auto → dark; see "Theme Cycle Logic"), so repeated clicks keep cycling; it sets the `theme` cookie server-side and redirects back (303 See Other), exactly like the authenticated theme toggle. External JS may intercept the submit to apply the theme class without a reload (progressive enhancement, not a requirement). The footer's `/server/preferences` link (see "Default Application Footer" above) remains — it's an additional path, not the only one.
+No JS required — the button is a real form submit whose target is the server-computed next mode (dark → light → auto → dark; see "Theme Cycle Logic"), so repeated clicks keep cycling; it sets the `theme` cookie server-side and redirects back (303 See Other), exactly like the authenticated theme toggle. External JS may preview the theme class instantly but never replaces the submit (progressive enhancement, not a requirement). The footer's `/server/preferences` link (see "Default Application Footer" above) remains — it's an additional path, not the only one.
 
 ### Profile Icon
 
@@ -29744,7 +29728,7 @@ src/server/static/
 | **Load order matters** | common → components → public/admin |
 | **CSS variables** | Define in `common.css` `:root {}` for theming |
 | **NO inline styles** | All styles in CSS files, never in HTML |
-| **NO `!important`** | Exception: print styles only |
+| **NO `!important`** | Exception: the print block and the reduced-motion block only |
 | **BEM-like naming** | `.block`, `.block-element`, `.block--modifier`, sizes `.block-sm` to `.block-xl`: see "CSS System" → "Naming" |
 | **Mobile-first** | Base styles for mobile, `@media (min-width)` for larger |
 
@@ -30635,9 +30619,9 @@ the hex values from `ThemePaletteDark`/`ThemePaletteLight`.
 **Theme Detection Flow:**
 ```
 1. Server reads user preference: theme cookie (guests) or DB preference (logged-in)
-2. If no preference OR preference is "auto":
-   - Server renders theme-auto class; CSS prefers-color-scheme media query
-     applies light or dark - no JS detection
+2. If there is no preference: render the class of `web.ui.theme` (shipped default `dark`).
+   If the preference is "auto": render theme-auto; the CSS prefers-color-scheme media query
+   applies light or dark - no JS detection
 3. If preference is "light" or "dark":
    - Server renders theme-light / theme-dark on <html> directly
 4. Default to dark if all detection fails
@@ -35448,7 +35432,7 @@ The admin panel MUST include a scheduler section with:
 | `/api/{api_version}/server/{admin_path}/web/security` | PATCH | Update security.txt |
 | `/api/{api_version}/server/{admin_path}/web/security/preview` | GET | Preview security.txt |
 | `/api/{api_version}/server/{admin_path}/web/well-known` | GET | Get well-known namespace settings and supported entries |
-| `/api/{api_version}/server/{admin_path}/web/well-known` | PATCH | Update optional well-known entry settings |
+| `/api/{api_version}/server/{admin_path}/web/well-known` | PATCH | Update the config-backed content of well-known entries (it never enables or disables an entry) |
 | `/api/{api_version}/server/{admin_path}/web/well-known/preview/{name}` | GET | Preview the exact rendered body for one well-known entry |
 
 **`/api/{api_version}/server/{admin_path}/web` includes `server.healthz.root.enabled` and well-known namespace status in its settings payload.**
@@ -49857,6 +49841,7 @@ rm -rf "$TEST_DIR"
 | **Shared run prefix** | Ad-hoc runs reuse the Makefile prefix flags: `--rm --no-healthcheck`, `--memory`, `--cpus`, `--cpu-shares` and the cache mounts. `--no-healthcheck` stops the toolchain image's service `HEALTHCHECK` from polling a one-shot container. Examples in this specification may show a shortened `docker run` (without `--name` or the shared prefix) to keep one subject visible; the rule governs every command a project ships (Makefile, scripts, docs, CI), where the full flags are written out |
 | **One container per phase** | Steps that belong together run in ONE `docker run ... sh -c "a && b && c"`, never a container per step (`go mod tidy`, then `go mod download`, then `gofmt`, then `go vet`, then one package's tests). Checks a Makefile target does not cover are batched into one container as well. The Makefile targets follow the same rule: `build`, `test` and `release` each run in ONE container, the cross-compile loop over every platform included |
 | **Gate once per change set** | `make test` runs ONCE, after the edits for a change are finished. A failure is fixed, then the full gate runs again; no container per hypothesis, per file or per formatting fix |
+| **Capture once** | Every long-running command an AI session runs (`make test`, `make build`, an image build, a `tests/*.sh` script, a sync) is captured to a log from its FIRST run, never rerun just to see its output. The log is a project-scoped temp file under `${TMPDIR:-/tmp}/{project_org}/{internal_name}-XXXXXX/` (never in the project tree), written with `cmd 2>&1 | tee "$LOG" | tail -n 40` so the terminal shows only a short tail; the exit status is the command's own (`set -o pipefail`). After a failure the log is read with `grep` or `tail`, and the command is rerun only after a change that could alter the result. The log is removed when the task is done |
 | **One at a time** | At most ONE toolchain container (a `make` target, a `tests/*.sh` script or an ad-hoc run) per repository at any moment; a second one never starts while the first is running. Sub-agents and forks never start containers: the main session runs the gate |
 | **Bounded** | Every container run has a time ceiling: the Makefile prefix wraps `docker run` in `timeout -k 30 $(DOCKER_TIMEOUT)` (default `3600`), and a script or an ad-hoc run does the same. A hung `go vet`, test or build is stopped by the ceiling instead of holding a container, CPU and memory for hours; a run that hits it is diagnosed, never retried with the same value. The signal is forwarded to the container's PID 1, and anything that survives is removed by exact name (Docker Container Rules) |
 | **Teardown even on failure** | A script that starts a container, sidecar, network or volume removes it in a `trap cleanup EXIT INT TERM` handler registered BEFORE the first one starts (see "Test Scripts (tests/ directory)") - a failed or interrupted run leaves nothing behind |
@@ -50450,7 +50435,7 @@ verify_all_endpoints_tested
 | **During development** | `make test` (Phase 1 toolchain gate, then the Phase 2 basic tier) | Feedback on source logic and on the compiled binary |
 | **Before committing** | `make test` (Phase 1 and the basic tier required) | The gate must pass before every commit |
 | **Before release** | `make test` + `./tests/incus.sh` | The gate plus the full-app check (manual) |
-| **In CI/CD** | The toolchain gates and the image check | CI never uses Makefile targets; the basic binary tier (`tests/run_tests.sh`) runs inside `make test` locally and the shipped image is checked in CI; the other Phase 2 scripts are manual |
+| **In CI/CD** | The toolchain gates and the image check | CI never uses Makefile targets; the basic binary tier (`tests/run_tests.sh`) runs inside `make test` locally and the shipped image is checked in CI; the other Phase 2 scripts are manual; a separate local `tests/run_tests.sh` after `make test` is redundant |
 
 **Test Execution Order:**
 ```bash
@@ -64885,43 +64870,26 @@ Privacy Settings (/users/settings/privacy)
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `email_security` | Toggle | On | Security alerts via email (cannot disable) |
-| `email_mentions` | Toggle | On | Email when mentioned |
-| `email_updates` | Toggle | On | Product updates and news |
-| `email_digest` | Select | `weekly` | Digest frequency (never/daily/weekly) |
-| `push_enabled` | Toggle | Off | Browser push notifications |
-| `push_mentions` | Toggle | On | Push when mentioned |
+| One row per event of the "Preference Schema" (PART 17) | Two toggles: WebUI and Email | The event's default | The page is generated from the schema and grouped by the event's category; the choice is per event and channel and is stored in the `notifications` JSON document of the user row (`notifications.webui.{event}`, `notifications.email.{event}`) |
+| Security events | Locked toggles (On) | On | Required events (password changes, new logins, 2FA changes) cannot be disabled and are never stored |
+| Browser push | Subscribe button | Off | Subscribing through the browser permission prompt creates the push subscription ("Push" in PART 16); there is no stored on/off column, and an unsubscribed browser receives nothing |
+
+There are no other notification columns or keys: no per-category toggle, no digest frequency and no mentions or product-update flags outside the schema.
 
 **Notification Settings Form Example:**
 ```
 Notification Settings (/users/settings/notifications)
 ┌─────────────────────────────────────────────────────────────┐
-│  Email Notifications                                        │
+│  Event                                      WebUI    Email  │
 │  ─────────────────────────────────────────────────────────  │
+│  Security (required) 🔒                     [ON ]   [ON ]   │
+│  Password changes, new logins, 2FA changes. Cannot be off.  │
 │                                                             │
-│  [ON ] Security alerts (required)                    🔒     │
-│        Password changes, new logins, 2FA changes.           │
-│        This setting cannot be disabled for your security.   │
+│  {Category}                                                 │
+│  {Event label}                              [ON ]   [OFF]   │
+│  {Event label}                              [ON ]   [ON ]   │
 │                                                             │
-│  [ON ] Mentions and replies                                 │
-│        When someone mentions you or replies to you.         │
-│                                                             │
-│  [OFF] Product updates                                      │
-│        News about new features and improvements.            │
-│                                                             │
-│  Activity Digest                                            │
-│  [Weekly                                         ▼]        │
-│  Options: Never, Daily, Weekly                              │
-│                                                             │
-│  ─────────────────────────────────────────────────────────  │
-│  Push Notifications                                         │
-│  ─────────────────────────────────────────────────────────  │
-│                                                             │
-│  [OFF] Enable push notifications                            │
-│        Receive notifications in your browser even when      │
-│        you're not on this site.                             │
-│                                                             │
-│        (Requires browser permission)                        │
+│  Browser push                       [Subscribe in browser]  │
 │                                                             │
 │  [Save Changes]                                             │
 └─────────────────────────────────────────────────────────────┘
@@ -65012,12 +64980,8 @@ GET /api/{api_version}/users/settings
         "org_visibility": true
     },
     "notifications": {
-        "email_security": true,
-        "email_mentions": true,
-        "email_updates": false,
-        "email_digest": "weekly",
-        "push_enabled": false,
-        "push_mentions": true
+        "webui": { "{event}": true },
+        "email": { "{event}": false }
     },
     "appearance": {
         "theme": "dark",
@@ -65838,7 +65802,7 @@ Moderation only - Server Admin does not manage org members/roles.
 | `/api/{api_version}/server/{admin_path}/web/security` | PATCH | Update security.txt |
 | `/api/{api_version}/server/{admin_path}/web/security/preview` | GET | Preview security.txt |
 | `/api/{api_version}/server/{admin_path}/web/well-known` | GET | Get well-known namespace settings and supported entries |
-| `/api/{api_version}/server/{admin_path}/web/well-known` | PATCH | Update optional well-known entry settings |
+| `/api/{api_version}/server/{admin_path}/web/well-known` | PATCH | Update the config-backed content of well-known entries (it never enables or disables an entry) |
 | `/api/{api_version}/server/{admin_path}/web/well-known/preview/{name}` | GET | Preview the exact rendered body for one well-known entry |
 
 **`/api/{api_version}/server/{admin_path}/web` includes `server.healthz.root.enabled` and well-known namespace status in its settings payload.**
@@ -69211,7 +69175,7 @@ maintainer_email: jane@example.com
 |-------|--------|
 | `go build` locally | `make build` |
 | `go test` locally | `make test` (includes coverage enforcement) |
-| `go mod tidy` locally | Handled by `make build/local/dev` automatically |
+| `go mod tidy` locally | Handled by `make build` and `make release` automatically |
 | `./binaries/{project_name}` locally | Run binary inside Docker/Incus container |
 | Go installed locally | Use Makefile targets (they use Docker internally) |
 
