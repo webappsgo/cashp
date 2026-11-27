@@ -8144,7 +8144,7 @@ Self-Healing Successful?                        │
 **Auto-cleaned:**
 - Logs older than retention policy
 - Temp files older than 24 hours
-- Old backup files beyond the configured retention (`server.backup.retention`, PART 21): the disk-pressure cleanup applies that policy, never a fixed count
+- Old backup files beyond the configured retention (`server.backup.retention`, PART 22): the disk-pressure cleanup applies that policy, never a fixed count
 
 **Permission Denied:**
 
@@ -8263,7 +8263,7 @@ server:
       disk_threshold: 90
       # Delete logs older than 7 days during cleanup
       log_retention_days: 7
-      # How many backups are kept is server.backup.retention (PART 21), the only place;
+      # How many backups are kept is server.backup.retention (PART 22), the only place;
       # disk-pressure cleanup applies that policy and scans the backup directory resolved and cached
       # at startup step 7 (the directory backups are written to; never re-resolve it at cleanup time)
 
@@ -8637,7 +8637,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 |----------|-------------|
 | `APPLICATION_NAME` | Application title |
 | `APPLICATION_TAGLINE` | Application description. Like `APPLICATION_NAME`, it is written ONCE, on the first run and only when set, to `yaml.d/branding.yml` (`server.branding`). The first-run init variables are one of the named workflows that may create an area file, so a fresh install without them still writes only `server.yml` |
-| `DATABASE_DRIVER` | First run: the database driver when `DATABASE_URL` is not set (`sqlite` (+ `sqlite2`, `sqlite3`), `libsql` (+ `turso`), `postgres` (+ `pgsql`, `postgresql`), `mysql` (+ `mariadb`), `mssql`, `mongodb` (+ `mongo`)) |
+| `DATABASE_DRIVER` | First run: the database driver when `DATABASE_URL` is not set (`sqlite` (+ `sqlite2`, `sqlite3`), `libsql` (+ `turso`), `postgres` (+ `pgsql`, `postgresql`), `mysql` (+ `mariadb`), `mssql`; only `sqlite` can run without `DATABASE_URL`, and MongoDB is never the primary database: it is project-specific and configured only through the separate `mongodb:` block) |
 | `DATABASE_URL` | First run: the full database connection string, saved to `secrets.yml` (when it carries a credential) or `server.yml`; ignored afterwards ("Connection Strings") |
 | `CACHE_URL` | First run: the full cache connection string (`valkey://`, `redis://`), saved the same way |
 
@@ -8696,7 +8696,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 |------|-------|
 | `server.yml` | This node only: `server.port`, `server.address`, `server.fqdn`, `server.mode`, `server.api_version`, `server.baseurl`, `server.pidfile`, `server.daemonize`, `server.debug.*` (the debug SETTINGS; the debug flag itself has no config key), `server.database`, `server.cache`, `server.ssl`, `server.trusted_proxies`, `server.cluster` |
 | `yaml.d/branding.yml` | `server.branding`, `server.seo`, `web.ui` ("Branding File") |
-| `yaml.d/web.yml` | `web.*` except `web.ui`; `server.cors`, `server.csrf`, `server.url_detection`, `server.compression`, `server.healthz`, `server.i18n` |
+| `yaml.d/web.yml` | `web.*` except `web.ui`; `server.csrf`, `server.url_detection`, `server.compression`, `server.healthz`, `server.i18n` |
 | `yaml.d/pages.yml` | `server.pages` (the report form and its antispam, the help pages) |
 | `yaml.d/contact.yml` | `server.contact` |
 | `yaml.d/privacy.yml` | `server.privacy`, `server.compliance`, `server.tracking` |
@@ -8764,7 +8764,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | `server.security.installation_secret`, `.installation_secret_previous`, `.installation_secret_previous_expires`, `.encryption_key_previous`, `.encryption_key_previous_expires` | imported into the database `app_secrets` row of the same name when that row is missing (the legacy `..._previous_expires` keys become the canonical `{name}_previous_until` rows), then removed from the file (PART 11 → "Rotation contract") |
 | Settings that no longer exist | removed: `web.llms.enabled`, `server.privacy.content.*`, `server.mcp`, `server.rate_limit.enabled`, `server.rate_limit.requests`, `server.rate_limit.window`, `server.scheduler.enabled`, `server.maintenance_mode`, `server.i18n.auto_detect`, `.rtl_languages`, `.show_selector`, `.translations_dir`, `server.geoip.dir`, `.databases`, `.country_mode`, `server.database.sqlite`, `server.metrics.endpoint`, `server.notifications.email_enabled`, `.webhook_enabled`, `server.secret_key`, `web.permissions_policy`, `web.honor_dnt`, `web.robots.ai_bots` |
 
-**Scheduler tasks.** A task under `server.scheduler.tasks` has exactly the keys `enabled`, `schedule`, `retry_on_fail` and `retry_delay` (backup retention is NOT a task key: it lives only in `server.backup.retention`, PART 21). Any other per-task key is removed by the migration, and a built-in task that still has its default values is not written at all.
+**Scheduler tasks.** A task under `server.scheduler.tasks` has exactly the keys `enabled`, `schedule`, `retry_on_fail` and `retry_delay` (backup retention is NOT a task key: it lives only in `server.backup.retention`, PART 22). Any other per-task key is removed by the migration, and a built-in task that still has its default values is not written at all.
 
 **Layout.** Sections and keys are written in the order this specification lists them, so a rewrite never reshuffles a file and diffs stay small.
 
@@ -8818,7 +8818,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 | `postgres` (`pgsql`, `postgresql`) | `postgres://`, `postgresql://` | `postgresql://{user}:{password}@host:5432/{database}?sslmode=require` |
 | `mysql` (`mariadb`) | `mysql://`, `mariadb://` | `mariadb://{user}:{password}@host:3306/{database}` |
 | `mssql` | `sqlserver://`, `mssql://` | `sqlserver://{user}:{password}@host:1433?database={database}&encrypt=true` |
-| `mongodb` (`mongo`) | `mongodb://`, `mongodb+srv://` | `mongodb://{user}:{password}@host:27017/{database}?tls=true` |
+| `mongodb` (`mongo`) | `mongodb://`, `mongodb+srv://` | `mongodb://{user}:{password}@host:27017/{database}?tls=true` (only in the project-specific `mongodb:` block, never `server.database.url`) |
 | cache `valkey` | `valkey://`, `valkeys://` (TLS) | `valkey://:{password}@host:6379/0` |
 | cache `redis` | `redis://`, `rediss://` (TLS) | `rediss://{user}:{password}@host:6379/0` |
 
@@ -9697,7 +9697,7 @@ server:
         enabled: true
         # Daily: 2:00 AM
         schedule: "0 2 * * *"
-        # How many backups are kept is server.backup.retention (PART 21), never a task key
+        # How many backups are kept is server.backup.retention (PART 22), never a task key
 
       # SSL certificate management (only when app manages certs)
       ssl_renewal:
@@ -11780,7 +11780,7 @@ func RemovePIDFile(pidPath string) error {
 |-----------|-------------------|
 | Invalid or missing setting | Replace it with the default and warn once ("Invalid → default") |
 | The database cannot be opened, created or checked at startup | Log ONE error, mark the `database` check `error` and start in the `maintenance` status with the listener and the health endpoint up; self-healing retries the connection (PART 5) and the server leaves `maintenance` when it succeeds |
-| A schema migration step that cannot proceed | Log ONE error naming the table and statement, mark the database check `error` and start in the `maintenance` status; the migration is retried at the next start |
+| A schema migration step that cannot proceed | Log ONE error naming the table and statement, mark the database check `error` and start in the `maintenance` status; the migration is retried by self-healing in this process (PART 5) and again at every start |
 | A dataset, blocklist, GeoIP, CVE or certificate download that fails | Log one warning, keep the previous copy or run without it, report its check as `degraded` or `error` and retry by its scheduler task; never `unhealthy` unless it was registered `critical` |
 | An upstream (a search engine, a mail relay, a remote API) that fails | Per-upstream `degraded` or `error`; the feature that depends on it answers with a clear message, the rest keeps working |
 | Tor, I2P or any overlay | `unavailable` in health and one warning; never blocks, restarts or fails the server |
@@ -12727,13 +12727,12 @@ The app automatically watches config files and hot-reloads what it can. Settings
 
 | Setting Category | Examples |
 |------------------|----------|
-| Rate limits | `rate_limit.*` |
-| CORS settings | `cors.*` |
-| Branding/SEO/theme | `branding.*`, `seo.*`, `web.ui.theme` (from `yaml.d/branding.yml`) |
-| Logging level | `logging.level` |
-| Notification settings | `notifications.*`, `smtp.*` |
-| Security headers | `security.headers.*` |
-| Allowed origins | `cors.allowed_origins` |
+| Rate limits | `server.rate_limit.*` |
+| CORS settings and allowed origins | `web.cors` |
+| Branding/SEO/theme | `server.branding.*`, `server.seo.*`, `web.ui.theme` (from `yaml.d/branding.yml`) |
+| Logging level | `server.logs.level` |
+| Notification settings | `server.notifications.*` (including its `email.smtp.*`) |
+| Security headers | `server.security.headers.*` |
 
 **Requires Graceful Reload (no downtime):**
 
@@ -13053,7 +13052,8 @@ server:
 When enabled:
 - Reads check local cache first
 - Writes go to remote, then update local cache
-- If remote unavailable, serve from cache (read-only mode)
+- If the remote is unavailable and `offline_mode` is `true` (the default once the cache is enabled), serve reads from the cache (read-only mode); with `offline_mode: false` there is no cache fallback and the server enters `maintenance` until the remote returns
+- **Freshness and scope:** the cache keeps one `cache_meta` row per cached table (`table_name`, `synced_at` in UTC written inside the batch transaction of a successful sync, and `watermark`, the highest `updated_at` already applied); `max_age` is measured from `synced_at`, so an older table is read from the remote while it is reachable. The cached set is every table of the standard schema except `app_secrets`, the audit tables and per-request tables (sessions, rate-limit counters); a table without an `updated_at` column is re-read in full each sync. A cache that has never completed a sync is never served: with no cache and no remote the server starts in `maintenance`. The default path is `{data_dir}/db/cache.db`, the file is `0600` and its directory `0700`
 - Background sync keeps cache fresh
 - The cache is a separate SQLite file opened with the SQLite driver, never through the libSQL driver (remote-only, PART 2)
 - **Write contract:** the remote write decides the response. When it succeeds and the local cache update then fails, the response is still a success, the cached row is deleted (best effort), one WARN is logged, and when even the delete fails the cache is marked dirty so reads bypass it until the next sync completes. A failed remote write changes nothing locally and answers the error.
@@ -18266,6 +18266,8 @@ server:
       # none, N, Nd, Nw, Nm
       keep: none
       compress: false
+      # system mode only: an EXISTING group that may read audit.log (the server never creates groups); empty = no group; ignored in user mode
+      group: ""
 
       # What to log (event categories)
       events:
@@ -18391,10 +18393,10 @@ server:
 ```
 audit.log: 0640 (rw-r-----)
 Owner: application user
-Group: audit group (if configured)
+Group: `server.logs.audit.group` (system mode only; empty by default)
 ```
 
-Group read only works when the group can traverse the log directory: in system mode with an audit group configured, `{log_dir}` is `0750` with that same group; in user mode no audit group is configured, so the directory stays `0700` and `audit.log` `0600`.
+Group read only works when the group can traverse the log directory: in system mode with `server.logs.audit.group` set to an existing group (an unknown name logs one warning and is treated as empty), `{log_dir}` is `0750` with that same group; in user mode no audit group is configured, so the directory stays `0700` and `audit.log` `0600`.
 
 ## Audit Log Retention
 
@@ -18407,9 +18409,9 @@ Group read only works when the group can traverse the log directory: in system m
 | `keep: forever` | Keep forever (no automatic deletion) |
 
 **Rotation Schedule:**
-- Daily rotation at midnight UTC
+- Triggers are evaluated in UTC: `daily` at 00:00, `weekly` at 00:00 on Monday, `monthly` at 00:00 on the 1st, `yearly` at 00:00 on January 1, and a size trigger (`NMB`, `NGB`) as soon as the file reaches that size; with a combination the first trigger reached rotates
 - If `keep: none`: Old log deleted immediately after rotation (its last hash lives on in `audit.anchor`, so the chain stays verifiable)
-- If `keep: Nd`: Rotated files are named `audit.log.2025-01-15` (and `audit.log.2025-01-15.gz` when `compress: true`), deleted after N days
+- If `keep: Nd`: Rotated files are named `audit.log.2025-01-15` (the UTC date of the rotation; a file that rotates more than once on the same UTC date gets a numeric suffix, `audit.log.2025-01-15.1`, `.2`, and so on, so an archive is never overwritten; `.gz` is appended when `compress: true`), deleted after N days
 - Current day's log always available until next rotation
 
 ## Compliance Standards
@@ -21668,6 +21670,7 @@ type StatsInfo struct {
     "tor": {
       "enabled": true,
       "running": true,
+      "state": "running",
       "status": "healthy",
       "hostname": "abc123xyz456abcdef789xyz456abcdef789xyz456abcdef789xyz.onion"
     },
@@ -21868,12 +21871,14 @@ When not in cluster mode:
     "tor": {
       "enabled": false,
       "running": false,
+      "state": "disabled",
       "status": "disabled",
       "hostname": ""
     },
     "i2p": {
       "enabled": false,
       "running": false,
+      "state": "disabled",
       "status": "disabled",
       "hostname": "",
       "provider": "none"
@@ -24700,7 +24705,7 @@ formatURL(host, 8443, true)
 ├───────────────────────────────────────────────────────────┤
 │  🔧 Running in mode: development                          │
 ├───────────────────────────────────────────────────────────┤
-│  🌐 HTTP:  {proto}://{address}:{port}                     │
+│  🌐 HTTP:  {proto}://{fqdn}:{port}                        │
 ├───────────────────────────────────────────────────────────┤
 │  📡 Listening on {proto}://{fqdn}:{port}                  │
 │  ✅ Server started on {startup_datetime}                  │
@@ -24714,7 +24719,7 @@ formatURL(host, 8443, true)
 ├───────────────────────────────────────────────────────────┤
 │  🔧 Running in mode: development                          │
 ├───────────────────────────────────────────────────────────┤
-│  🌍 IPv6:  {proto}://[{address}]:{port}                   │
+│  🌍 IPv6:  {proto}://[{fqdn}]:{port}                      │
 ├───────────────────────────────────────────────────────────┤
 │  📡 Listening on {proto}://[{fqdn}]:{port}                │
 │  ✅ Server started on {startup_datetime}                  │
@@ -24752,7 +24757,7 @@ formatURL(host, 8443, true)
 ├───────────────────────────────────────────────────────────┤
 │  🔧 Running in mode: {app_mode}                           │
 ├───────────────────────────────────────────────────────────┤
-│  🌐 HTTP:  {proto}://{address}:{port}                     │
+│  🌐 HTTP:  {proto}://{fqdn}:{port}                        │
 ├───────────────────────────────────────────────────────────┤
 │  📡 Listening on {proto}://{fqdn}:{port}                  │
 │  ✅ Server started on {startup_datetime}                  │
@@ -24772,6 +24777,8 @@ formatURL(host, 8443, true)
 
 **Note:** Setup token is displayed ONCE on first run. After setup wizard is completed, this section never appears again.
 
+**Token in every size variant.** When this start generated a setup token, the line `Setup Token: {setup_token}` (and the `server.token` disclosure of PART 11 when it was generated too) is printed on its own full line outside the box in every size variant and in plain mode: never wrapped, truncated or boxed, and the only line allowed to exceed the width of the micro and minimal banners. The first-run banner examples show the banner only.
+
 ---
 
 ### Banner Size Variants
@@ -24790,8 +24797,8 @@ formatURL(host, 8443, true)
 ```
 🚀 {PROJECT_NAME} v{project_version}
 🔧 Mode: {app_mode}
-🌐 {proto}://{address}:{port}
-📡 Listening: {proto}://{address}:{port}
+🌐 {proto}://{fqdn}:{port}
+📡 Listening: {proto}://{fqdn}:{port}
 ✅ Started: {startup_datetime}
 
 🔑 SETUP REQUIRED
@@ -24811,7 +24818,7 @@ Go to: {proto}://{fqdn}/server/{admin_path}/setup
 ```
 {PROJECT_NAME} {project_version}
 {app_mode}
-{address}:{port}
+{fqdn}:{port}
 SETUP: {setup_token}
 ```
 
@@ -24837,8 +24844,8 @@ Started: {startup_datetime}
 ```
 {PROJECT_NAME} v{project_version}
 Mode: {app_mode}
-URL: {proto}://{address}:{port}
-Listening: {proto}://{address}:{port}
+URL: {proto}://{fqdn}:{port}
+Listening: {proto}://{fqdn}:{port}
 Started: {startup_datetime}
 
 SETUP REQUIRED
@@ -30886,7 +30893,7 @@ messages:
 ```yaml
 web:
   # CORS origin configuration
-  # - "*": Allow all origins (default)
+  # - "*": the shipped default, meaning unset: all origins are allowed only while no DOMAIN entry and no learned origin exists (see "CORS Allow-list Resolution Order")
   # - "https://example.com": Single origin
   # - "https://example.com,https://app.example.com": Multiple origins (comma-separated)
   # - "": Disable CORS headers entirely
@@ -30911,7 +30918,7 @@ web:
 
 | Scenario | Behavior |
 |----------|----------|
-| `cors: "*"` | Allow all origins, credentials NOT allowed |
+| `cors: "*"` | The shipped default (unset): DOMAIN entries and trusted-proxy-learned hosts narrow it; with none of them, allow all origins, credentials NOT allowed |
 | `cors: "https://example.com"` | Allow single origin, credentials allowed |
 | `cors: "https://a.com,https://b.com"` | Allow listed origins, credentials allowed |
 | `cors: ""` | No CORS headers (same-origin only) |
@@ -36410,7 +36417,7 @@ server:
 |--------|------|
 | Measured | The filesystem volumes holding `{data_dir}`, `{log_dir}` and `{backup_dir}`, deduplicated by volume so each volume notifies once; the `path` in the message is the first of those directories on the volume |
 | Value | Used percentage (the same value as `system_disk_usage_percent`, PART 20) plus free bytes |
-| Threshold | `server.notifications.disk_low.threshold_percent` (default `85`, matching the PART 20 Prometheus example). The stricter backup rule in PART 21 (skip backups above 90%) is a separate safeguard |
+| Threshold | `server.notifications.disk_low.threshold_percent` (default `85`, matching the PART 21 Prometheus example). The stricter backup rule in PART 22 (skip backups above 90%) is a separate safeguard |
 | Cadence | Built-in scheduler task `disk_check` on its own schedule `server.scheduler.tasks.disk_check.schedule` (default `@every 5m`), the one cadence key: there is no separate `check_interval`; no external cron |
 | Deduplication | One WARN and email per volume when the threshold is first crossed; repeated at most once per `server.notifications.disk_low.repeat` (default `24h`) while usage stays above it |
 | Switch | `server.notifications.disk_low.enabled` (default `true`) controls the check and its email together; there is no separate `events.disk_low` email switch, so while it is on the email follows the matrix below (sent whenever SMTP works) |
@@ -37071,7 +37078,7 @@ server:
         # Creates: {project_name}_backup_YYYY-MM-DD.tar.gz[.enc] (full)
         #          {project_name}_backup_YYYY-MM-DD_HHMMSS.tar.gz[.enc] (manual)
         #          {project_name}-daily.tar.gz[.enc] (incremental)
-        # Retention is NOT a task key: it lives only in server.backup.retention (PART 21)
+        # Retention is NOT a task key: it lives only in server.backup.retention (PART 22)
 
       # Hourly incremental backup (disabled by default)
       backup_hourly:
@@ -37328,7 +37335,7 @@ Execute task
 | `backup_daily` | 02:00 daily | Enabled | Full backup + daily incremental (first run: full only) |
 | `backup_hourly` | Hourly | Disabled | Hourly incremental |
 
-Retention is configured ONLY at `server.backup.retention.*` (PART 21); a scheduler task has no retention key. The defaults:
+Retention is configured ONLY at `server.backup.retention.*` (PART 22); a scheduler task has no retention key. The defaults:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -37410,7 +37417,7 @@ GeoIP databases are NEVER embedded in the binary — they are downloaded on firs
 
 ## GeoIP Is a Risk Signal — Never the Sole Access Gate (NON-NEGOTIABLE)
 
-**GeoIP MUST be treated as one risk signal among many — never as the sole access-control gate.** GeoIP is a deny-only layer: it can reject a request but never grant access. A request from an allowed, unknown or unlooked-up country MUST still pass through every other layer of the security pipeline (authentication, authorization, input validation, audit logging) and MUST NOT skip any check on the assumption that "the country is trusted". A request from a blocked country is rejected with `403` at the GeoIP step after the blocklist and the rate limiter, so it consumes rate-limit budget and is logged with its source IP; authentication is not evaluated for it because it is already denied.
+**GeoIP MUST be treated as one risk signal among many — never as the sole access-control gate.** GeoIP is a deny-only layer: it can reject a request but never grant access. A request from an allowed, unknown or unlooked-up country MUST still pass through every other layer of the security pipeline (authentication, authorization, input validation, audit logging) and MUST NOT skip any check on the assumption that "the country is trusted". A request from a blocked country is rejected with `403` at the GeoIP step after the blocklist and the rate limiter, so (unless its IP is allowlisted, which skips positions 6–8) it consumes rate-limit budget and is logged with its source IP; authentication is not evaluated for it because it is already denied.
 
 | Rule | Detail |
 |------|--------|
@@ -39670,7 +39677,7 @@ backup only: highest priority wins, and it consumes no monthly, weekly or daily 
 | **Base protection** | Retention never deletes a full that is the `base_backup` of a retained incremental |
 | **Verification** | An incremental is verified like a full, plus: the base file exists and the `sha256` field of ITS manifest equals `base_sha256` |
 | **First run** | No previous full: skip the daily incremental |
-| **Password change** | The base full's `key_id` is read from its cleartext header ("Encrypted archive format", PART 21), never from the encrypted manifest, so it is readable whatever password is configured. The run re-derives a key from the CURRENT password with the base's own salt and Argon2id parameters, computes `key_id` and compares: equal = same password, different = the password changed. A header that does not parse (bad magic or parameters) is a corrupt base, not a change. Either way the run skips the daily incremental (as on the first run), creates a new full under the current password and logs it (INFO for a change, WARN for a corrupt base); the integrity of the old base is the job of `--maintenance backup test`. A restorable pair is one full plus the incremental based on it, and a pair always shares ONE password. The server stores only the CURRENT password, so verifying (`--maintenance backup test`) or restoring an archive made under an older password needs the operator to supply that password. After a change there are two pairs: the old full with its old incremental (old password) until the old full ages out of retention, and the new full (new password) alone until the next run writes an incremental based on it, which then replaces the old incremental |
+| **Password change** | The base full's `key_id` is read from its cleartext header ("Encrypted archive format", PART 22), never from the encrypted manifest, so it is readable whatever password is configured. The run re-derives a key from the CURRENT password with the base's own salt and Argon2id parameters, computes `key_id` and compares: equal = same password, different = the password changed. A header that does not parse (bad magic or parameters) is a corrupt base, not a change. Either way the run skips the daily incremental (as on the first run), creates a new full under the current password and logs it (INFO for a change, WARN for a corrupt base); the integrity of the old base is the job of `--maintenance backup test`. A restorable pair is one full plus the incremental based on it, and a pair always shares ONE password. The server stores only the CURRENT password, so verifying (`--maintenance backup test`) or restoring an archive made under an older password needs the operator to supply that password. After a change there are two pairs: the old full with its old incremental (old password) until the old full ages out of retention, and the new full (new password) alone until the next run writes an incremental based on it, which then replaces the old incremental |
 
 **Restore (`--maintenance restore [file]`):** the file is optional; with none, the newest full backup in `{backup_dir}` ("Default archive selection") is restored after a typed confirmation.
 
@@ -49239,6 +49246,7 @@ Config files are NEVER in the repository. They are generated at RUNTIME:
 | **NEVER** | Use project directory for test/runtime data |
 | **NEVER** | Hardcode `/tmp` - use `os.TempDir()` or `mktemp` |
 | **NEVER** | Use bare `mktemp -d` without org prefix |
+| **ALWAYS** | Let `mktemp` fill the six trailing `X` of `{internal_name}-XXXXXX` itself; the 8-character `/dev/urandom` suffix is for container, instance and VM names (`--name`), never for directories |
 | **ALWAYS** | Use `{project_org}/{internal_name}-` structure for all temp dirs |
 | **ALWAYS** | Detect org from git remote or directory path |
 
@@ -49797,7 +49805,7 @@ test:
 
 ### How to Achieve the Coverage Gates (≥60% unit, 100% endpoints)
 
-**0. Keep the process entry thin and testable.** The unit gate counts every package, the root `src` package included, so orchestration left in `main()` drags the percentage down while only the compiled binary can reach it. `src/main.go` holds only `main()`: it calls `config.Load(os.Args[1:])` (flag parsing and configuration building live in `src/config`, which unit tests reach), copying the build metadata `Version`, `CommitID`, `BuildEpoch` and `OfficialSite` from `src/version.go` into the result, and then calls `app.Run(ctx, cfg) error`, where `cfg` is the `config.ServerConfig` value (the server configuration type of `src/config`, the naming rule's `ServerConfig`) and `app` is the package `github.com/{project_org}/{internal_name}/src/app`, which never imports `main`. `app.Run` (startup, signal handling, graceful shutdown) is in that package, which unit tests reach: the test calls `run` with a cancelable context and a listener on `127.0.0.1:0`, waits for the ready signal, makes one request, cancels the context and asserts a clean return. Phase 2 still tests the compiled binary; its coverage never counts toward the Phase 1 percentage.
+**0. Keep the process entry thin and testable.** The unit gate counts every package, the root `src` package included, so orchestration left in `main()` drags the percentage down while only the compiled binary can reach it. `src/main.go` holds only `main()`: it calls `config.Load(os.Args[1:])` (flag parsing and configuration building live in `src/config`, which unit tests reach), copying the build metadata `Version`, `CommitID`, `BuildEpoch` and `OfficialSite` from `src/version.go` into the result, and then calls `app.Run(ctx, cfg) error`, where `cfg` is the `config.ServerConfig` value, the aggregate runtime configuration built by `config.Load` (the naming rule's `ServerConfig`): it carries every section of the merged configuration (server, web, search, engine and the area-file settings of PART 5), so `app.Run` needs nothing else and `app` is the package `github.com/{project_org}/{internal_name}/src/app`, which never imports `main`. `app.Run` (startup, signal handling, graceful shutdown) is in that package, which unit tests reach: the test calls `run` with a cancelable context and a listener on `127.0.0.1:0`, waits for the ready signal, makes one request, cancels the context and asserts a clean return. Phase 2 still tests the compiled binary; its coverage never counts toward the Phase 1 percentage.
 
 **1. Test All Code Paths:**
 ```go
@@ -49961,7 +49969,7 @@ This strategy is the developer's explicit full-app check (`tests/incus.sh`, or `
 | Aspect | Incus (Preferred) | Docker (Fallback) |
 |--------|-------------------|-------------------|
 | **Use for** | Full OS/systemd testing | Container/app testing |
-| **Image** | `debian:latest` | `casjaysdev/go:latest` or `alpine:latest` |
+| **Image** | `debian/trixie` (`alpine/{latest_stable}` for OpenRC) | `casjaysdev/go:latest` or `alpine:latest` |
 | **Init system** | Full systemd | None (single process) |
 | **Best for** | Service install, integration | Quick tests, CI/CD |
 | **Startup** | ~5s | Fast (~1s) |
@@ -51194,7 +51202,7 @@ func AdminAuthMiddleware(next http.Handler) http.Handler {
 |---------|-------|-------------------|-----|
 | Building Go | `casjaysdev/go:latest` | `git`, `bash` | Latest Go, dependencies need git |
 | Container runtime | `alpine:latest` | `git`, `bash`, `curl`, `tini`, `tor` | Minimal, all runtime tools included |
-| Full OS runtime | `debian:latest` (Incus) | Full OS | Complete systemd, realistic environment |
+| Full OS runtime | `debian/trixie` (Incus) | Full OS | Complete systemd, realistic environment |
 
 ### Common Docker Commands
 
@@ -54097,7 +54105,7 @@ LANG=es_ES.UTF-8 {project_name}-cli --help
 
 | Topic | Rule |
 |-------|------|
-| **Who and how** | AI first, humans refine. A developer is usually fluent in one language (often English or their native one) and perhaps a second, so the AI assistant writes the translations in every supported language it is fluent in, and a human translator corrects them whenever they notice a problem. Anyone may also translate or fix a language by hand: open a pull request (or send the file to the maintainer) containing ONE locale file `{lang}.json`, plus the registry/config lines from "Adding New Languages" for a new language. Updating an existing language is the same: edit that language's file only |
+| **Who and how** | AI first, humans refine. A developer is usually fluent in one language (often English or their native one) and perhaps a second, so the AI assistant writes the translations in every supported language it is fluent in, and a human translator corrects them whenever they notice a problem. Anyone may also translate or fix a language by hand: open a pull request (or send the file to the maintainer) containing ONE locale file `{lang}.json`, plus the registry/config lines from "Adding New Languages" for a new language. Updating an existing language is the same: edit that language's file only (a translator who wants credit adds their name to that file's `meta.translators`; the maintainer updates the `docs/translating.md` credits and the README at merge) |
 | **File format** | UTF-8 JSON, same structure and key order as `en.json`, 2-space indent, no trailing commas, no comments. Keys are never translated or renamed; only values are |
 | **Placeholders** | `{count}`, `{total}`, `{datetime}` and every other `{name}` stays EXACTLY as in English (same name, same braces); only its position in the sentence may move. A value with a missing or renamed placeholder fails the build |
 | **Plurals** | Provide every CLDR plural category the language needs (`zero`, `one`, `two`, `few`, `many`, `other`; see "Plural Rules"). Translators check the category list for their language at the CLDR plural chart; a missing category fails the build |
@@ -57864,7 +57872,7 @@ The CLI never adds URLs that weren't in the health response's `cluster.nodes` �
 
 ```yaml
 update:
-  # default false: the CLI prompts unless this is true AND the run is non-interactive AND --update yes was passed.
+  # default false: when true the CLI updates silently in a non-interactive run; an interactive run always prompts; --update yes updates without a prompt in any run.
   # The server's equivalent is server.update.auto_install (default false).
   auto: false
   # CLI is short-lived; checks once per command. No background poll.
@@ -58599,6 +58607,12 @@ func selectSetupMode() SetupMode {
 
 **One shared setup flow:** the GUI, TUI and inline-prompt wizards expose the same connection and persistence options (server URL, optional API token, Save to configuration, Set as default server). The GUI wizard adds exactly one extra, Start automatically on login (an OS autostart entry), which has no TUI or inline equivalent.
 
+**Persistence.** `Save to configuration` writes the server URL to `server.primary` and the token to `auth.token` of the `cli.yml` in use: the default one, or the file named by `--config {file}` for a named profile (the wizard never asks for a profile name; the profile is the file). `Set as default server` matters only when the wizard runs with `--config {file}`: it also writes the same two values to the default `cli.yml`, so a run without `--config` uses that server; without `--config` both options write the same file and the second changes nothing. With `Save to configuration` unchecked nothing is written and the values apply to this run only.
+
+**Inline wizard.** Wherever the detection above returns TUI, the wizard runs inline instead when the terminal cannot draw a full-screen UI (`TERM=dumb`, or fewer than 40 columns). It asks the same things as sequential prompts: server URL, API token (hidden input, an empty answer is allowed), `Save to configuration [Y/n]` and `Set as default server [y/N]`, then runs the same connection test and applies the same persistence rules. With no terminal on stdin or stdout (a script, cron, a pipe) no wizard runs: the CLI exits with a usage error (exit `2`) that names `server.primary` of `cli.yml` as the way to configure it.
+
+**Start automatically on login (GUI wizard only).** Supported platforms and entries, all per-user and needing no privileges: Linux `~/.config/autostart/{project_name}-cli.desktop` (XDG Autostart), macOS `~/Library/LaunchAgents/{project_org}.{project_name}-cli.plist`, Windows the value `{project_name}-cli` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. The entry launches the absolute path of the running binary with no arguments, so the normal display detection applies. The checkbox shows checked while the entry exists and unchecking it removes the entry; a failed write is one warning and leaves the option off; nothing is created without the checkbox. On any other platform the option is not shown.
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  {PROJECT_NAME} Setup                                    [X] │
@@ -58631,8 +58645,10 @@ func selectSetupMode() SetupMode {
 ║   No server configured. Let's set one up!                            ║
 ║                                                                      ║
 ║   Server URL: [https://                                    ]         ║
+║   API Token (optional): [                                ]           ║
 ║                                                                      ║
-║   [ ] Save to config (recommended)                                   ║
+║   [x] Save to configuration                                          ║
+║   [ ] Set as default server                                          ║
 ║                                                                      ║
 ║                        [Test Connection]                             ║
 ║                                                                      ║
