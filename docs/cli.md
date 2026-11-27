@@ -10,9 +10,11 @@ CasHp builds three binaries: `cashp` (server), `cashp-cli` (client), and
 |---|---|
 | `-h`, `--help` | Show flag help |
 | `-v`, `--version` | Print build version |
+| `--status` | Probe the local health endpoint; healthy returns `0`, unhealthy or unreachable returns `1` |
 | `--mode production\|development\|debug` | Set application mode |
 | `--debug` | Enable debug logging and debug endpoints |
 | `--color auto\|yes\|no` | Select terminal color behavior |
+| `--lang CODE` | Select the language for command output |
 | `--config DIR` | Set the configuration directory |
 | `--data DIR` | Set the data directory |
 | `--cache DIR` | Set the cache directory |
@@ -22,10 +24,17 @@ CasHp builds three binaries: `cashp` (server), `cashp-cli` (client), and
 | `--address ADDR` | Set the listen address |
 | `--baseurl PATH` | Set the URL path prefix |
 | `--port PORT` | Set one HTTP port or an `HTTP,HTTPS` pair |
+| `--daemon` | Run detached from the terminal |
+| `--i2p` | Enable the I2P eepsite |
+| `--shell ACTION [SHELL]` | Print shell completions or initialization instructions |
 | `--service CMD` | Start, stop, restart, reload, install, disable, or uninstall the service |
+| `--maintenance CMD` | Run a maintenance operation |
+| `--update [CMD]` | Check for or apply a server update |
 
 Use `cashp --service --help` to inspect the service manager and available
-commands. Directory overrides reject control characters and `..` path
+commands. `cashp --status` reports uptime, mode, cluster and overlay-network
+state on stdout when healthy; it writes its failure reason to stderr and
+returns `1` when the local server is unhealthy or unreachable. Directory overrides reject control characters and `..` path
 segments, then create the resolved directory tree with owner or system
 permissions before server startup.
 

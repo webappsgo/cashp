@@ -35,6 +35,13 @@ can be reset to its built-in United States text. The
 running server's route list and settings schema are authoritative for the
 configured build.
 
+The Security section also contains the coordinated-disclosure report queue at
+`/server/{admin_path}/security/reports`. Administrators can filter and review
+encrypted reports, update status and severity, and record researcher-facing
+comments and disclosure dates. Viewing a report decrypts its contents and is
+recorded in the audit history. The reporter receives status notifications when
+outgoing mail is available.
+
 The panel's administrator list does not expose other administrators'
 credentials or private profile details. The primary administrator cannot be
 removed through the panel. Token plaintext is shown only when a token is

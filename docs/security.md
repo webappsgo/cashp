@@ -43,6 +43,17 @@ Only `security.txt` and `llms.txt` are generated under `/.well-known/`; unknown
 entries return 404. Operators can provide override files for these two entries
 under `{data_dir}/web/.well-known/`.
 
+The security page links to the private reporting form when the encrypted
+reporting pipeline is available. Submitted reports are encrypted before being
+stored, and the submitter receives a tracking link with a status token. Keep
+that link private; it grants access to status updates for the report. An
+authenticated administrator reviews and decrypts reports in
+`/server/{admin_path}/security/reports`, updates their status and severity,
+and can add a researcher-facing comment and disclosure date. The reporter is
+notified of status changes when outgoing mail is available. If the form is
+unavailable, the security page lists the configured alternate reporting
+channels.
+
 ## Related
 
 - [Configuration](configuration.md)

@@ -30,6 +30,7 @@ its configuration and runtime directories on first start. See the
 
 - [Installation](installation.md)
 - [Configuration](configuration.md)
+- [Browser pages](browser.md)
 - [API reference](api.md)
 - [CLI reference](cli.md)
 - [Admin panel](admin.md)

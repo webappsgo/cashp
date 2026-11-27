@@ -79,6 +79,7 @@ reference](docs/api.md).
 
 ## Other
 
+- [Browser pages](docs/browser.md)
 - [Admin panel](docs/admin.md)
 - [Security](docs/security.md)
 - [Integrations](docs/integrations.md)
