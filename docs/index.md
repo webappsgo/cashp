@@ -33,6 +33,7 @@ its configuration and runtime directories on first start. See the
 - [API reference](api.md)
 - [CLI reference](cli.md)
 - [Admin panel](admin.md)
+- [Managed databases](databases.md)
 - [Security](security.md)
 - [Integrations](integrations.md)
 - [Development](development.md)

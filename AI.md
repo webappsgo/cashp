@@ -2466,7 +2466,7 @@ server:
 | 29 | Testing & Development | Testing/dev workflow, **Host Safety in tests**, **AI Docker Compose Rules**, **Content Negotiation Testing** |
 | 30 | ReadTheDocs Documentation | Documentation |
 | 31 | I18N & A11Y | Internationalization, **Translation parity (all binaries)**, **--lang flag** |
-| 32 | Overlay Networks (Tor & I2P) | 32.1 Tor (binary auto-enables), 32.2 I2P eepsite (**opt-in**) |
+| 32 | Overlay Networks (Tor & I2P) | 32.1 Tor (binary auto-enables), 32.2 I2P eepsite (always built in; only runtime activation is opt-in outside containers) |
 | 33 | Client & Agent | Client **REQUIRED**, Agent optional - CLI/TUI/GUI, **Scoped Agent Tokens**, **Smart Context**, **First-Run Wizard** |
 | 34 | Multi-User | **OPTIONAL** - Regular User accounts/registration, vanity URLs |
 | 35 | Organizations | **OPTIONAL** - multi-user orgs, vanity URLs |
@@ -3370,7 +3370,7 @@ Implemented core server functionality and API.
 | Code patterns | Relevant PARTs | Config, server, API patterns match |
 | Business logic | IDEA.md | Features implemented match what IDEA.md defines |
 | Threat model / abuse model | IDEA.md → `## Business logic` | Trust boundaries, data sensitivity, abuse cases, and security exceptions are documented and code matches them |
-| Well-known namespace | PART 11 / web routes | `/.well-known/**` only serves documented allowlisted entries, unsupported entries 404, and optional entries exist only when the corresponding feature is defined |
+| Well-known namespace | PART 11 / web routes | `/.well-known/**` serves the paths the project implements per the IANA registry and the RFCs, unimplemented paths 404, and optional entries exist only when the corresponding feature is defined |
 | External identity auth | PART 34 | OIDC, LDAP, and SAML all exist, support multiple providers, expose the documented `/server/auth/*` and `/api/{api_version}/server/auth/*` routes, and are manageable from `/server/{admin_path}/security/auth/*` |
 | External username onboarding | PART 34 | New OIDC/LDAP/SAML-backed users/admins go through the documented first-login username confirmation flow, including prefill normalization and collision-safe numeric suggestions |
 | CLI interface | PART 8 | Flags, commands, help output match spec |
@@ -4276,7 +4276,7 @@ ls -la docker/
 | 29 | Testing & Development | ✅ Implement fully |
 | 30 | ReadTheDocs Documentation | ✅ Implement fully |
 | 31 | I18N & A11Y | ✅ Implement fully |
-| 32 | Overlay Networks (Tor & I2P) | ✅ Implement fully (32.1 Tor auto; 32.2 I2P opt-in) |
+| 32 | Overlay Networks (Tor & I2P) | ✅ Implement fully (32.1 Tor auto; 32.2 I2P always built in, runtime activation opt-in outside containers) |
 | 37 | Project-Specific Sections | ✅ Customize for project |
 | FINAL | Compliance Checklist | ✅ Verify all items |
 
@@ -4501,7 +4501,7 @@ If blocked on current feature:
 □ Health endpoints return SPEC format
 □ API responses match SPEC format
 □ Error responses match SPEC format
-□ `/.well-known/**` only serves the documented allowlisted entries and unknown entries return `404`
+□ `/.well-known/**` serves only paths that an RFC or the IANA Well-Known URIs registry defines and the project implements; every other path returns `404`
 □ Canonical `/.well-known/security.txt` is served; `/security.txt` is not required unless explicitly defined in `IDEA.md`
 □ If external auth is enabled, OIDC, LDAP, and SAML all support multiple providers and are manageable from `/server/{admin_path}/security/auth/*`
 □ New OIDC/LDAP/SAML-backed users/admins follow the first-login username confirmation flow with normalized prefill and visible collision-safe numeric suggestions
@@ -4643,9 +4643,9 @@ When working on this project, the following roles are assumed based on the task:
 | **Building** | Docker `casjaysdev/go:latest` | ALWAYS - Go compilation |
 | **Unit tests** | Docker `casjaysdev/go:latest` | `go test` commands |
 | **Quick testing** | Docker `alpine:latest` | Fast, ephemeral |
-| **Full OS testing (systemd)** | Incus `debian:latest` | PREFERRED - systemd, services |
-| **Full OS testing (OpenRC)** | Incus `alpine:latest` (newest numbered release) | PREFERRED - OpenRC, services |
-| **Debugging** | Incus `debian:latest` | PREFERRED - persistent, SSH-able |
+| **Full OS testing (systemd)** | Incus `debian/trixie` | PREFERRED - systemd, services |
+| **Full OS testing (OpenRC)** | Incus `alpine/{latest_stable}` (the newest numbered release) | PREFERRED - OpenRC, services |
+| **Debugging** | Incus `debian/trixie` | PREFERRED - persistent, SSH-able |
 
 ```bash
 # CORRECT - Use Makefile targets
@@ -16334,7 +16334,7 @@ When `DEBUG=true` is active and an error occurs, the canonical error body (PART 
 | Format | `adm_` prefix + 32 URL-safe random base62 chars: the operator token is an ADMIN token ("Token Catalogue") |
 | Generated | First start, when the key is absent or empty; written to `secrets.yml` (mode `0600`) and printed once in the startup banner |
 | Storage | Never stored in the database or in any API token table. Only `SHA-256(server.token)` is cached in memory at startup; inbound tokens are hashed and compared with a constant-time compare |
-| Logging | The raw value is never logged after the first-start banner, never returned by any API response, never included in a backup export (the backup copy of `secrets.yml` has `server.token` blanked) or a support bundle |
+| Logging | The raw value is never logged after the first-start banner, never returned by any API response, never included in a backup export (the backup copy of `secrets.yml` has `server.token` and `server.backup.encryption_password` blanked) or a support bundle |
 | Presented as | `Authorization: Bearer adm_...` |
 | Admin WebUI | Shown masked at `/server/{admin_path}/security` with a "Regenerate" action (sensitive operation per PART 5: re-prompt the admin password, log `security.operator_token_regenerated` to `audit.log`). The new value is displayed once on screen; the previous value stops working immediately |
 | Rotation | Regenerate in the admin WebUI, or blank `server.token` in `secrets.yml` and restart (a new value is generated and printed once). Cluster Mode: a rotated value reaches every node and each node writes it to its own `secrets.yml`, never to `server.yml` |
@@ -17195,8 +17195,8 @@ Redirect to         │                    │
 
 - `/.well-known/**` is reserved to the server and can NEVER be claimed by users, orgs, vanity routes, or admin path settings
 - Well-known endpoints live only at the root `/.well-known/...` namespace, never under `/server/*` or `/api/*`
-- Only documented, allowlisted well-known entries may be served; unsupported entries MUST return `404 Not Found`
-- `GET` and `HEAD` are the only valid methods for `/.well-known/**`, except for a method that has a row in "Well-Known Protocol Exceptions"; every other method MUST return `405 Method Not Allowed`
+- The authority for what may live here is the IANA "Well-Known URIs" registry and the RFCs themselves, not a list kept in this template: a project MAY implement any registered or RFC-defined `/.well-known/` path, and this template never forbids a standard path. A path the project does not implement MUST return `404 Not Found`. The Support Matrix below lists only what this template itself implements, and is not exhaustive
+- `GET` and `HEAD` are the default methods for `/.well-known/**`. A standard that requires another method, a credential, a request body or a special response follows the RFC EXACTLY (path, methods, authentication, content types, status codes, headers), declared as a row in "Well-Known Protocol Exceptions"; any other method on that path MUST return `405 Method Not Allowed`
 - No auth, no CSRF token, and no session requirement may be needed to read any `/.well-known/**` resource; only a method with a row in "Well-Known Protocol Exceptions" may require a credential, and then never a session cookie
 - `/.well-known/` itself MUST NOT list a directory index, file browser, or generated listing
 - The namespace MUST NOT expose user-uploaded or user-controlled files directly
@@ -17285,17 +17285,17 @@ Redirect to         │                    │
 
 Files can be served from:
 1. Reserved dynamic handlers for protocol-owned entries (for example `acme-challenge`, `change-password`, or provider/discovery handlers when enabled)
-2. Files in `{data_dir}/web/.well-known/` for file-backed allowlisted entries only
-3. Embedded files in binary for file-backed allowlisted entries only
+2. Files in `{data_dir}/web/.well-known/` for file-backed entries the project implements only
+3. Embedded files in binary for file-backed entries the project implements only
 4. Dynamically generated config-backed content (for example `security.txt`, `pgp-key.asc`, or generated JSON discovery files)
 
-**Serving-order rule:** a file in `{data_dir}/web/.well-known/` may override an embedded default for the SAME allowlisted entry, but it MUST NOT override protocol-owned dynamic handlers such as `/.well-known/acme-challenge/{token}` or `/.well-known/change-password`.
+**Serving-order rule:** a file in `{data_dir}/web/.well-known/` may override an embedded default for the SAME implemented entry, but it MUST NOT override protocol-owned dynamic handlers such as `/.well-known/acme-challenge/{token}` or `/.well-known/change-password`.
 
 ### Adding New Well-Known Entries
 
-- Only add a new `/.well-known/...` entry when a real protocol, platform, or ecosystem integration requires that exact path
-- The exact path, source of truth, content type, auth model, and unsupported behavior MUST be documented in the template/`IDEA.md`
-- New entries MUST be added to the route tables, reserved-route checks, and the audit/final checklist
+- Add a `/.well-known/...` entry when an RFC, the IANA registry or an ecosystem integration requires that exact path; the RFC is followed exactly, even where it differs from this template's conventions
+- The exact path, source of truth, content type, auth model and unsupported behavior MUST be documented in the project (`IDEA.md` or `SPEC.md`); a project needs no template change to add a standard
+- New entries MUST be added to the project's route tables, reserved-route checks and checklist
 - If a requested capability can live under `/server/*` or `/api/{api_version}/server/*` without breaking interoperability, do NOT put it under `/.well-known/`
 
 ### robots.txt
@@ -17520,7 +17520,7 @@ web:
 
 | Element | Type | Description |
 |---------|------|-------------|
-| Supported entries | Read-only table | Shows each allowlisted `/.well-known/...` entry and whether it is required, feature-gated or optional (there are no switches: every present entry is always served) |
+| Supported entries | Read-only table | Shows each implemented `/.well-known/...` entry and whether it is required, feature-gated or optional (there are no switches: every present entry is always served) |
 | Entry source | Read-only / selector | Shows whether an entry is dynamic, config-backed, data-dir override, or embedded default |
 | Preview | Read-only viewer | Preview the exact rendered body/JSON for the selected entry |
 | Unsupported behavior note | Read-only help text | Unknown `/.well-known/*` entries return `404`; no directory listing |
@@ -17944,7 +17944,7 @@ server:
 - `keep: none` = do not retain old logs (default)
 - Built-in rotation support (no external logrotate needed)
 - Old logs deleted immediately after rotation (default)
-- Optional: compress before delete, retain with `keep: weekly:N` or `monthly:N`
+- Optional: compress before delete, retain with `keep: Nw` or `Nm`
 
 ### Audit Log
 
@@ -18184,7 +18184,7 @@ server:
 
 ```json
 {
-  "id": "audit_01HQXYZ123ABC",
+  "id": "01JHZQ8M3K5N7P9R2T4V6W8X0Y",
   "time": "2025-01-15T10:30:00.123Z",
   "event": "admin.login",
   "category": "authentication",
@@ -18213,7 +18213,7 @@ server:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | String | Unique audit entry ID (ULID format) |
+| `id` | String | Unique audit entry ID: a raw 26-character ULID (Crockford base32), with no prefix |
 | `time` | String | ISO 8601 timestamp with milliseconds, UTC |
 | `event` | String | Event type (e.g., `admin.login`) |
 | `category` | String | Event category (e.g., `authentication`) |
@@ -18376,7 +18376,7 @@ server:
 | No truncate | Application cannot truncate the log file |
 | Rotation only | Only log rotation can remove old entries |
 | Hash chain | REQUIRED. Every entry has a `prev` field: the lowercase hex SHA-256 of the previous entry's exact line (without the newline). The first entry ever uses 64 zeros; the first entry of a rotated file carries the hash of the last line of the file it follows. One writer appends entries in order under a lock, so the chain never forks |
-| Anchor | `{log_dir}/audit.anchor` (mode `0600`) holds the hash of the last line of the file that was just closed. It is written at every rotation BEFORE the old file is deleted and is kept whatever `keep` says, so `keep: none` never breaks the chain. At start the first `prev` of the current file must equal the anchor; no anchor and a first `prev` of 64 zeros is a new log. A mismatch, or a missing anchor with a non-zero first `prev`, is reported once as `security.audit_chain_broken` with `reason: anchor_mismatch` or `anchor_missing`. Deleting the anchor together with every audit file is an operator reset: the chain restarts at 64 zeros and one `info` line says so |
+| Anchor | `{log_dir}/audit.anchor` (mode `0600`) holds the hash of the last line of the file that was just closed. It is written at every rotation BEFORE the old file is deleted and is kept whatever `keep` says, so `keep: none` never breaks the chain. At start the first `prev` of the current file must equal the anchor; no anchor and a first `prev` of 64 zeros is a new log. A mismatch, or a missing anchor with a non-zero first `prev`, is reported once as `security.audit_chain_broken` with `reason: anchor_mismatch` or `anchor_missing`. Deleting the anchor together with every audit file leaves no marker, so it is indistinguishable from a first install: the chain restarts at 64 zeros silently, with no separate reset message |
 | Verification | The server re-computes the chain of the current file at start and of the closed file at every rotation. A mismatch (an edited, removed or reordered entry) is reported once as `security.audit_chain_broken` (severity `critical`; file name and line number, never entry content); the server keeps running and keeps appending. The guarantee covers every entry that has a successor: an edit to the LAST entry of the active file leaves every stored `prev` valid and is detected only when the next entry is appended (its `prev` no longer matches) or at rotation, so no active-tail checkpoint is kept |
 | Limit | Tamper-evident, not tamper-proof: someone who can rewrite the whole file can recompute every hash. Forward the log to another host if that case matters |
 
@@ -18386,6 +18386,8 @@ audit.log: 0640 (rw-r-----)
 Owner: application user
 Group: audit group (if configured)
 ```
+
+Group read only works when the group can traverse the log directory: in system mode with an audit group configured, `{log_dir}` is `0750` with that same group; in user mode no audit group is configured, so the directory stays `0700` and `audit.log` `0600`.
 
 ## Audit Log Retention
 
@@ -18400,7 +18402,7 @@ Group: audit group (if configured)
 **Rotation Schedule:**
 - Daily rotation at midnight UTC
 - If `keep: none`: Old log deleted immediately after rotation (its last hash lives on in `audit.anchor`, so the chain stays verifiable)
-- If `keep: Nd`: Rotated files named `audit.log.2025-01-15.gz`, deleted after N days
+- If `keep: Nd`: Rotated files are named `audit.log.2025-01-15` (and `audit.log.2025-01-15.gz` when `compress: true`), deleted after N days
 - Current day's log always available until next rotation
 
 ## Compliance Standards
@@ -23191,7 +23193,7 @@ func renderNoJSHTML(w http.ResponseWriter, data interface{}) {
 | **Optional routes** | The embedded build-time spec is the full SUPERSET of routes, and every route that depends on a flag or a setting (the `/debug/*` routes, `/metrics`, the root aliases, optional well-known files) carries `x-mounted-when` naming its condition (for example `--debug` or `server.metrics.root.enabled`). At startup the server derives the SERVED spec from the embedded one by removing every operation whose condition is false for this run, so the spec a client reads always matches the routes that are actually mounted. The drift test compares the superset with the route table |
 | **JSON only** | OpenAPI spec uses JSON format only (NO YAML) |
 | **Source of truth** | AI.md defines the TEMPLATE routes and the `### API routes` inventory in IDEA.md defines EVERY project-defined route, including any native or compatibility API of the project; together they are the API CONTRACT: routes, methods, auth and shapes. AI.md never enumerates project routes. The code and its annotations implement that contract, and the specs are GENERATED from the code, so they are artifacts, never edited by hand. Drift is detected by a test with three legs: the generated OpenAPI route and method list, the router's registered routes, and the union of the AI.md template routes and the IDEA.md `### API routes` inventory. A route present in one leg and missing from another fails the build, naming the route and the missing place; a project whose IDEA.md has no `### API routes` subsection fails with that message instead of passing vacuously. A deliberate change is made in AI.md or IDEA.md first, then the code, then the specs are regenerated |
-| **Template route inventory** | The template leg of the drift test is read from the project's own `AI.md` at test time, deterministically: a template route is a row of a Markdown table whose header row has a path column (`Endpoint` or `Path`) and a method column (`Method` or `Methods`), in any order and with any other columns (rows are read by those headers, never by column position): the path cell is exactly one backticked path starting with `/` and the method cell lists one or more HTTP methods, and the method is always explicit (a row without one is not a route) (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`) separated by `/` or `,` (each method of the path is its own route); a path cell with an alias lists each path as its own route; optional-segment brackets such as `/metrics[/{service}]` expand to two routes, the path without and the path with the bracketed segment. A row in a fenced code block or in a table introduced as an illustrative example (for example the generic REST row `/api/{api_version}/{resource}`) is not a template route. `{api_version}` is the API version in use, `{admin_path}` the configured admin path, any other `{name}` segment matches a path parameter. A row under a section marked OPTIONAL counts only when the project enables that feature (its `x-mounted-when` condition). A table without a method column (the frontend page lists, static files, the well-known support matrix) is not a route inventory either: those are `GET`/`HEAD` pages covered by the page registry and conformance tests, not by the drift parser, and any route that accepts a `POST` form is listed in an inventory table with an explicit `POST` row. A route table in any other form is not a route inventory: a new template route is added to AI.md in this form, and nothing is copied into a project |
+| **Template route inventory** | The template leg of the drift test is read from the project's own `AI.md` at test time, deterministically: a template route is a row of a Markdown table whose header row has a path column (`Endpoint` or `Path`) and a method column (`Method` or `Methods`), in any order and with any other columns (rows are read by those headers, never by column position): the path cell is exactly one backticked path starting with `/` and the method cell lists one or more HTTP methods, and the method is always explicit (a row without one is not a route). A template route whose row says `INTERNAL` (metrics, Tor control, the debug routes: the routes with `Internal` set) still counts as a template route, but the drift test expects it in the route table and in NONE of the OpenAPI document, llms.txt, GraphQL and MCP (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`) separated by `/` or `,` (each method of the path is its own route); a path cell with an alias lists each path as its own route; optional-segment brackets such as `/metrics[/{service}]` expand to two routes, the path without and the path with the bracketed segment. A row in a fenced code block or in a table introduced as an illustrative example (for example the generic REST row `/api/{api_version}/{resource}`) is not a template route. `{api_version}` is the API version in use, `{admin_path}` the configured admin path, any other `{name}` segment matches a path parameter. A row under a section marked OPTIONAL counts only when the project enables that feature (its `x-mounted-when` condition). A table without a method column (the frontend page lists, static files, the well-known support matrix) is not a route inventory either: those are `GET`/`HEAD` pages covered by the page registry and conformance tests, not by the drift parser, and any route that accepts a `POST` form is listed in an inventory table with an explicit `POST` row. A route table in any other form is not a route inventory: a new template route is added to AI.md in this form, and nothing is copied into a project |
 | **Match site theme** | Both UIs styled to match site theme (light/dark/auto) |
 | **Standardized locations** | ALWAYS `src/swagger/` and `src/graphql/` (NEVER in root `.`) |
 
@@ -23727,7 +23729,7 @@ Need additional compatible endpoints?"
 | `/metrics[/{service}]` | GET | Bearer token (per-service) | Root alias when `server.metrics.root.enabled: true` (default true); same handler, never a redirect |
 | `/server/{admin_path}` | GET | Session | Admin dashboard; an unauthenticated request redirects to `/server/auth/login` |
 | `/server/{admin_path}/*` | ALL | Session | Admin panel pages |
-| `/api/autodiscover` | GET | None | Discovery document: name, version, public origins, hidden-service addresses and the CLI/agent update versions. It publishes no settings, config schema or option list (non-versioned; "Autodiscover response") |
+| `/api/autodiscover` | GET | None | Discovery document: name, version, public origins, hidden-service addresses and the CLI/agent update versions. It publishes no settings, config schema or option list (non-versioned; "Autodiscover response"); on a Tor request `urls` is empty and only `onion` is set |
 | `/api/swagger` | GET | None | OpenAPI JSON spec — direct alias for current `{api_version}` |
 | `/api/graphql` | POST, GET | None | GraphQL queries — direct alias for current `{api_version}` (POST, and GET with `query` for queries only, exactly like the versioned route) |
 | `/api/mcp` | POST | Bearer (required) | MCP endpoint — direct alias for current `{api_version}`; same auth as the API |
@@ -31747,7 +31749,7 @@ func trackingScript(r *http.Request) template.HTML {
 | **Vendor files** | The tool's libraries (for example React, ReactDOM, GraphiQL, the Swagger UI bundle and its preset) are pinned releases vendored under `static/vendor/{tool}/`, loaded only by their own page, never combined into `app.js` and never edited; the tool's start-up code is one small file, `static/js/docs-{tool}.js`. This is the explicit exception to the one-file, no-framework and no-bundler rules, which govern the project's own JavaScript |
 | **Theme** | The tool follows the project-wide theme through the project's Swagger and GraphiQL theme modules and the shared CSS custom properties; no hardcoded colors |
 | **Without JavaScript** | A `<noscript>` card states that the interactive view needs JavaScript and links to the plain endpoints: the OpenAPI JSON (`/api/{api_version}/server/swagger`) or the GraphQL endpoint (`/api/{api_version}/server/graphql`) |
-| **Same chrome everywhere** | The same header, footer, consent banner and skip links on every page, error pages included (the guaranteed last-resort fallback of the error handler is the one exemption). A page never adds, removes or reorders header or footer elements |
+| **Same chrome everywhere** | The same header, footer, consent banner and skip links on every page, error pages included. The two exemptions: the guaranteed last-resort fallback of the error handler, and the consent banner (and the header theme toggle) on `/server/preferences`, whose one form already carries the consent and appearance controls. A page never adds, removes or reorders header or footer elements |
 
 **Shared shell CSS (in `components.css`, tokens only, no pixel literals except the width caps):**
 
@@ -34133,7 +34135,7 @@ Admin Panel Header:
 | `rate_limit.read.requests` | Number | `120` | No | Read (GET/HEAD) requests per window, per IP |
 | `rate_limit.write.requests` | Number | `10` | No | Write (POST/PUT/PATCH/DELETE) requests per window, per IP |
 | `rate_limit.health.requests` | Number | `120` | No | Health/status requests per window, per IP |
-| `rate_limit.global_burst` | Number | `240` | No | Absolute per-IP ceiling across all endpoint types |
+| `rate_limit.global_burst` | Number | `240` | No | Absolute ceiling across all endpoint types per client identity (per IP anonymous, per token authenticated) |
 | `rate_limit.{class}.window` | Duration | `1 minute` | No | Per-class rate limit window |
 | `cors.enabled` | Toggle | On | No | Enable CORS |
 | `cors.origins` | Tags | `*` | No | Allowed origins |
@@ -34999,7 +35001,7 @@ The admin panel MUST include a scheduler section with:
 | **Status** | ● Online / ○ Offline |
 | **Connected** | Duration since agent connected (or — if offline) |
 | **Last Seen** | Time since last heartbeat/report |
-| **Health** | ✓ Good / ⚠ Warn / ✗ Error (based on agent metrics) |
+| **Health** | ✓ Good / ⚠ Warn / ✗ Error (thresholds in "Agent protocol contract") |
 
 ### Admin Panel (`/server/{admin_path}/agents/{name}`)
 
@@ -35110,7 +35112,7 @@ The admin panel MUST include a scheduler section with:
 │  └─────────────────────────────────────────────────────────────────────┘    │
 │  [Copy to Clipboard]                                                        │
 │                                                                             │
-│  ⚠️  Token expires in 24 hours and can only be used once.                   │
+│  ⚠️  Shown once. Expires in 24 hours unless an agent registers with it.      │
 │                                                                             │
 │  [Done]                                                                     │
 │                                                                             │
@@ -35248,6 +35250,19 @@ func getDefaultAgentName() string {
 - Account tokens (`adm_`, `usr_`, `org_` with a scope other than `agent`): Full agent management (CRUD, view metrics)
 - Agent tokens (`adm_`, `usr_`, `org_` with scope `agent`): Limited to register, heartbeat, report (own data only)
 
+**Agent protocol contract** (the one definition of registration, liveness, health and the report payload; a project's own data goes in `custom_metrics`, never in new routes):
+
+| Topic | Rule |
+|-------|------|
+| **Token "once"** | The token in the connection command is the agent's own credential, shown once and valid for 24 hours until an agent registers with it. "Used once" means ONE registration: a second `register` call with the same token is `409 CONFLICT`. After registration the same token stays the agent's credential for `heartbeat` and `report` until it is regenerated or revoked |
+| **Registration request** | `hostname`, `os`, `arch`, `version`, `tags` and the optional `display_name` (the agent's `identity.display_name`). The server names the agent `display_name` when it is set, valid and unique within its scope and owner, otherwise the `hostname`, with `-2`, `-3` appended on a clash |
+| **Heartbeat** | `POST {base}/heartbeat`, body `{"uptime_seconds": n, "version": "...", "update_available": "..."}`; the server stores `last_seen_at`, the IP address and `uptime_seconds` (shown on the detail page) |
+| **Report** | `POST {base}/report`, body `{"samples": [ ... ]}` with at most `collection.batch_size` samples, oldest first. One sample is one collection cycle: `recorded_at` (RFC 3339 UTC), the metric fields of `agent_metrics` and an optional `custom_metrics` JSON object. The server stores one `agent_metrics` row per sample, `custom_metrics` as JSON text. `collection.buffer_size` is how many samples the agent keeps while offline; the oldest are dropped first |
+| **Liveness** | An agent is `online` while a heartbeat or report arrived within the last 90 seconds (three missed 30-second heartbeats), `offline` after that, and `pending` until its first registration completes. The server derives `status` from `last_seen_at`; it is not agent-reported |
+| **Health** | `Error` when the agent is offline, or any of `cpu_percent`, `memory_percent`, `disk_percent` is 95 or higher; `Warn` when any is 80 or higher, or the newest sample is older than three collection intervals; otherwise `Good`. An agent with no samples yet is `Warn`. These are fixed constants, not settings |
+| **Tasks** | There is no task queue and no task API: an agent collects and reports. A project that needs server-assigned tasks defines that API itself in `IDEA.md` and `SPEC.md`; this template does not |
+| **Split SQLite** | `agents` and `agent_metrics` live in `server.db` and `tokens` in `users.db`, so `agents.token_id` is a LOGICAL reference: a real foreign key only in a single remote database. The application enforces it: deleting an agent deletes its token row, revoking the token sets the agent `offline` and the daily cleanup removes an agent whose token row is gone |
+
 **Examples:**
 ```
 # Admin agent (server infrastructure)
@@ -35292,6 +35307,7 @@ CREATE TABLE agents (
     -- NULL for admin, user_id for user, org_id for org
     owner_id TEXT,
     -- The agent's credential: a tokens row (scope 'agent') whose prefix is adm_, usr_ or org_
+    -- logical reference across the split SQLite files (a real foreign key only in a single remote database; see "Agent protocol contract")
     token_id INTEGER NOT NULL REFERENCES tokens(id),
 
     -- System info (from agent)
@@ -35310,6 +35326,8 @@ CREATE TABLE agents (
     -- Connection tracking
     -- pending, online, offline
     status TEXT DEFAULT 'pending',
+    -- from the heartbeat; shown on the agent detail page
+    uptime_seconds INTEGER,
     ip_address TEXT,
     connected_at TIMESTAMP,
     last_seen_at TIMESTAMP,
@@ -39136,7 +39154,7 @@ groups:
 |---------|----------|-------|
 | `server.yml` | ✓ Always | Configuration file |
 | `{config_dir}/yaml.d/` | ✓ If exists | Drop-in config files |
-| `{config_dir}/secrets.yml` | ✓ If exists | Secrets (encryption key, credentials); `server.token` is blanked in the backup copy |
+| `{config_dir}/secrets.yml` | ✓ If exists | Secrets (encryption key, credentials); `server.token` and `server.backup.encryption_password` are blanked in the backup copy (the backup password is never inside an archive) |
 | `{config_dir}/assets/` | If exists | Branding image files |
 | `server.db` | ✓ When the local file exists | The local SQLite main database (settings). A remote database is never part of a backup (see below) |
 | `app_secrets.json` | ✓ Always | EVERY `app_secrets` row (`installation_secret`, `cookie_signing_key`, `csrf_token_secret`, and all `{name}_previous` and `{name}_previous_until` rows, including `encryption_key_previous` and `encryption_key_previous_until` during the 30-day grace period, so a restore inside it can still decrypt data that depends on the previous key), exported by the server whether the database is local or remote, so a restore can decrypt the PGP private key (PART 11) even when the database is remote with no local cache. A restore writes them back and replaces rows that exist |
@@ -49295,8 +49313,8 @@ rm -rf "$TEST_DIR"
 |---------|------|-------|-------------|
 | **Building** | Docker | `casjaysdev/go:latest` | Compiling Go code |
 | **Container testing** | Docker | `alpine:latest` | Quick tests, CI/CD |
-| **Full OS testing (systemd)** | Incus | `debian:latest` | Systemd, services, integration |
-| **Full OS testing (OpenRC)** | Incus | `alpine:latest` (newest numbered release) | OpenRC, services, integration |
+| **Full OS testing (systemd)** | Incus | `debian/trixie` | Systemd, services, integration |
+| **Full OS testing (OpenRC)** | Incus | `alpine/{latest_stable}` (newest numbered release) | OpenRC, services, integration |
 
 ### Container Discipline (Keep Usage Low)
 
@@ -53626,6 +53644,7 @@ var localeFS embed.FS
     "error_route_conflict": "'{path}' entra en conflicto con la ruta existente: {route}",
     "error_corrupt_pid": "Archivo PID corrupto",
     "error_unsupported_shell": "Shell no soportado: {shell}",
+    "error_no_completion_shell": "{shell} no tiene autocompletado programable",
     "requires_privileges": "{action} requiere privilegios elevados.",
     "escalate_prompt": "¿Escalar? [S/n]: ",
     "running_in_mode_label": "Modo"
@@ -60085,9 +60104,9 @@ eval "$({project_name} --shell init bash)"
 | `bash` | Full | `source <(...)` |
 | `zsh` | Full | `source <(...)` |
 | `fish` | Full | `... \| source` |
-| `sh` | Basic (POSIX) | `eval $(...)` |
-| `dash` | Basic (POSIX) | `eval $(...)` |
-| `ksh` | Basic | `eval $(...)` |
+| `sh` | None (usage error, exit 2) | Safe no-op: prints one comment line, so `eval` does nothing |
+| `dash` | None (usage error, exit 2) | Safe no-op: prints one comment line, so `eval` does nothing |
+| `ksh` | None (usage error, exit 2) | Safe no-op: prints one comment line, so `eval` does nothing |
 | `powershell` | Full | `Invoke-Expression` |
 | `pwsh` | Full (PowerShell Core) | `Invoke-Expression` |
 
@@ -60183,7 +60202,9 @@ func printCompletions(shell, binaryName string) {
     case "fish":
         fmt.Print(generateFishCompletions(binaryName))
     case "sh", "dash", "ksh":
-        fmt.Print(generatePosixCompletions(binaryName))
+        // no programmable completion in these shells: a usage error, exit 2
+        fmt.Fprintf(os.Stderr, "%s\n", i18n.Tf(lang, "cli.error_no_completion_shell", shell))
+        os.Exit(2)
     case "powershell", "pwsh":
         fmt.Print(generatePowershellCompletions(binaryName))
     default:
@@ -60201,7 +60222,8 @@ func printInit(shell, binaryName string) {
     case "fish":
         fmt.Printf("%s --shell completions fish | source\n", binaryName)
     case "sh", "dash", "ksh":
-        fmt.Printf("eval \"$(%s --shell completions %s)\"\n", binaryName, shell)
+        // nothing to load: one comment line keeps `eval "$(... --shell init)"` harmless
+        fmt.Printf("# %s: %s has no programmable completion, nothing to load\n", binaryName, shell)
     case "powershell", "pwsh":
         fmt.Printf("Invoke-Expression (& %s --shell completions powershell)\n", binaryName)
     default:
@@ -61669,7 +61691,8 @@ func GenerateAgentToken(scope AgentScope) string {
   "os": "linux",
   "arch": "amd64",
   "version": "1.0.0",
-  "tags": ["production", "web-tier"]
+  "tags": ["production", "web-tier"],
+  "display_name": "optional friendly name"
 }
 ```
 
@@ -61753,9 +61776,9 @@ collection:
   enabled: true
   # Collection interval
   interval: 60s
-  # Max items per batch
+  # Max samples sent in ONE report request (one sample = one collection cycle = one agent_metrics row)
   batch_size: 100
-  # Max buffered items if offline
+  # Max samples buffered while offline (the oldest are dropped first)
   buffer_size: 1000
 
 # Logging
@@ -62101,7 +62124,7 @@ SERVER STARTUP                          AGENT STARTUP
 | Authenticate with agent token | User operations |
 | Perform its designated function | Interactive modes (TUI/GUI) |
 | Report status/data to server | Server configuration |
-| Execute server-assigned tasks | Anything outside its scope |
+| Collect and report data (no task API: a project defines its own) | Anything outside its scope |
 
 **Example by project type:**
 
@@ -64636,12 +64659,12 @@ PATCH /api/{api_version}/users/settings
 | `/server/healthz` | GET | None | Frontend health (PART 13) |
 | `/healthz` | GET | None | Only when `server.healthz.root.enabled: true`; same handler as `/server/healthz`, never a redirect |
 | `/server/metrics[/{service}]`, `/metrics[/{service}]` (root alias) | GET | Bearer token (per-service, mandatory) | Prometheus/Grafana/Loki metrics (PART 21); may additionally be IP-restricted in config |
-| `/sitemap.xml`, `/feed.xml`, `/rss.xml`, `/robots.txt`, `/favicon.ico`, `/manifest.json`, `/.well-known/*` | GET | None | Conventional web files; `/.well-known/*` is limited to documented allowlisted entries only |
+| `/sitemap.xml`, `/feed.xml`, `/rss.xml`, `/robots.txt`, `/favicon.ico`, `/manifest.json`, `/.well-known/*` | GET | None | Conventional web files; `/.well-known/*` is limited to the paths the project implements (IANA registry and RFC paths; the unimplemented ones are `404`) |
 | `/server/docs/swagger`, `/server/docs/graphql` | GET | None | Public API docs (HTML) |
 | `/api/swagger`, `/api/{api_version}/server/swagger` | GET | None | Public OpenAPI JSON spec |
 | `/api/graphql`, `/api/{api_version}/server/graphql` | POST | None for introspection; per-operation otherwise | GraphQL — see PART 14 GraphQL section for resolver-level auth |
 | `/api/mcp`, `/mcp`, `/api/{api_version}/server/mcp` | POST | Bearer REQUIRED on every MCP request (`401` without one); what the token may do is the API's own scope and per-operation rules | MCP endpoint — see "MCP Endpoint"; the credential is the API's Bearer token |
-| `/api/autodiscover` | GET | None | Public client/agent auto-config |
+| `/api/autodiscover` | GET | None | Discovery document: `name`, `version`, `api.current_version`, `urls`, the exposed `onion` and `i2p`, and the CLI/agent update versions; no settings or schema. On a Tor request `urls` is empty and only `onion` is set ("Autodiscover response") |
 | `/api/{api_version}/server/healthz` | GET | None | Public JSON health |
 | `/api/{api_version}/server/reports/*` | POST | None | Public reports sink (CSP, NEL, deprecation, intervention, crash, error, default). See PART 34 → "Public Reports Scope". Browsers cannot present credentials when emitting these reports. Rate-limited per-IP. |
 | `/server/security` | GET | None | Security overview page (HTML) — human-readable security.txt + reporting instructions. See PART 11 → "Security Reports". |
@@ -64713,7 +64736,7 @@ curl "/api/{api_version}/search/hello"
 
 | Route | Method | Auth | Description |
 |-------|--------|------|-------------|
-| `/api/autodiscover` | GET | None | Return server connection settings |
+| `/api/autodiscover` | GET | None | Discovery document: `name`, `version`, `api.current_version`, `urls`, the exposed `onion` and `i2p`, and the CLI/agent update versions; no settings or schema. On a Tor request `urls` is empty and only `onion` is set ("Autodiscover response") |
 
 **Response:** the standard envelope `{"ok": true, "data": {...}}`, with exactly the fields defined in PART 33 "Autodiscover response" (`data.api.current_version`, `name`, `version`, `urls`, `onion`, `i2p`, `cli_versions`, `cli_min_version`, `agent_versions`, `agent_min_version`). The server publishes no `primary`/`cluster` pair, no timeouts and no config schema; the CLI carries its own configuration (`cli.yml`).
 
@@ -68588,7 +68611,7 @@ maintainer_email: jane@example.com
 **Testing (Docker OR Incus):**
 - [ ] **Unit tests** - `make test` locally, and the same Docker commands spelled out in the workflow in CI/CD (CI never calls `make`), in the Docker toolchain image `casjaysdev/go:latest`, never in `alpine:latest`
 - [ ] **Basic tier** - Docker `alpine:latest` (`tests/docker.sh`): the compiled binary (not the shipped image), the basic suite including Tor and I2P health; the init-system and service lifecycle belong to `tests/incus.sh`
-- [ ] **Full OS tests** - Incus `debian:latest` for systemd (PREFERRED)
+- [ ] **Full OS tests** - Incus `debian/trixie` for systemd (PREFERRED)
 - [ ] **NEVER run binaries locally** - use Docker or Incus container
 
 **Debugging (Incus Preferred):**
@@ -68675,8 +68698,8 @@ cd "$TEMP_DIR" && docker compose up -d
 |------|-----------|---------|
 | Build | Docker `casjaysdev/go:latest` | Compile Go code |
 | Unit tests | Docker `casjaysdev/go:latest` | `go test ./...` |
-| Integration | Docker `alpine:latest` OR Incus `debian:latest` | Full server tests |
-| Full OS/systemd | Incus `debian:latest` (PREFERRED) | Services, real environment |
+| Integration | Docker `alpine:latest` OR Incus `debian/trixie` | Full server tests |
+| Full OS/systemd | Incus `debian/trixie` (PREFERRED) | Services, real environment |
 
 **Makefile Targets:**
 ```bash
@@ -69070,7 +69093,7 @@ make docker
 
 ### Phase 11: Conditional & Project-Specific Features (PARTS 32-36)
 
-**Interpretation:** PART 32.1 (Tor) is conditional on Tor availability and auto-enabled, PART 32.2 (I2P) is optional and opt-in, PART 33 is required for all projects, and PARTS 34-36 are optional per project.
+**Interpretation:** PART 32.1 (Tor) is conditional on Tor availability and auto-enabled, PART 32.2 (I2P) is always built in (code, image and tests) with only its runtime activation opt-in outside containers, PART 33 is required for all projects, and PARTS 34-36 are optional per project.
 
 **PART 32.1: Tor Hidden Service**
 - [ ] Auto-enabled when tor binary found
