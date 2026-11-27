@@ -5168,7 +5168,7 @@ Detect platform by checking for workflow files in this order:
 [![Build](https://jenkins.example.com/buildStatus/icon?job={project_org}/{project_name})](https://jenkins.example.com/job/{project_org}/job/{project_name}/)
 ```
 
-**Release/License/Docs badges also adapt to platform:**
+**Release/License/Docs badges also adapt to platform (the Docs row is included only when the documentation is deployed, see the docs-badge rule below; otherwise omit it):**
 
 ```markdown
 # GitHub
@@ -11779,6 +11779,7 @@ func RemovePIDFile(pidPath string) error {
 | Situation | Required behavior |
 |-----------|-------------------|
 | Invalid or missing setting | Replace it with the default and warn once ("Invalid → default") |
+| The database cannot be opened, created or checked at startup | Log ONE error, mark the `database` check `error` and start in the `maintenance` status with the listener and the health endpoint up; self-healing retries the connection (PART 5) and the server leaves `maintenance` when it succeeds |
 | A schema migration step that cannot proceed | Log ONE error naming the table and statement, mark the database check `error` and start in the `maintenance` status; the migration is retried at the next start |
 | A dataset, blocklist, GeoIP, CVE or certificate download that fails | Log one warning, keep the previous copy or run without it, report its check as `degraded` or `error` and retry by its scheduler task; never `unhealthy` unless it was registered `critical` |
 | An upstream (a search engine, a mail relay, a remote API) that fails | Per-upstream `degraded` or `error`; the feature that depends on it answers with a clear message, the rest keeps working |
@@ -11939,7 +11940,8 @@ PHASE 5: Server startup (actual server start)
     ├─ Create each database file if missing
     ├─ Run CREATE TABLE IF NOT EXISTS for all tables of each database
     ├─ Run schema migrations if needed
-    └─ Verify database integrity
+    ├─ Verify database integrity
+    └─ ANY failure above (connect, create, migrate, integrity): log ONE error, mark the `database` check `error`, enter `maintenance` and CONTINUE with the next steps so the listener starts and the health endpoint answers; work that needs the database (loading task state) waits until self-healing reconnects (PART 5); never exit ("Startup Never Fails")
 
 16. Start scheduler (see PART 19 for full task list):
     ├─ Initialize background task scheduler
@@ -13076,33 +13078,27 @@ server:
     driver: postgres
     url: ${DATABASE_URL}
 
-    # Additional databases (optional, for redundancy/failover)
+    # Downstream replicas (optional): copies of the primary, never promoted by the application
     replicas:
       - name: mariadb-1
         driver: mysql
         url: mysql://{user}:{password}@mariadb1.example.com:3306/myapp
-        # Failover priority (lower = higher priority)
-        priority: 1
         # Read replica
         read_only: true
 
       - name: mariadb-2
         driver: mysql
         url: mysql://{user}:{password}@mariadb2.example.com:3306/myapp
-        priority: 2
         read_only: true
 
       - name: postgres-backup
         driver: postgres
         url: postgres://{user}:{password}@pg-backup.example.com:5432/myapp
-        priority: 3
-        # Can be promoted to primary
-        read_only: false
+        read_only: true
 
       - name: mssql-legacy
         driver: mssql
         url: sqlserver://{user}:{password}@mssql.example.com:1433?database=myapp
-        priority: 10
         # Sync data to this DB
         sync: true
 
@@ -13112,21 +13108,12 @@ server:
       enabled: true
       # Sync check interval
       interval: 5s
-
-    # Failover settings
-    failover:
-      enabled: true
-      # Health check interval
-      health_check: 10s
-      # Failed checks before failover
-      threshold: 3
 ```
 
-**Failover Priority:**
-- Lower number = higher priority
-- Primary always tried first
-- On primary failure, try replicas in priority order
-- Auto-promote read-write replica if primary down
+**No application failover:**
+- The primary is the only source of truth; a replica never becomes the primary and the application never promotes one
+- When the primary is unreachable the server follows "Startup Never Fails" and the maintenance rules: it keeps retrying the primary and never switches to a replica
+- Database failover and promotion (PostgreSQL replication, Galera) is the infrastructure's job and is outside the application's scope; after the infrastructure repoints the primary URL, the server reconnects
 
 **Automatic Sync:**
 - Changes written to primary, synced to all replicas
@@ -14001,7 +13988,7 @@ func buildHealthResponse() *HealthResponse {
             // NOTE: Do NOT include Metrics here - internal endpoint
         },
 
-        // Component checks (ok/error only - no details)
+        // Component checks (core checks are ok/error; dataset and overlay checks may also be degraded, PART 13 - no details)
         Checks: ChecksInfo{
             // "ok" or "error"
             Database:  checkDatabase(),
@@ -15662,8 +15649,9 @@ If now - last_heartbeat > 5 minutes:
    Mark as "offline", exclude from cluster operations
          │
          ▼
-Admin manually removes dead nodes via:
-   /server/{admin_path}/cluster → Remove Node
+A dead node is never removed by another node or by an admin elsewhere (PART 34: a node removes only itself):
+   it stays listed as "offline" until it returns and removes itself via
+   /server/{admin_path}/cluster → Remove Node, or the cluster is rebuilt
 ```
 
 **Heartbeat Payload (every 30s, written to the `nodes` table; the one definition of that table, with every column named here, is PART 34 → "Database Tables for Clustering"):**
@@ -17259,7 +17247,7 @@ Redirect to         │                    │
 | `/.well-known/llms.txt` | Always | All projects | Generated from config + routes | `text/plain; charset=utf-8` | AI agent discovery file (also served at `/llms.txt`) |
 | `/.well-known/pgp-key.asc` | With its feature | Project security-report PGP keypair exists | Generated from stored public key | `application/pgp-keys` or `text/plain; charset=utf-8` | Public key download for secure report submission |
 | `/.well-known/acme-challenge/{token}` | With its feature | Let's Encrypt `http-01` is active | Dynamic handler only | `text/plain; charset=utf-8` | ACME challenge response; no auth, no HTML |
-| `/.well-known/change-password` | Always | Auth routes exist | Dynamic handler | Redirect response with no-store headers | If logged in, send user to `/users/security/password`; otherwise send to `/server/auth/password/forgot` |
+| `/.well-known/change-password` | With its feature | Auth routes exist | Dynamic handler | Redirect response with no-store headers | If logged in, send user to `/users/security/password`; otherwise send to `/server/auth/password/forgot` |
 | `/.well-known/webfinger` | When defined | Project publishes `acct:`-style identities or federation in `IDEA.md` | Dynamic handler | `application/jrd+json` | Resolve account/resource discovery; otherwise 404 |
 | `/.well-known/nodeinfo` | When defined | Project federates (present together with `webfinger`) | Dynamic handler | `application/json` | NodeInfo discovery: a `links` array pointing at the project's NodeInfo document route, which the project defines in `IDEA.md` |
 | `/.well-known/oauth-protected-resource` | When defined | Project enables OAuth for MCP or its API (PART 11 → "MCP Endpoint") | Dynamic handler, built per request | `application/json` | RFC 9728 resource metadata: `resource` (the canonical MCP URL), `authorization_servers` (the project's configured issuer URLs) and `bearer_methods_supported: ["header"]`; the `401` challenge's `resource_metadata` parameter points here |
@@ -18039,6 +18027,8 @@ server:
 ### Organization Audit Compliance
 
 **Org audit logs are stored separately per organization for compliance isolation.**
+
+**This subsection belongs to the OPTIONAL Organizations feature (PART 35): its routes and tables exist, and count in the template route inventory, only when the project enables Organizations (`x-mounted-when`: Organizations enabled).**
 
 | Requirement | Implementation |
 |-------------|----------------|
@@ -21140,7 +21130,7 @@ type ClusterInfo struct {
     Enabled   bool     `json:"enabled"`
     // "connected", "disconnected"
     Status    string   `json:"status,omitempty"`
-    // primary node public URL
+    // primary node public URL (the nodes.public_url of the primary)
     Primary   string   `json:"primary,omitempty"`
     // all node public URLs
     Nodes     []string `json:"nodes,omitempty"`
@@ -23207,10 +23197,10 @@ func renderNoJSHTML(w http.ResponseWriter, data interface{}) {
 | **Auto-generated** | Both specs generated from code (annotations, comments, or schema) |
 | **Never manual** | NEVER manually edit the generated OpenAPI JSON or generated GraphQL output (code-first: the schema built from the code; schema-first: the generated Go types). In schema-first the hand-written `schema.graphqls` is the one source and IS edited |
 | **Build-time generation** | Specs regenerated on every build |
-| **Optional routes** | The embedded build-time spec is the full SUPERSET of routes, and every route that depends on a flag or a setting (the `/debug/*` routes, `/metrics`, the root aliases, optional well-known files) carries `x-mounted-when` naming its condition (for example `--debug` or `server.metrics.root.enabled`). At startup the server derives the SERVED spec from the embedded one by removing every operation whose condition is false for this run, so the spec a client reads always matches the routes that are actually mounted. The drift test compares the superset with the route table |
+| **Optional routes** | The embedded build-time spec is the full SUPERSET of routes, and every route that depends on a flag or a setting (the root aliases, optional well-known files, optional features) carries `x-mounted-when` naming its condition (for example the setting that enables the feature); INTERNAL routes (metrics, `/debug/*`, Tor control) are never in the OpenAPI document, embedded or served. At startup the server derives the SERVED spec from the embedded one by removing every operation whose condition is false for this run, so the spec a client reads always matches the routes that are actually mounted. The drift test compares the superset with the route table |
 | **JSON only** | OpenAPI spec uses JSON format only (NO YAML) |
 | **Source of truth** | AI.md defines the TEMPLATE routes and the `### API routes` inventory in IDEA.md defines EVERY project-defined route, including any native or compatibility API of the project; together they are the API CONTRACT: routes, methods, auth and shapes. AI.md never enumerates project routes. The code and its annotations implement that contract, and the specs are GENERATED from the code, so they are artifacts, never edited by hand. Drift is detected by a test with three legs: the generated OpenAPI route and method list, the router's registered routes, and the union of the AI.md template routes and the IDEA.md `### API routes` inventory. A route present in one leg and missing from another fails the build, naming the route and the missing place; a project whose IDEA.md has no `### API routes` subsection fails with that message instead of passing vacuously. A deliberate change is made in AI.md or IDEA.md first, then the code, then the specs are regenerated |
-| **Template route inventory** | The template leg of the drift test is read from the project's own `AI.md` at test time, deterministically: a template route is a row of a Markdown table whose header row has a path column (`Endpoint` or `Path`) and a method column (`Method` or `Methods`), in any order and with any other columns (rows are read by those headers, never by column position): the path cell is exactly one backticked path starting with `/` and the method cell lists one or more HTTP methods, and the method is always explicit (a row without one is not a route). A template route whose row says `INTERNAL` (metrics, Tor control, the debug routes: the routes with `Internal` set) still counts as a template route, but the drift test expects it in the route table and in NONE of the OpenAPI document, llms.txt, GraphQL and MCP (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`) separated by `/` or `,` (each method of the path is its own route); a path cell with an alias lists each path as its own route; optional-segment brackets such as `/metrics[/{service}]` expand to two routes, the path without and the path with the bracketed segment. A row in a fenced code block or in a table introduced as an illustrative example (for example the generic REST row `/api/{api_version}/{resource}`) is not a template route. `{api_version}` is the API version in use, `{admin_path}` the configured admin path, any other `{name}` segment matches a path parameter. A row under a section marked OPTIONAL counts only when the project enables that feature (its `x-mounted-when` condition). A table without a method column (the frontend page lists, static files, the well-known support matrix) is not a route inventory either: those are `GET`/`HEAD` pages covered by the page registry and conformance tests, not by the drift parser, and any route that accepts a `POST` form is listed in an inventory table with an explicit `POST` row. A route table in any other form is not a route inventory: a new template route is added to AI.md in this form, and nothing is copied into a project |
+| **Template route inventory** | The template leg of the drift test is read from the project's own `AI.md` at test time, deterministically: a template route is a row of a Markdown table whose header row has a path column (`Endpoint` or `Path`) and a method column (`Method` or `Methods`), in any order and with any other columns (rows are read by those headers, never by column position): the path cell is exactly one backticked path starting with `/` and the method cell lists one or more HTTP methods (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`) separated by `/` or `,` (each method of the path is its own route), and the method is always explicit (a row without one is not a route). A row whose method cell is `ALL` and whose path ends in `/*` declares a PREFIX, not routes (the admin panel and admin API rows): the drift test does not expand it, the concrete routes under the prefix are the rows of the tables that define them (each with explicit methods), and the test requires at least one registered route under the prefix and every registered route under it to be such a row; `ALL` is valid only on a prefix row. Route classes: a row whose path starts with `/api/`, or is a root alias of an API route (`/healthz`, `/mcp`), is an API route and is compared with all three legs; every other row (`/`, `/server/healthz`, the Swagger and GraphiQL pages, the admin pages, the preferences forms) is a PAGE route, compared only with the router's registered routes and the page registry, and expected in NONE of the OpenAPI document. INTERNAL is a class of path, not a marker on each row: every path of the INTERNAL services (metrics with its `/metrics`, `/api/metrics` and versioned aliases, the `/debug/*` routes, the Tor control routes; the INTERNAL rows of the PART 1 endpoint-pattern table) counts as a template route when it has a row, and the drift test expects it in the route table and in NONE of the OpenAPI document, llms.txt, GraphQL and MCP; a path cell with an alias lists each path as its own route; optional-segment brackets such as `/metrics[/{service}]` expand to two routes, the path without and the path with the bracketed segment. A row in a fenced code block or in a table introduced as an illustrative example (for example the generic REST row `/api/{api_version}/{resource}`) is not a template route. `{api_version}` is the API version in use, `{admin_path}` the configured admin path, any other `{name}` segment matches a path parameter. A row under a section marked OPTIONAL counts only when the project enables that feature (its `x-mounted-when` condition). A table without a method column (the frontend page lists, static files, the well-known support matrix) is not a route inventory either: those are `GET`/`HEAD` pages covered by the page registry and conformance tests, not by the drift parser, and any route that accepts a `POST` form is listed in an inventory table with an explicit `POST` row. A route table in any other form is not a route inventory: a new template route is added to AI.md in this form, and nothing is copied into a project |
 | **Match site theme** | Both UIs styled to match site theme (light/dark/auto) |
 | **Standardized locations** | ALWAYS `src/swagger/` and `src/graphql/` (NEVER in root `.`) |
 
@@ -34021,7 +34011,7 @@ Admin Panel Header:
 | `/server/{admin_path}/nodes/add` | Add Node | Generate join token |
 | `/server/{admin_path}/pages/help` | Help | Edit help page content (matches the `{admin_path}/pages/help` API route below and the `/server/{admin_path}/pages` grouping used by About/Privacy/Contact/Terms) |
 
-**Auth and body format — these WEB routes are NOT the same handler as the API mirror below.** Every route in this table is session-cookie authenticated (admin login session, see "Authentication Methods by Route Family" above) and its mutations (`Save`, `Create`, `Delete`, etc.) are plain HTML `<form method="post" enctype="application/x-www-form-urlencoded">` submissions — never JSON-only (no `ShouldBindJSON`-only handler), per PART 16 "No-JS-first": the admin panel MUST be fully usable with JavaScript disabled. The separate `/api/{api_version}/server/{admin_path}/{section}/*` routes are the machine-readable mirror: JSON body, `Authorization: Bearer adm_*` token, no session cookie. Do not point a WEB form at the Bearer-only API route or reuse one handler for both — a browser form POST has no `Authorization` header and will 401 against a Bearer-only endpoint.
+**Auth and body format — these WEB routes are NOT the same handler as the API mirror below.** Every route in this table is session-cookie authenticated (admin login session, see "Authentication Methods by Route Family" above) and its mutations (`Save`, `Create`, `Delete`, etc.) are plain HTML `<form method="post" enctype="application/x-www-form-urlencoded">` submissions (a form that carries a file, such as the Branding image upload, uses `enctype="multipart/form-data"` and is still a plain form) — never JSON-only (no `ShouldBindJSON`-only handler), per PART 16 "No-JS-first": the admin panel MUST be fully usable with JavaScript disabled. The separate `/api/{api_version}/server/{admin_path}/{section}/*` routes are the machine-readable mirror: JSON body, `Authorization: Bearer adm_*` token, no session cookie. Do not point a WEB form at the Bearer-only API route or reuse one handler for both — a browser form POST has no `Authorization` header and will 401 against a Bearer-only endpoint.
 
 ### Settings Page Layout
 
@@ -34873,6 +34863,10 @@ The admin panel MUST include a scheduler section with:
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/totp/enable` | POST | Verify the 6-digit code and enable TOTP (returns recovery keys ONCE) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/passkey/setup` | POST | Start passkey registration (requires current password; returns WebAuthn options) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/passkey/register` | POST | Complete passkey registration with the attestation response |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/totp/disable` | POST | Disable TOTP (requires a current TOTP code or a recovery key) |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/totp/recovery-keys` | POST | Regenerate the recovery keys (the old keys stop working; returns the new keys ONCE) |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/passkey/{id}` | PATCH | Rename a passkey |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/passkey/{id}` | DELETE | Revoke one passkey |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/preferences` | GET | Get admin preferences (theme, notifications) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/preferences` | PATCH | Update admin preferences |
 
@@ -36787,7 +36781,7 @@ User Notification Preferences (/users/settings/notifications)
 │     ☑ Recovery key used                                     │
 │                                                             │
 │  👤 Account                                         WebUI Email│
-│     Email verified                                  [✓]  [✓] │
+│     Email verified                                  [✓]  [ ] │
 │     Profile updated                                 [✓]  [ ] │
 │                                                             │
 │  🔑 Sessions                                                 │
@@ -36805,7 +36799,7 @@ User Notification Preferences (/users/settings/notifications)
 | Server Admin | `admin_preferences` table | `admin_id` |
 | Regular User | `user_preferences` table | `user_id` |
 
-**Preference Schema (the event names are the template names of "Email Templates"; the "Notification vs Email Decision Matrix" gives each event's default and `server.notifications.email.events.*` sets the server-wide email default; a user's preference overrides it):**
+**Preference Schema (a preference key is the event name; an event that can send email uses its template name from "Email Templates" as the key (`login_alert` for a login from a new device, `scheduler_error` for a failed task), and an event with no template is WebUI-only (admin login and logout, a manually triggered task, profile updated, email verified, session expired): it never sends email and has no email preference; the "Notification vs Email Decision Matrix" gives each event's default and `server.notifications.email.events.*` sets the server-wide email default; a user's preference overrides it):**
 ```json
 {
   "notifications": {
@@ -37429,7 +37423,7 @@ GeoIP databases are NEVER embedded in the binary — they are downloaded on firs
 
 ## Database Sources (ip-location-db) — Canonical, Single Source Per Category
 
-All databases come from [sapics/ip-location-db](https://github.com/sapics/ip-location-db), distributed as GitHub Release assets (`https://github.com/sapics/ip-location-db/releases/download/latest/{file}`; upstream moved distribution there on June 18, 2026) — no API key, account, or license agreement required at download time. The old jsDelivr `@ip-location-db/*` npm packages stopped updating on June 17, 2026 and MUST NOT be used. Every file has a checksum at `https://github.com/sapics/ip-location-db/releases/download/checksum/{file}.sha256`; the downloader MUST verify it before replacing a live database.
+All databases come from [sapics/ip-location-db](https://github.com/sapics/ip-location-db), distributed as GitHub Release assets (`https://github.com/sapics/ip-location-db/releases/download/latest/{file}`; upstream moved distribution there on June 18, 2026) — no API key, account, or license agreement required at download time. The old jsDelivr `@ip-location-db/*` npm packages stopped updating on June 17, 2026 and MUST NOT be used. Every file has a checksum at `https://github.com/sapics/ip-location-db/releases/download/checksum/{file}.sha256`; the downloader MUST verify it before replacing a live database. The published checksum can lag or disagree with the file (upstream has shipped a `.sha256` that did not match its `.mmdb`): on a mismatch the downloader re-fetches both once after a short delay, and if they still disagree it keeps the live database and reports the check `degraded`. With no live database it installs the file only if it opens as a valid MMDB with sane metadata, logs one warning that it is unverified, reports `degraded`, and retries on the next update, so a checksum fault never leaves the project with no database and never turns health into `503`. Every downloaded data URL, including each `extra_sources` blocklist (a list can disappear, for example a 404), follows "Startup Never Fails": a failed or missing source degrades only its own feature and never stops the server.
 
 **Go library:** use `github.com/oschwald/maxminddb-golang` — NOT `geoip2-golang`. ip-location-db embeds custom `database_type` strings (`asn ipv4`, `city ipv6`, `country ipvAll`, etc.) that `geoip2.Open()` rejects with `InvalidDatabaseError`. Decode into project-defined structs matching the field tables below.
 
@@ -49769,7 +49763,11 @@ make test
 **In CI/CD Pipeline (REQUIRED):** `PROJECT_NAME` and `INTERNAL_NAME` below come from the workflow's top-level `env:` block (PART 28; `INTERNAL_NAME` is the IDEA.md `internal_name`). A provider runs the toolchain either as a job container (`container: image: casjaysdev/go:latest`, where the same commands run directly and `COVDIR` is created inside that container under `/tmp/{project_org}/{internal_name}-XXXXXX`) or, as shown here, through an explicit `docker run` of the same image from a host-runner job; both are valid, and the example shows the `docker run` form because the coverage directory lives outside the workspace and is mounted in.
 
 ```yaml
-# .github/workflows/ci.yml (test job with coverage)
+# .github/workflows/ci.yml (coverage job; the top-level env block sits above `jobs:` and every step sees it as a shell variable too)
+env:
+  PROJECT_NAME: {project_name}
+  INTERNAL_NAME: {internal_name}
+
 test:
   runs-on: ubuntu-26.04
   container:
@@ -65264,6 +65262,10 @@ Moderation only - Server Admin does not manage org members/roles.
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/totp/enable` | POST | Verify the 6-digit code and enable TOTP (returns recovery keys ONCE) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/passkey/setup` | POST | Start passkey registration (requires current password; returns WebAuthn options) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/passkey/register` | POST | Complete passkey registration with the attestation response |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/totp/disable` | POST | Disable TOTP (requires a current TOTP code or a recovery key) |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/totp/recovery-keys` | POST | Regenerate the recovery keys (the old keys stop working; returns the new keys ONCE) |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/passkey/{id}` | PATCH | Rename a passkey |
+| `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/passkey/{id}` | DELETE | Revoke one passkey |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/preferences` | GET | Get admin preferences (theme, notifications) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/preferences` | PATCH | Update admin preferences |
 
@@ -65788,7 +65790,7 @@ DB is now source of truth
 **Mixed Mode is a Cluster whose ONE shared primary database is additionally replicated into databases of other types. Each node lists its own replicas (`server.database.replicas`, PART 5 → "Topology selection"); the primary, the source of truth, stays the single shared database that every node joins through.**
 
 This is useful when:
-- Migrating from one database to another (e.g., MySQL → PostgreSQL): the new type runs as a replica until it is promoted
+- Migrating from one database to another (e.g., MySQL → PostgreSQL): the new type runs as a replica until the operator repoints `server.database.url` at it (the application never promotes a replica itself)
 - Geographic distribution with a local read replica of another type per node
 - Testing a new database backend before full migration
 
@@ -66116,7 +66118,8 @@ func decryptBootstrapData(encrypted []byte, token string) []byte {
 |--------|------|-------------|
 | `id` | String | Node ID (default: hostname) |
 | `hostname` | String | Server hostname |
-| `ip_address` | String | Node IP address |
+| `ip_address` | String | Node IP address (internal use only; never exposed in health output or to clients) |
+| `public_url` | String | The node's externally reachable HTTPS origin (Node Identity → Public URL); the source of `cluster.primary` and `cluster.nodes` in the health response |
 | `version` | String | Application version |
 | `commit_hash` | String | Build commit |
 | `status` | String | healthy, degraded, offline (PART 10 → Cluster Heartbeat & Failure Handling) |
@@ -66244,6 +66247,9 @@ func updateHeartbeat(db *sql.DB, nodeID string) {
 |---------|---------|------------|
 | Node ID | `{hostname}` | Yes, via `/server/{admin_path}/nodes/settings` |
 | Display Name | `{hostname}` | Yes |
+| Public URL | `https://{fqdn}`, built from the node's resolved FQDN (PART 8 → "Resolution Order") | Yes, via `/server/{admin_path}/nodes/settings` |
+
+The Public URL is validated on save: scheme `https`, a public domain name as host (no IP literal, `localhost`, single-label or internal name), no userinfo, path, query or fragment, and the node's own `/server/healthz` must answer at it. A node without a valid Public URL is left out of `cluster.nodes`; its hostname or IP is never published instead.
 
 #### First Node Behavior
 
