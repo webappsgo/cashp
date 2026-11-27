@@ -7,6 +7,19 @@ under `server.tor` and `server.i2p`. Invalid values are reported during
 validation. A missing file is created from defaults; a legacy
 `server.yaml` is renamed to `server.yml` on startup.
 
+Shared page content belongs in area files under `{config_dir}/yaml.d`, not in
+`server.yml`. Public Help Markdown and the MCP guide's project section are
+stored at `server.pages.help.content` and `server.pages.help.mcp` in
+`pages.yml`. Operator-authored About, Privacy,
+Terms, header, and footer content belongs under `server.branding.content` in
+`branding.yml`; page bodies use `{format: md, body: ...}` and header/footer
+fragments use `{format: html, body: ...}`. Body may be one string or a map of
+language codes to strings with an optional `default`. About and Privacy extend
+their built-in pages; Terms replaces its built-in United States text. Header
+and footer content is sanitized before rendering. Drop-ins use private
+permissions (`0700` directory and `0600` files), and the normal config merge
+applies their values.
+
 ## Paths
 
 Directory flags take precedence over their matching environment variables,

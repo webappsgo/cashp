@@ -29,6 +29,11 @@ handled by the HTTP listener. See `server.ssl` in
   OpenAPI JSON. `/server/docs/swagger` is the browser explorer.
 - `/api/{api_version}/server/graphql` and `/api/graphql` expose the GraphQL
   endpoint; `/server/docs/graphql` is the browser explorer.
+- `/server/help/mcp` explains how to connect an assistant to the Streamable
+  HTTP MCP endpoint. `/api/{api_version}/server/mcp` is the canonical endpoint;
+  `/api/mcp` and `/mcp` are aliases. Requests require a Bearer API token, and
+  available tools follow that token's permissions. The matching JSON help
+  response is `/api/{api_version}/server/help/mcp`.
 - `/.well-known/security.txt` provides vulnerability reporting details and
   `/.well-known/llms.txt` describes the public site for language-model
   clients. These are the two generated well-known files; other well-known

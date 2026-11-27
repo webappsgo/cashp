@@ -6236,7 +6236,7 @@ package main
 | **Attribution** | The notice the terms require (author, license, link, changes made) |
 | **Record** | In the project's third-party notices (`LICENSE.md`, "Third-Party Licenses") and on the attribution surface (`/server/about`, or the README when the project has no web page) |
 | **Per-record provenance** | When records come from several sources, every record or file carries a `source` key that names its entry in the third-party notices |
-| **Provenance decision (ask first)** | Before any record is bundled the project asks the user whether the records come from a third-party corpus (then the source, terms and attribution rows above apply) or are original content written at the owner's direction (then the generated-content row applies); the answer is written to IDEA.md first |
+| **Provenance decision (ask first)** | Before any record is bundled the project asks the user which of two options applies: (1) a third-party corpus (the source, terms and attribution rows above apply) or (2) original content written at the owner's direction (the AI writes it and the owner declares it theirs). Option (2) requests no corpus, publisher, source URL or external redistribution license: the records carry `source: "original"`, belong to the owner, are released under the project's license (MIT by default) and add no third-party notice. The answer is written to IDEA.md before anything is bundled |
 | **Unknown or unusable terms** | Content with no stated license, a license that forbids redistribution, a site that forbids scraping, or an unknown origin is NOT embedded. The project asks the user instead of guessing |
 | **Generated content** | It counts as the project's own only when the user says so, and is never presented with an invented source. Owner-directed original content (the owner declares it theirs and the AI writes it) is recorded in the third-party notices as "Original content, owned by {owner}, written with AI assistance at the owner's direction, released under the project's license", with no external source or URL; every record's `source` key is `original`, the attribution surface lists it under "Original content" without naming any third party, and the owner's statement is kept in the project's IDEA.md |
 | **Project translations** | Strings translated for the project under the localization rule (by the AI or a human translator, I18N & A11Y → "Translating") are the project's own work and need no source record; a human translator's pull request is under the project license. A translation copied from another project, a service or a third-party catalogue is third-party content and follows every row above |
@@ -8220,6 +8220,8 @@ X-Maintenance-Reason: database_connection
 
 **`mode` always reports the configured MODE (`production`/`development`/`debug`) — maintenance is a state carried by `status`, never a mode. HTTP code: `503 Service Unavailable`.**
 
+**Self-healing limit.** `max_attempts: 0` retries forever. A positive value caps the failed attempts: once it is reached retrying stops and the server stays in maintenance mode (writes keep answering `503`; reads keep working only while the database or a usable cache can answer them, and with neither, for example a remote database that is down and no usable cache, only the health endpoints answer and every other route is `503`). `maintenance.self_healing` in `/server/healthz` then reports `enabled: false`, `exhausted: true` and `next_attempt: null`; the audit log records `server.self_healing_exhausted` (reason, attempts); and one notification (when email is configured) says operator action is needed. The server leaves maintenance mode only when an operator removes the cause and restarts the service (`--service restart`); a restart also resets the attempt count.
+
 ### Recovery (Automatic)
 
 **When self-healing succeeds:**
@@ -8711,7 +8713,7 @@ func (req *CreateResourceRequest) Parse() (*Resource, error) {
 | `yaml.d/notifications.yml` | `server.notifications` |
 | `yaml.d/tor.yml` | `server.tor` and the top-level `tor` |
 | `yaml.d/i2p.yml` | `server.i2p` |
-| `yaml.d/maintenance.yml` | `server.maintenance`, `server.scheduler`, `server.update`, `server.auto_update`, `server.backup`, `server.restore` and the top-level `cli` |
+| `yaml.d/maintenance.yml` | `server.maintenance`, `server.scheduler`, `server.update`, `server.auto_update`, `server.backup`, `server.restore`, `server.import` and the top-level `cli` |
 | `yaml.d/accounts.yml` | `server.auth`, `server.users`, `server.orgs`, `server.session`, `server.admin`, `server.admin_path` |
 | `yaml.d/app.yml` | Every other section, which is project-defined (the product's own settings) |
 | `secrets.yml` | Credentials only ("Secrets File") |
@@ -9021,6 +9023,18 @@ ENTRYPOINT [ "tini", "-p", "SIGTERM", "--", "/usr/local/bin/entrypoint.sh" ]
                // Can sudo with password
                return true
            }
+       }
+
+       // doas: passwordless, or permitted by the doas configuration
+       if _, err := exec.LookPath("doas"); err == nil {
+           if exec.Command("doas", "-n", "true").Run() == nil || exec.Command("doas", "-C", "/etc/doas.conf", "true").Run() == nil {
+               return true
+           }
+       }
+
+       // pkexec: only with a graphical session that can show the PolicyKit prompt
+       if _, err := exec.LookPath("pkexec"); err == nil && (os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != "") {
+           return true
        }
        return false
    }
@@ -16303,8 +16317,8 @@ When `DEBUG=true` is active and an error occurs, the canonical error body (PART 
 |------|-------------|
 | Path confinement | Reject absolute paths, `..`, empty names, drive-letter paths, and any extracted path that escapes the target directory |
 | Symlinks / special files | Reject symlinks, hard links, device files, named pipes, sockets, and setuid/setgid bits |
-| Size limits | Enforce all four size limits before extracting and again while streaming (the ratio guard in the next row is separate). Defaults, all configurable under `restore.*`: max archive size `1G` (`restore.max_archive_size`), max total expanded size `4G` (`restore.max_expanded_size`), max file count `10000` (`restore.max_files`), max single file `512M` (`restore.max_file_size`) |
-| Compression bombs | Abort and delete the partial output when the expanded-to-compressed ratio exceeds `100:1` (`restore.max_ratio`) or any size limit above is exceeded; count bytes and files while streaming, never trust archive headers |
+| Size limits | Enforce all four size limits before extracting and again while streaming (the ratio guard in the next row is separate). Defaults, all configurable under `server.import.*` (these are the limits for archives that USERS upload or import; the server's own disaster-recovery restore, PART 22, has its own `server.restore.*` limits and no ratio guard): max archive size `1G` (`import.max_archive_size`), max total expanded size `4G` (`import.max_expanded_size`), max file count `10000` (`import.max_files`), max single file `512M` (`import.max_file_size`) |
+| Compression bombs | Abort and delete the partial output when the expanded-to-compressed ratio exceeds `100:1` (`import.max_ratio`) or any size limit above is exceeded; count bytes and files while streaming, never trust archive headers |
 | Permissions | Normalize extracted file modes to safe defaults; never preserve executable bits unless the feature explicitly needs them |
 | Overwrite policy | Do not overwrite existing files outside an explicit replace flow |
 
@@ -16584,13 +16598,13 @@ web:
 
 ## Sec-Fetch-* Request Validation
 
-**The spec uses the `Sec-Fetch-*` family as a defense-in-depth layer against CSRF and clickjacking. These are browser-set request headers (not response headers) — the binary validates them on state-changing FRONTEND requests only (never `/api/**` or compatibility-layer routes).**
+**The spec uses the `Sec-Fetch-*` family as a defense-in-depth layer against CSRF and clickjacking. These are browser-set request headers (not response headers) — the binary validates them on FRONTEND requests only (never `/api/**` or compatibility-layer routes): `Sec-Fetch-Site` on state-changing requests, `Sec-Fetch-Dest` on media and document endpoints, `Sec-Fetch-User` on the sensitive navigations in the table. An ABSENT header always passes through (see the browser-support fallback below); only a PRESENT value that is wrong is rejected.**
 
 | Header | Validated on | Reject if |
 |--------|--------------|-----------|
 | `Sec-Fetch-Site` | POST/PUT/PATCH/DELETE | `cross-site` AND frontend route (never `/api/**` or a compatibility-layer route) AND no Bearer token AND path is not in CSRF `exempt_paths` |
 | `Sec-Fetch-Dest` | media/document endpoints | `iframe` for endpoints not in `frame-ancestors` allow-list |
-| `Sec-Fetch-User` | authenticated state-changers | absent on a navigation that should be user-initiated (sensitive admin flows only) |
+| `Sec-Fetch-User` | authenticated state-changers | present with a value showing the navigation was not user-initiated (`?0`) on a sensitive admin flow; an absent header passes |
 
 **Why a separate layer when CSRF tokens already exist:** CSRF tokens defend against cross-origin form POSTs from attacker-controlled pages. `Sec-Fetch-Site=cross-site` catches the same class earlier (before token validation runs), and also catches subresource fetches that don't carry tokens. Both layers stay enabled — see PART 11 → "Public Endpoint Safety Principle" → defense in depth.
 
@@ -30512,10 +30526,10 @@ server:
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>{app_url}/docs</loc>
+    <loc>{app_url}/server/docs/swagger</loc>
     <lastmod>{last_modified}</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
+    <priority>0.7</priority>
   </url>
   <!-- Additional pages dynamically added -->
 </urlset>
@@ -31273,7 +31287,11 @@ When an admin edits `branding.content.footer` (or any other page content), show:
     <span>•</span>
     <a href="/server/privacy">Privacy</a>
     <span>•</span>
+    <a href="/server/terms">Terms</a>
+    <span>•</span>
     <a href="/server/help">Help</a>
+    <span>•</span>
+    <a href="/server/docs/swagger">API</a>
     <span>•</span>
     <a href="/server/preferences">Preferences</a>
     <span>•</span>
@@ -34266,11 +34284,11 @@ Admin Panel Header:
 | `backup.retention.max_total_size` | Text | `"10%"` | No | Hard size cap (e.g. `"10%"`, `"50G"`); `0` = disabled; overrides count limits |
 | `backup.encryption.enabled` | Toggle | Off | No | Encrypt backups |
 | `backup.encryption.password` | Password | (none) | No | Encryption password |
-| `restore.max_archive_size` | Text | `"1G"` | No | Max archive size accepted for restore/import |
-| `restore.max_expanded_size` | Text | `"4G"` | No | Max total expanded size; extraction aborts above it |
-| `restore.max_files` | Number | `10000` | No | Max files in an archive |
-| `restore.max_file_size` | Text | `"512M"` | No | Max size of any single extracted file |
-| `restore.max_ratio` | Number | `100` | No | Max expanded-to-compressed ratio (`100` = `100:1`); extraction aborts above it |
+| `import.max_archive_size` | Text | `"1G"` | No | Max archive size accepted for import |
+| `import.max_expanded_size` | Text | `"4G"` | No | Max total expanded size; extraction aborts above it |
+| `import.max_files` | Number | `10000` | No | Max files in an archive |
+| `import.max_file_size` | Text | `"512M"` | No | Max size of any single extracted file |
+| `import.max_ratio` | Number | `100` | No | Max expanded-to-compressed ratio (`100` = `100:1`); extraction aborts above it |
 
 #### Update Section (`/server/{admin_path}/updates`)
 
@@ -34978,6 +34996,10 @@ The admin panel MUST include a scheduler section with:
 | `/api/{api_version}/server/{admin_path}/pages/contact` | PATCH | Update contact page |
 | `/api/{api_version}/server/{admin_path}/pages/help` | GET | Get help page content |
 | `/api/{api_version}/server/{admin_path}/pages/help` | PATCH | Update help page |
+| `/api/{api_version}/server/{admin_path}/pages/terms` | GET | Get terms of service |
+| `/api/{api_version}/server/{admin_path}/pages/terms` | PATCH | Update terms of service |
+| `/api/{api_version}/server/{admin_path}/pages/{page}` | DELETE | Reset the page to its default (removes the override entry; `{page}` is `about`, `privacy`, `terms` or `help`) |
+| `/api/{api_version}/server/{admin_path}/pages/{page}/preview` | POST | Render the submitted content with the page's sanitizer without saving it (the preview of the admin editor) |
 
 ### Admin - Email (`/api/{api_version}/server/{admin_path}/email/`)
 
@@ -35013,6 +35035,9 @@ The admin panel MUST include a scheduler section with:
 | `/api/{api_version}/server/{admin_path}/backup/{id}` | DELETE | Delete backup |
 | `/api/{api_version}/server/{admin_path}/backup/{id}/download` | GET | Download backup file |
 | `/api/{api_version}/server/{admin_path}/backup/restore` | POST | Restore from backup |
+| `/api/{api_version}/server/{admin_path}/backup/test` | POST | Verify a backup without restoring it (body `backup_file`, and `password` when encrypted; the same checks as `--maintenance backup test`) |
+| `/api/{api_version}/server/{admin_path}/backup/settings` | GET | Read the backup retention limits (`backup.retention.*`) and the hourly-backup toggle (`backup.hourly_enabled`) |
+| `/api/{api_version}/server/{admin_path}/backup/settings` | PATCH | Update the backup retention limits and the hourly-backup toggle |
 
 ### Admin - Logs (`/api/{api_version}/server/{admin_path}/logs/`)
 
@@ -40681,6 +40706,8 @@ Application user creation **REQUIRES** privilege escalation. If the user cannot 
 
 ## Escalation Detection by OS
 
+**Detection (normative).** `canEscalate()` is true when `sudo -n true` succeeds or the user is in the `sudo`, `wheel` or `admin` group, or `doas` is installed and permits the user (`doas -n true` or `doas -C /etc/doas.conf true` succeeds), or `pkexec` is installed and a graphical session can show its prompt. `su` is never DETECTED (whether the user knows the root password cannot be probed): it is only the last-resort method, used in a terminal after the user chose to escalate when none of the detected methods exists. The lists below give the order in which the available methods are tried.
+
 ### Linux
 ```
 Escalation Methods (in order):
@@ -42470,7 +42497,7 @@ Every binary MUST have these values embedded at build time:
 | `BuildEpoch` | `1765112713` | Unix build timestamp (seconds, UTC), set via `-ldflags` — the single captured time source; used by the updater's devel-channel check and to derive `BuildDate` |
 | `OfficialSite` | the user's URL, or empty | Default server URL (empty when no official site is defined) |
 
-**Go code requirement** (in `src/version.go`, package `main`: never in `main.go`, which holds only `main()`; the package name stays `main`, so every `-X main.*` flag stays valid):
+**Go code requirement** (in `src/version.go`, package `main`: never in `main.go`, which holds only `main()`; the package name stays `main`, so every `-X main.*` flag stays valid; the `app` package never imports `main`: it receives the metadata through the configuration value that `main()` fills from these variables, PART 28):
 
 ```go
 // Build info - set via -ldflags at build time
@@ -42532,7 +42559,7 @@ All Docker builds use persistent Go module caching to avoid re-downloading depen
 2. Creates `releases/version.txt` with current version
 3. Strips binaries (removes symbols)
 4. Creates source archive (excludes `.git`, `.github`, `.gitea`, `binaries/`, `releases/`)
-5. Deletes existing GitHub release/tag if exists
+5. Stops with an error when `v{version}` already exists locally or on the remote (release tags are immutable: bump the version instead)
 6. Creates new GitHub release marked as `--latest`
 7. Uses `gh` CLI - **manual local release only**
 
@@ -57765,7 +57792,7 @@ I2P Eepsite: running (i2pd)
 
 | Field | Description |
 |-------|-------------|
-| I2P Eepsite | The lifecycle `state` verbatim: `disabled`, `no_provider`, `starting`, `building`, `running` (followed by the provider in parentheses, for example `running (i2pd)`) or `error`. Expected output for each state: `I2P Eepsite: disabled`, `I2P Eepsite: no_provider`, `I2P Eepsite: starting`, `I2P Eepsite: building`, `I2P Eepsite: running (i2pd)` followed by its `Address:` line, and `I2P Eepsite: error` |
+| I2P Eepsite | The lifecycle `state` verbatim: `disabled`, `no_provider`, `starting`, `building`, `running` (followed by the provider in parentheses, for example `running (i2pd)`) or `error`. Expected output for each state: `I2P Eepsite: disabled`, `I2P Eepsite: no_provider`, `I2P Eepsite: starting`, `I2P Eepsite: building`, `I2P Eepsite: running (i2pd)` followed by its `Address:` line, and `I2P Eepsite: error`. The parentheses are display only: `state` stays `running` and the provider is the separate `features.i2p.provider` value |
 | Address | Full `.b32.i2p` address |
 
 ---
@@ -63270,7 +63297,7 @@ User receives: "Password reset requested by administrator.
 | **NOT recoverable** | If lost, cannot be retrieved - account recovery required |
 | **Single use** | Each recovery key can only be used once |
 | **Case insensitive** | Keys are validated case-insensitively |
-| **Acknowledge before activation** | The call that registers the first passkey (or enables TOTP) returns the keys once and leaves the credential `pending`: it cannot be used to log in until the keys are acknowledged. The browser acknowledges with the checkbox and Continue (a CSRF-protected `POST` of the profile security page to `.../profile/security/recovery-keys/ack`), API clients with `POST /api/{api_version}/server/{admin_path}/{admin_username}/profile/security/recovery-keys/ack`. A credential left `pending` for 15 minutes is discarded and the registration starts over |
+| **Acknowledge before activation** | The call that registers the first passkey (or enables TOTP) returns the keys once and leaves the credential `pending`: it cannot be used to log in until the keys are acknowledged. The browser acknowledges with the checkbox and Continue (a CSRF-protected `POST` of the profile security page to `.../profile/security/recovery-keys/ack`), API clients with `POST /api/{api_version}/server/{admin_path}/{admin_username}/profile/security/recovery-keys/ack`. A credential left `pending` for 15 minutes is discarded and the registration starts over. Users acknowledge at `POST /api/{api_version}/users/security/recovery-keys/ack` (the web form posts the same action from `/users/security`) |
 
 **Recovery Key Flow:**
 ```
@@ -65210,6 +65237,7 @@ Organizations - only for projects with multi-user collaboration.
 | `/api/{api_version}/users/security/sessions/{session_id}` | DELETE | Revoke session |
 | `/api/{api_version}/users/security/2fa` | GET | Get 2FA status |
 | `/api/{api_version}/users/security/2fa/enable` | POST | Enable 2FA |
+| `/api/{api_version}/users/security/recovery-keys/ack` | POST | Acknowledge the one-time recovery-key display; only then does the pending passkey or 2FA become usable |
 | `/api/{api_version}/users/security/2fa/disable` | POST | Disable 2FA |
 | `/api/{api_version}/users/security/recovery` | GET | Get recovery keys status |
 | `/api/{api_version}/users/security/recovery/regenerate` | POST | Regenerate recovery keys |
@@ -65409,6 +65437,10 @@ Moderation only - Server Admin does not manage org members/roles.
 | `/api/{api_version}/server/{admin_path}/pages/contact` | PATCH | Update contact page settings |
 | `/api/{api_version}/server/{admin_path}/pages/help` | GET | Get help page content |
 | `/api/{api_version}/server/{admin_path}/pages/help` | PATCH | Update help page content |
+| `/api/{api_version}/server/{admin_path}/pages/terms` | GET | Get terms of service content |
+| `/api/{api_version}/server/{admin_path}/pages/terms` | PATCH | Update terms of service content |
+| `/api/{api_version}/server/{admin_path}/pages/{page}` | DELETE | Reset the page to its default (removes the override entry; `{page}` is `about`, `privacy`, `terms` or `help`) |
+| `/api/{api_version}/server/{admin_path}/pages/{page}/preview` | POST | Render the submitted content with the page's sanitizer without saving it (the preview of the admin editor) |
 
 ### Admin - Email (`/api/{api_version}/server/{admin_path}/email/`)
 
@@ -65444,6 +65476,9 @@ Moderation only - Server Admin does not manage org members/roles.
 | `/api/{api_version}/server/{admin_path}/backup/{id}` | DELETE | Delete backup |
 | `/api/{api_version}/server/{admin_path}/backup/{id}/download` | GET | Download backup file |
 | `/api/{api_version}/server/{admin_path}/backup/restore` | POST | Restore from backup |
+| `/api/{api_version}/server/{admin_path}/backup/test` | POST | Verify a backup without restoring it (body `backup_file`, and `password` when encrypted; the same checks as `--maintenance backup test`) |
+| `/api/{api_version}/server/{admin_path}/backup/settings` | GET | Read the backup retention limits (`backup.retention.*`) and the hourly-backup toggle (`backup.hourly_enabled`) |
+| `/api/{api_version}/server/{admin_path}/backup/settings` | PATCH | Update the backup retention limits and the hourly-backup toggle |
 
 ### Admin - Logs (`/api/{api_version}/server/{admin_path}/logs/`)
 
