@@ -18,7 +18,11 @@ validation. Debug mode does not bypass authentication.
 
 The panel provides a dashboard, setup and sign-in flows, server settings,
 administrator account management, logs and audit history, server information,
-help, and administrator profile and preferences. Settings sections include
+help, administrator profile and preferences, and agent management when the
+optional agent component is enabled. The agent pages list connected hosts and
+their health, show system and recent metric details, and provide forms to add,
+edit, remove, or rotate an agent credential. A newly generated agent command is
+shown once and should be treated as a secret. Settings sections include
 branding, TLS, email, notifications, scheduler, backups, updates, maintenance,
 security, network services, moderation, invites, and cluster nodes. The
 running server's route list and settings schema are authoritative for the

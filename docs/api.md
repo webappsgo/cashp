@@ -112,6 +112,24 @@ and support mode; plus administration of settings, service levels, departments,
 categories, agents, canned responses, and reports. The complete live method and
 path inventory is available from the generated OpenAPI document.
 
+## Agent routes
+
+When the agent component is enabled, agents are managed under the owner scope:
+
+| Owner | API base |
+|---|---|
+| Server Admin | `/api/{api_version}/server/{admin_path}/agents` |
+| User | `/api/{api_version}/users/agents` |
+| Organization | `/api/{api_version}/orgs/{slug}/agents` |
+
+Each base supports listing and creating agents. A named agent supports reading,
+updating its name or tags, removing it, rotating its token, and reading its
+metrics. Registration, heartbeat, and metric reports use the corresponding
+`/register`, `/heartbeat`, and `/report` routes. Agent credentials are
+owner-scoped bearer tokens with the `agent` scope; they can only register and
+send data for their own agent. The generated OpenAPI document lists the exact
+methods, schemas, and response envelopes for the configured server.
+
 ## Inspect the live route contract
 
 The OpenAPI document is generated from routes mounted by the server. Fetch it

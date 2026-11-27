@@ -79,10 +79,18 @@ configured data and backup directories.
 
 ## Agent service
 
-`cashp-agent` supports service installation and lifecycle operations on the
-platforms handled by its service package. Run `cashp-agent --help` on the
-target host to see the supported operations and privilege requirements. Agent
-enrollment uses a server URL, token, and optional organization slug.
+When the optional `cashp-agent` binary is enabled, sign in to the server and
+open **Agents** in the server panel. Choose **Add Agent** to set its name,
+tags, and token expiry. The panel shows a one-time command containing the
+agent-scoped token; copy it to the target host and run it with the required
+service-management privileges. The agent registers, stores its configuration,
+and installs itself as a service. Treat the command as a secret until it has
+been used, then clear it from shell history and other temporary locations.
+
+Use `cashp-agent test` to check the server connection and enrollment, and
+`cashp-agent status` to inspect the local enrollment state. For manual
+registration or service lifecycle commands, run `cashp-agent --help` on the
+target host to see the supported operations and privilege requirements.
 
 ## Related
 

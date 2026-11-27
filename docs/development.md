@@ -45,8 +45,12 @@ two additional binaries, and each is built only if its directory exists.
 | `make dev` | Fast build with no ldflags into an isolated temp directory |
 | `make test` | Run the full test suite with coverage enforcement |
 | `make docker` | Build the multi-arch container image locally |
-| `make release` | Build binaries and package local release artifacts; it does not publish a GitHub release |
+| `make release` | Require a stable `release.txt` version, build binaries, then create or replace the `vX.Y.Z` release and mark it latest |
+| `make beta` | Require a clean `main` branch, push a timestamped beta tag, and let CI build and publish it |
 | `make clean` | Remove `binaries/` and `releases/` |
+
+`release-check` is an internal prerequisite of `release`; it rejects devel and
+prerelease versions before any build or cleanup starts.
 
 `make build` and `make local` both depend on `clean`, so each starts from an
 empty output directory.

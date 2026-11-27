@@ -17196,13 +17196,33 @@ Redirect to         │                    │
 - `/.well-known/**` is reserved to the server and can NEVER be claimed by users, orgs, vanity routes, or admin path settings
 - Well-known endpoints live only at the root `/.well-known/...` namespace, never under `/server/*` or `/api/*`
 - Only documented, allowlisted well-known entries may be served; unsupported entries MUST return `404 Not Found`
-- `GET` and `HEAD` are the only valid methods for `/.well-known/**`; other methods MUST return `405 Method Not Allowed`
-- No auth, no CSRF token, and no session requirement may be needed to read any `/.well-known/**` resource
+- `GET` and `HEAD` are the only valid methods for `/.well-known/**`, except for a method that has a row in "Well-Known Protocol Exceptions"; every other method MUST return `405 Method Not Allowed`
+- No auth, no CSRF token, and no session requirement may be needed to read any `/.well-known/**` resource; only a method with a row in "Well-Known Protocol Exceptions" may require a credential, and then never a session cookie
 - `/.well-known/` itself MUST NOT list a directory index, file browser, or generated listing
 - The namespace MUST NOT expose user-uploaded or user-controlled files directly
 - The namespace is for public-safe protocol metadata only; it MUST NOT expose secrets, internal config, admin-only state, or anything that is unsafe for anonymous users
 - Canonical well-known endpoints MUST serve the exact path required by the standard/consumer; do NOT move them under another route and redirect unless the specific standard explicitly requires a redirect behavior
 - `/.well-known/security.txt` is canonical; `/security.txt` is NOT required and SHOULD return `404` unless a project-specific requirement in `IDEA.md` explicitly says otherwise
+
+### Well-Known Protocol Exceptions (per-standard route declarations)
+
+**The defaults above (anonymous `GET`/`HEAD`, no credentials) hold for every entry unless the entry has a row in this table.** A row is the only way a standard that needs another method or a credential enters the namespace, and it widens exactly what the row says and nothing else: the namespace is still not a general static-file bucket, still has no directory index, still serves no user-controlled file, and every other path, method or credential still gets `404`, `405` or `401` as before.
+
+| Standard | Method and path | Auth | Request | Response | Enabled by |
+|----------|-----------------|------|---------|----------|------------|
+| RFC 7030 EST | `GET /.well-known/est/cacerts` and `GET /.well-known/est/{label}/cacerts` | None (public CA certificates) | None | `200` `application/pkcs7-mime; smime-type=certs-only`, base64 body | `web.well_known.est.enabled` |
+| RFC 7030 EST | `POST /.well-known/est/simpleenroll` and `POST /.well-known/est/{label}/simpleenroll`; the same for `simplereenroll` | The EST client credential only: a TLS client certificate or HTTP Basic (`401` with `WWW-Authenticate` otherwise); never a session cookie | `application/pkcs10`, base64 body, at most 64 KiB | `200` `application/pkcs7-mime; smime-type=certs-only`, base64 body; `4xx` plain text reason | `web.well_known.est.enabled` |
+| RFC 7030 EST | `GET /.well-known/est/csrattrs` and `GET /.well-known/est/{label}/csrattrs` | The EST client credential | None | `200` `application/csrattrs`, or `204` | `web.well_known.est.enabled` |
+| Mozilla mail autoconfig | `GET /.well-known/autoconfig/mail/config-v1.1.xml` (query `emailaddress`) | None | None | `200` `application/xml` (the `clientConfig` document of the project's mail settings) | `web.well_known.autoconfig.enabled` |
+
+**Rules for every row:**
+- The row names the exact methods; any other method on that path is `405` with an `Allow` header listing the row's methods, and `OPTIONS` answers only that `Allow`.
+- A credential-bearing method is authenticated by a non-cookie credential and is exempt from CSRF for that reason: a session cookie never authenticates it. Authentication failures count against the failed-authentication limiter, and each request spends the strict rate-limit class.
+- The request body size and content type are fixed by the row; a larger body is `413`, another content type `415`.
+- Every call is audited (`wellknown.{standard}.{action}`, with the outcome, never the credential or the request body).
+- `{label}` is lowercase `[a-z0-9-]`, at most 32 characters; an unknown label is `404`.
+- The row exists only after it is documented in `IDEA.md` with the enabling feature (a project that runs an EST or mail-autoconfig service), and its switch defaults to `false`; while off, every path of the row answers `404`.
+- A project adds a row only for a standard that requires that exact path; it follows "Adding New Well-Known Entries" and enters the route tables, the reserved-route checks and the checklist.
 
 ### Well-Known Tiers
 
@@ -17212,7 +17232,7 @@ Redirect to         │                    │
 |------|---------|------|
 | **Required** (every project, no toggle) | `security.txt`, `llms.txt` | Always served; never disabled by config; an operator file in `{data_dir}/web/.well-known/` may replace the generated body of the SAME entry, but the entry itself cannot be turned off |
 | **Feature-gated** (exists automatically with its feature) | `pgp-key.asc`, `acme-challenge/{token}`, and where password accounts exist `change-password` | Present exactly while the feature exists and `404` otherwise; there is no separate toggle, because the feature IS the toggle |
-| **Optional** (disabled until defined) | `webfinger`, `nodeinfo`, `openid-configuration`, `oauth-protected-resource`, `oauth-authorization-server`, `assetlinks.json`, `apple-app-site-association`, `mta-sts.txt`, `gpc.json`, `openpgpkey/` | Off by default; enabled only when the matching feature is defined in `IDEA.md` or project config (Optional-entry rule); each has a `web.well_known.{name}.enabled` switch (hyphens become underscores) and answers `404` while disabled |
+| **Optional** (disabled until defined) | `webfinger`, `nodeinfo`, `openid-configuration`, `oauth-protected-resource`, `oauth-authorization-server`, `assetlinks.json`, `apple-app-site-association`, `mta-sts.txt`, `gpc.json`, `openpgpkey/`, `est/`, `autoconfig/mail/config-v1.1.xml` | Off by default; enabled only when the matching feature is defined in `IDEA.md` or project config (Optional-entry rule); each has a `web.well_known.{name}.enabled` switch (hyphens become underscores) and answers `404` while disabled |
 
 ### Well-Known Support Matrix
 
@@ -17233,10 +17253,12 @@ Redirect to         │                    │
 | `/.well-known/assetlinks.json` | Disabled | Android App Links / native credential association is enabled | Config or file-backed | `application/json` | Android digital asset links |
 | `/.well-known/apple-app-site-association` | Disabled | Apple Universal Links / WebCredentials / App Clips are enabled | Config or file-backed | `application/json` | Apple app/site association file; no `.json` suffix |
 | `/.well-known/mta-sts.txt` | Disabled | Deployment explicitly owns inbound mail policy for the served host | Config or file-backed | `text/plain; charset=utf-8` | MTA-STS policy; otherwise 404 |
+| `/.well-known/est/**` | Disabled | Project runs an RFC 7030 EST service in `IDEA.md` | Dynamic handler | per method, see "Well-Known Protocol Exceptions" | Certificate enrollment; the only entry family with `POST` and a credential |
+| `/.well-known/autoconfig/mail/config-v1.1.xml` | Disabled | Project serves mail client autoconfiguration in `IDEA.md` | Dynamic handler | `application/xml` | Mozilla autoconfig document; otherwise 404 |
 
 **Required entry details.** `security.txt` is the RFC 9116 file described in "security.txt (RFC 9116)" (`Contact`, `Expires` and `Policy` are mandatory fields); `llms.txt` is the generated AI-discovery file described in "llms.txt (AI Discovery)". Both are served with `GET` and `HEAD`, carry no authentication, resolve every URL per request with `BuildURL`, and over Tor use the onion host. A path in the matrix that is not enabled for the project, and any path not in the matrix, answers `404`.
 
-**Drift-test reading of this matrix.** The matrix has no method column, so the drift test reads it with its own fixed rule instead of the generic inventory parser: every row is a `GET` route (`HEAD` follows), the path cell lists one path or two joined by `and`, `{token}` and `{hash}` are path parameters, and the `x-mounted-when` value of each row is this exact mapping:
+**Drift-test reading of this matrix.** The matrix has no method column, so the drift test reads it with its own fixed rule instead of the generic inventory parser: every row is a `GET` route (`HEAD` follows), and the rows of "Well-Known Protocol Exceptions" are read with the methods that table declares, the path cell lists one path or two joined by `and`, `{token}` and `{hash}` are path parameters, and the `x-mounted-when` value of each row is this exact mapping:
 
 | Path | `x-mounted-when` |
 |------|------------------|
@@ -17254,6 +17276,8 @@ Redirect to         │                    │
 | `assetlinks.json` | `web.well_known.assetlinks.enabled` |
 | `apple-app-site-association` | `web.well_known.apple_app_site_association.enabled` |
 | `mta-sts.txt` | `web.well_known.mta_sts.enabled` |
+| `est/**` (every EST path) | `web.well_known.est.enabled` |
+| `autoconfig/mail/config-v1.1.xml` | `web.well_known.autoconfig.enabled` |
 
 **Optional-entry rule:** optional well-known endpoints MUST be enabled only when the matching product feature, platform integration, or mail/domain ownership is explicitly defined in `IDEA.md` or project config. Do NOT invent or auto-enable them.
 
@@ -17352,6 +17376,12 @@ web:
       enabled: false
     mta_sts:
       # Enable only if this host owns inbound mail policy
+      enabled: false
+    est:
+      # Enable only if the project runs an RFC 7030 EST enrollment service ("Well-Known Protocol Exceptions")
+      enabled: false
+    autoconfig:
+      # Enable only if the project serves Mozilla mail autoconfiguration ("Well-Known Protocol Exceptions")
       enabled: false
     oauth_protected_resource:
       # Enable only if the project enables OAuth for MCP or its API (PART 11 -> MCP Endpoint)
