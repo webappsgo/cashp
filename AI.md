@@ -903,7 +903,7 @@ Always write messages so a developer reading only the step name + message unders
 
 ### Release Pre-flight Validation
 
-The GitHub Releases API returns HTTP 422 `"tag_name is not a valid tag"` when the tag does not exist at API call time or is malformed. The correct fix is for the **release job to own the tag** — delete it if it exists, then recreate it at the current HEAD. This ensures the tag always exists and points to the right commit, and makes the workflow idempotent.
+The GitHub Releases API returns HTTP 422 `"tag_name is not a valid tag"` when the tag does not exist at API call time or is malformed. The release is triggered BY a tag push, so that tag exists: the pre-flight verifies it and NEVER deletes, recreates or moves it. `release.yml` and `beta.yml` may carry `workflow_dispatch` only to re-run for an existing tag: the run is started with that tag selected as the ref (a branch ref fails the pre-flight on purpose) and there is no tag input.
 
 The `release` job already has `contents: write` to push assets — this covers tag push as well.
 
@@ -925,12 +925,12 @@ The `release` job already has `contents: write` to push assets — this covers t
       echo "::error::Tag '$tag' contains whitespace or control characters and is not a valid GitHub tag name."
       exit 1
     fi
-    # Delete existing tag (local + remote) then recreate at current HEAD
-    git tag -d "$tag" 2>/dev/null || true
-    git push origin ":refs/tags/$tag" 2>/dev/null || true
-    git tag "$tag"
-    git push origin "refs/tags/$tag"
-    echo "Tag '$tag' ensured at $(git rev-parse HEAD)"
+    # the tag that triggered this run exists already and is never deleted or moved: verify that it points at the checked-out commit
+    if [ "$(git rev-parse "refs/tags/$tag^{commit}")" != "$(git rev-parse HEAD)" ]; then
+      echo "::error::Tag '$tag' does not point at the checked-out commit."
+      exit 1
+    fi
+    echo "Tag '$tag' verified at $(git rev-parse HEAD)"
 ```
 
 ### Release Integrity
@@ -6173,8 +6173,7 @@ cat "$LICDIR/licenses.csv"
 echo ""
 echo "Next steps:"
 echo "1. Review the report above"
-echo "2. Update LICENSE.md with any new dependencies"
-echo "3. Commit the changes"
+echo "2. Update LICENSE.md with any new dependencies (this report is deleted when the script exits)"
 ```
 
 ## README.md License Badge (REQUIRED)
@@ -6237,7 +6236,7 @@ package main
 | **Record** | In the project's third-party notices (`LICENSE.md`, "Third-Party Licenses") and on the attribution surface (`/server/about`, or the README when the project has no web page) |
 | **Per-record provenance** | When records come from several sources, every record or file carries a `source` key that names its entry in the third-party notices |
 | **Unknown or unusable terms** | Content with no stated license, a license that forbids redistribution, a site that forbids scraping, or an unknown origin is NOT embedded. The project asks the user instead of guessing |
-| **Generated content** | It counts as the project's own only when the user says so, and is never presented with an invented source |
+| **Generated content** | It counts as the project's own only when the user says so, and is never presented with an invented source. Owner-directed original content (the owner declares it theirs and the AI writes it) is recorded in the third-party notices as "Original content, owned by {owner}, written with AI assistance at the owner's direction, released under the project's license", with no external source or URL; every record's `source` key is `original`, the attribution surface lists it under "Original content" without naming any third party, and the owner's statement is kept in the project's IDEA.md |
 | **Project translations** | Strings translated for the project under the localization rule (by the AI or a human translator, I18N & A11Y → "Translating") are the project's own work and need no source record; a human translator's pull request is under the project license. A translation copied from another project, a service or a third-party catalogue is third-party content and follows every row above |
 
 ## License Compatibility Matrix
@@ -9276,6 +9275,8 @@ Binary checks:
     Run as root or provide admin credentials."
 ```
 
+**`--maintenance mode <production|development|debug>`** changes the CONFIGURED app mode, never the maintenance state (maintenance is a `status`, not a mode): it writes `server.mode` in `server.yml` and a running server applies it at its next restart, which the command says. A missing or unknown value is a usage error (exit `2`).
+
 **Mode change authorization flow:**
 
 ```
@@ -11359,18 +11360,18 @@ func ColorEnabled(forceColor *bool) bool {
 
 // EmojiEnabled checks if emoji output should be used
 func EmojiEnabled() bool {
-    // 1. Config override (force emojis on)
+    // 1. TERM=dumb disables emojis and nothing overrides it (the no-emoji rule for dumb terminals)
+    if os.Getenv("TERM") == "dumb" {
+        return false
+    }
+
+    // 2. Config override (force emojis on; it overrides NO_COLOR only)
     if cfg := GetConfig(); cfg != nil && cfg.Output.EmojiSet && cfg.Output.Emoji {
         return true
     }
 
-    // 2. NO_COLOR disables emojis (practical plain output)
+    // 3. NO_COLOR disables emojis (practical plain output)
     if os.Getenv("NO_COLOR") != "" {
-        return false
-    }
-
-    // 3. TERM=dumb disables emojis
-    if os.Getenv("TERM") == "dumb" {
         return false
     }
 
@@ -15278,7 +15279,7 @@ update. The fix is mandatory URL stamping:
 
 | Rule | Detail |
 |------|--------|
-| **`asset()` template helper** | Every static asset reference in every template goes through a shared helper that appends the build stamp: `/static/app.css?v={project_version}-{short_commit}`. Hand-written bare `/static/...` URLs in templates are a bug. |
+| **`asset()` template helper** | Every static asset reference in every template goes through a shared helper that appends the build stamp: `/static/css/common.css?v={project_version}-{short_commit}`. Hand-written bare `/static/...` URLs in templates are a bug. |
 | **`immutable` only on a matching stamp** | The static handler sends `public, max-age=31536000, immutable` ONLY when the request's `?v=` equals the running build's stamp. Missing or mismatched stamp → `no-cache` + `ETag` (the bytes still serve — cached HTML from an old version never breaks, it just revalidates). |
 | **HTML is never cached** | All HTML documents: `Cache-Control: no-store` plus an `ETag` derived from the build stamp, so any intermediary that ignores `no-store` still revalidates. The one exception is the service worker's offline copy of a public page (PART 16 -> "Offline copies are for public pages only"): it lives in the Cache API, is only ever a fallback after a failed network fetch, and never replaces a fresh response. |
 | **Service worker (if the project adds one)** | Cache name MUST embed the full build stamp `{project_version}-{short_commit}` (`{asset_stamp}`); `activate` deletes all caches from other versions. `/sw.js` and `/manifest.json` are served `no-cache` + build-stamp `ETag` — a cached service worker script delays every other update mechanism. |
@@ -17121,9 +17122,9 @@ func extractContextFromPath(path string) (*Context, error) {
 
 | Route | Method | Purpose |
 |-------|--------|---------|
-| `/server/auth/register` | GET/POST | User registration |
-| `/server/auth/verify/{code}` | GET | Email verification |
-| `/server/auth/invite/user/{code}` | GET | User invite acceptance |
+| `/server/auth/register` | GET/POST | User registration (only when multi-user, PART 34, is activated) |
+| `/server/auth/verify/{code}` | GET | Email verification (only when multi-user, PART 34, is activated) |
+| `/server/auth/invite/user/{code}` | GET | User invite acceptance (only when multi-user, PART 34, is activated) |
 
 **Routing rule:** external identity login for both regular users and Server Admins lives under `/server/auth/*` in the browser and `/api/{api_version}/server/auth/*` in the API. Do NOT add parallel auth routes outside those scopes.
 
@@ -19619,6 +19620,7 @@ User-facing timestamps normally render the server's local timezone (`%B %d, %Y a
 
 When `tor.onion_address` is set, **clearnet** responses advertise the hidden service so Tor Browser shows the ".onion available" indicator and can upgrade automatically:
 
+- **Gate:** the header advertises the onion address, so it counts as publication: it is sent only when `tor.onion_address` is set AND `server.tor.expose` is `true` (default `false`: never sent).
 - Send `Onion-Location: http://{onion_address}{request_path}` on clearnet **HTML document** responses only (2xx, top-level navigations) — never on the onion's own responses, never on API/JSON responses, never on static assets or redirects.
 - The value is built from `tor.onion_address` (never the clearnet host) and always uses `http://` (see "Tor HTTP Semantics"); construct it with `BuildURL` against the onion host so the request path and query are preserved.
 - An equivalent `<meta http-equiv="onion-location" content="http://{onion_address}{request_path}">` in the HTML `<head>` is acceptable where a response header cannot be set; do not send both.
@@ -22002,7 +22004,7 @@ When not in cluster mode:
 |----------|-----------|-----------|------------|-----------------------------|---------|
 | `disabled` | `false` | `false` | empty | omitted | The network is not active on this instance: no `tor` binary (Tor), or I2P not enabled (the resolved `server.i2p.enabled` is false) or no provider found (I2P) |
 | `starting` | `true` | `false` | empty | `ok` | The provider was launched and is bootstrapping or building tunnels |
-| `healthy` | `true` | `true` | the address | `ok` | Serving at `hostname` |
+| `healthy` | `true` | `true` | the address while `expose` is `true`, otherwise empty | `ok` | Serving at `hostname` |
 | `unavailable` | `true` | `false` | empty | `degraded` | Active and the provider exists, but it is not serving: failed to start, bootstrap timeout, a directory permission problem, or the provider exited |
 
 - **`enabled` means "active on this instance", not "currently running".** Tor: a `tor` binary was found (there is no toggle). I2P: `server.i2p.enabled` is true AND a provider was found.
@@ -22327,11 +22329,13 @@ Before adding ANY route, verify:
 
 **Admin routes for managing OTHER users use `/server/{admin_path}/users/{id}`:**
 
-| Route | Description |
-|-------|-------------|
-| `GET /api/{api_version}/server/{admin_path}/users` | List all users (admin) |
-| `GET /api/{api_version}/server/{admin_path}/users/{id}` | View specific user (admin) |
-| `PATCH /api/{api_version}/server/{admin_path}/users/{id}` | Edit specific user (admin) |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/{api_version}/server/{admin_path}/users` | GET | List all users (admin; only when multi-user, PART 34, is activated) |
+| `/api/{api_version}/server/{admin_path}/users` | POST | Create a user record (admin; only when PART 34 is activated) |
+| `/api/{api_version}/server/{admin_path}/users/{id}` | GET | View a specific user (admin; only when PART 34 is activated) |
+| `/api/{api_version}/server/{admin_path}/users/{id}` | PATCH | Edit a specific user (admin; only when PART 34 is activated) |
+| `/api/{api_version}/server/{admin_path}/users/{id}` | DELETE | Delete a user (admin; only when PART 34 is activated) |
 
 ### Org Routes - Slug Required
 
@@ -25258,7 +25262,7 @@ func URLNormalizeMiddleware(next http.Handler) http.Handler {
 | `/api/{api_version}/users/` | `/api/{api_version}/users` | 301 redirect (GET/HEAD; 308 for other methods) |
 | `/users` | `/users` | No redirect (canonical) |
 | `/` | `/` | No redirect (root exception) |
-| `/static/css/style.css` | `/static/css/style.css` | No redirect (file) |
+| `/static/css/common.css` | `/static/css/common.css` | No redirect (file) |
 | `/dir/index.html` | `/dir/index.html` | No redirect (file) |
 
 **Why No Trailing Slash:**
@@ -27188,7 +27192,9 @@ const CACHE_NAME = `{app_name}-cache-${CACHE_VERSION}`;
 // URLs MUST carry the same ?v= stamp the asset() helper puts in pages, or page requests
 // never match these entries. HTML ('/') is never precached - it is always network-first.
 const PRECACHE_ASSETS = [
-  '/static/css/app.css?v={asset_stamp}',
+  '/static/css/common.css?v={asset_stamp}',
+  '/static/css/public.css?v={asset_stamp}',
+  '/static/css/components.css?v={asset_stamp}',
   '/static/js/app.js?v={asset_stamp}',
   '/static/icons/icon-192.png?v={asset_stamp}',
   '/static/icons/icon-512.png?v={asset_stamp}'
@@ -28273,7 +28279,9 @@ async function requestPersistentStorage() {
   <meta name="apple-mobile-web-app-title" content="{app_name}">
 
   <title>{app_name}</title>
-  <link rel="stylesheet" href="{{ asset "css/app.css" }}">
+  <link rel="stylesheet" href="{{ asset "css/common.css" }}">
+  <link rel="stylesheet" href="{{ asset "css/public.css" }}">
+  <link rel="stylesheet" href="{{ asset "css/components.css" }}">
 </head>
 <body>
   <!-- Offline indicator -->
@@ -28303,7 +28311,9 @@ async function requestPersistentStorage() {
 ├── sw.js                         # Service worker
 ├── static/
 │   ├── css/
-│   │   └── app.css
+│   │   ├── common.css
+│   │   ├── public.css
+│   │   └── components.css
 │   ├── js/
 │   │   └── app.js                # Includes SW registration
 │   ├── icons/
@@ -41927,7 +41937,7 @@ func (ws *windowsService) Execute(args []string, r <-chan svc.ChangeRequest, s c
 
 # PART 26: MAKEFILE
 
-**Seven core targets (`dev`, `local`, `build`, `test`, `release`, `beta`, `docker`). DO NOT ADD MORE.** The only other permitted targets are `clean`, a housekeeping target that removes `binaries/` and `releases/` and builds nothing, and `release-check`, an internal helper that is the first prerequisite of `release`, validates the version and builds nothing (it is never the entry point of a workflow). There is no `all` target and none is required.
+**Seven core targets (`dev`, `local`, `build`, `test`, `release`, `beta`, `docker`). DO NOT ADD MORE.** The only other permitted targets are `clean`, a housekeeping target that removes `binaries/` and `releases/` and builds nothing, and `release-check`, an internal helper that is the first prerequisite of `release`, validates the version and builds nothing (it is never the entry point of a workflow). There is no `all` target and none is required. A CI job named `lint` (or `secret-scan`, `vuln-scan`) is a job of the CI file and runs its tools directly in the toolchain container: it is not a Makefile target and adds none.
 
 ## Targets
 
@@ -44808,12 +44818,12 @@ jobs:
             echo "::error::Tag '$tag' contains whitespace or control characters and is not a valid GitHub tag name."
             exit 1
           fi
-          # Delete existing tag (local + remote) then recreate at current HEAD
-          git tag -d "$tag" 2>/dev/null || true
-          git push origin ":refs/tags/$tag" 2>/dev/null || true
-          git tag "$tag"
-          git push origin "refs/tags/$tag"
-          echo "Tag '$tag' ensured at $(git rev-parse HEAD)"
+          # the tag that triggered this run exists already and is never deleted or moved: verify that it points at the checked-out commit
+          if [ "$(git rev-parse "refs/tags/$tag^{commit}")" != "$(git rev-parse HEAD)" ]; then
+            echo "::error::Tag '$tag' does not point at the checked-out commit."
+            exit 1
+          fi
+          echo "Tag '$tag' verified at $(git rev-parse HEAD)"
 
       - name: Download all artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
@@ -46061,12 +46071,12 @@ jobs:
             echo "::error::Tag '$tag' contains whitespace or control characters and is not a valid tag name."
             exit 1
           fi
-          # Delete existing tag (local + remote) then recreate at current HEAD
-          git tag -d "$tag" 2>/dev/null || true
-          git push origin ":refs/tags/$tag" 2>/dev/null || true
-          git tag "$tag"
-          git push origin "refs/tags/$tag"
-          echo "Tag '$tag' ensured at $(git rev-parse HEAD)"
+          # the tag that triggered this run exists already and is never deleted or moved: verify that it points at the checked-out commit
+          if [ "$(git rev-parse "refs/tags/$tag^{commit}")" != "$(git rev-parse HEAD)" ]; then
+            echo "::error::Tag '$tag' does not point at the checked-out commit."
+            exit 1
+          fi
+          echo "Tag '$tag' verified at $(git rev-parse HEAD)"
 
       - name: Download all artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1

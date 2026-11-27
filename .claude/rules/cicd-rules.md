@@ -12,7 +12,7 @@
 
 ## CRITICAL - ALWAYS DO
 - All jobs run `container: image: casjaysdev/go:latest`
-- Auto-cancel older in-progress runs for pushes to `main`/`master`/`devel`/`dev`/`beta` via `concurrency`
+- Auto-cancel older in-progress runs for pushes to `main` via `concurrency`; release tag runs cancel only the same tag ref
 - Set `VERSION`, `COMMIT_ID`, `BUILD_EPOCH` explicitly in a "Set build info" step (`BUILD_DATE` derived from `BUILD_EPOCH`, Docker OCI labels only, never an ldflag)
 - Enforce 60% coverage threshold in `ci.yml` test job
 - Build all 8 release platforms in the release matrix (linux/darwin/windows/freebsd × amd64/arm64)
@@ -49,9 +49,9 @@
 GitHub Actions files (`.github/workflows/`):
 - `ci.yml` — push/PR to default branch + weekly cron for security jobs: lint, test+coverage, build, vuln-scan, secret-scan, workflow-policy, image-scan
 - `release.yml` — tag push (`v*`, `*.*.*`): production release, 8-platform matrix
-- `beta.yml` — push to `beta` branch: beta releases
-- `devel.yml` — 3am UTC daily + push to main/master: rolling development release
-- `docker.yml` — any branch push + version tags + 4am UTC daily: `build-standard` + `build-devel` (`:devel`) jobs
-- `docker-aio.yml` — any branch push + version tags: All-in-One image only
+- `beta.yml` — `*-beta` tag push or manual dispatch: beta releases
+- `devel.yml` — 3am UTC daily + push to main: rolling development release
+- `docker.yml` — main push + version/beta tags + 4am UTC daily: `build-standard` + `build-devel` (`:devel`) jobs
+- `docker-aio.yml` — main push + version/beta tags: All-in-One image only
 
 Mirrors: Gitea/Forgejo use `.gitea/workflows/` or `.forgejo/workflows/` (same job structure). GitLab uses `.gitlab-ci.yml`.
