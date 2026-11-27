@@ -903,7 +903,7 @@ Always write messages so a developer reading only the step name + message unders
 
 ### Release Pre-flight Validation
 
-The GitHub Releases API returns HTTP 422 `"tag_name is not a valid tag"` when the tag does not exist at API call time or is malformed. The release is triggered BY a tag push, so that tag exists: the pre-flight verifies it and NEVER deletes, recreates or moves it. `release.yml` and `beta.yml` may carry `workflow_dispatch` only to re-run for an existing tag: the run is started with that tag selected as the ref (a branch ref fails the pre-flight on purpose) and there is no tag input.
+The GitHub Releases API returns HTTP 422 `"tag_name is not a valid tag"` when the tag does not exist at API call time or is malformed. The release is triggered BY a tag push, so that tag exists: the pre-flight verifies it and NEVER deletes, recreates or moves it. `release.yml` and `beta.yml` may carry `workflow_dispatch` only to re-run for an existing tag: the run is started with that tag selected as the ref (a branch ref fails the pre-flight on purpose) and there is no tag input. Tag policy: a release tag (`v*`) and a beta tag (`*-beta`) are immutable once pushed; only the rolling `devel` tag is deleted and recreated (by `devel.yml` and the GitLab `release:devel` job).
 
 The `release` job already has `contents: write` to push assets — this covers tag push as well.
 
@@ -3586,7 +3586,7 @@ Spec version: {line count or hash}
 |--------|--------|
 | **Modifying PARTS 0-36** | **Implementation patterns are fixed - NEVER modify** |
 | Plain `git commit` (any flag form) | Bypasses signing wrapper. Use `gitcommit <command>` instead |
-| Plain `git push` | gitcommit already pushes. Plain `git push` bypasses the wrapper entirely. Scope: AI sessions and day-to-day repository updates. The release targets (`make release`, run by the human maintainer, and the CI workflows) delete and recreate the rolling `devel` and release tags with `git tag`, `git push origin refs/tags/...` and `gh release`, because a tag is not a commit and `gitcommit` has no tag operation |
+| Plain `git push` | gitcommit already pushes. Plain `git push` bypasses the wrapper entirely. Scope: AI sessions and day-to-day repository updates. The release targets (`make release`, run by the human maintainer, and the CI workflows) delete and recreate ONLY the rolling `devel` tag with `git tag`, `git push origin refs/tags/...` and `gh release`, because a tag is not a commit and `gitcommit` has no tag operation |
 | `gitcommit <command>` without first writing AND re-reading `.git/COMMIT_MESS` | The script reads the message from the file and pushes immediately. Wrong file = wrong commit on the remote |
 | `gitcommit -m "..."` / `gitcommit --message "..."` | Defeats the point. The message belongs in `.git/COMMIT_MESS` so it can be verified before committing |
 | Running `gitcommit <command>` mid-task with files in an inconsistent state | Every commit is pushed — half-finished work goes public. Finish the unit of work first |
@@ -5589,7 +5589,7 @@ Configuration is auto-generated on first run. Edit via admin panel at `{proto}:/
 
 Key settings:
 - `server.port` - Listen port (default: random 64xxx). `0` is NOT a valid value: it is replaced like any invalid port, and there is no OS-assigned-port mode
-- `server.mode` - production or development
+- `server.mode` - `production`, `development` or `debug` (`debug` is a persisted mode, explicit opt-in only, PART 6; validation accepts all three)
 
 ## API
 
@@ -6127,7 +6127,7 @@ jobs:
 
 ### License Verification Script
 
-**Scan scope and reviewed overrides.** The scan covers the packages of the shipped binaries, `./src/...`; `tests/` and tooling are not shipped and are not scanned. A dependency whose license the scanner cannot classify (`Unknown`, for example a BSD-3-Clause text with a non-standard copyright line) is resolved by a reviewed override, never by skipping the check: `.github/license-overrides.txt` holds one line per module, `{module path} {SPDX id} {reviewer note}`, added only after a person read that module's LICENSE file. The scan ignores that one module and the override's SPDX id takes its place in the report, so the copyleft check still sees it; a module not listed, and any copyleft id, still fails the scan, and a missing file means no overrides. The scanner reads only the first two fields; everything after them is the reviewer note (free text: who read which file, and when), which stays in the committed file as the review record (the maintainer's handle who read the file, and the date; an AI is never named as reviewer, and an AI-assisted review is recorded as the maintainer's own), and a line starting with `#` is a comment. A module whose archive has NO LICENSE file gives a person nothing to read, so it is never overridden on a guess: either its repository states the license in another file (README, COPYING, NOTICE), which the note then names and the SPDX id is recorded the same way, or the license cannot be established and the dependency is replaced or removed.
+**Scan scope and reviewed overrides.** The scan covers the packages of the shipped binaries, `./src/...`; `tests/` and tooling are not shipped and are not scanned. A dependency whose license the scanner cannot classify (`Unknown`, for example a BSD-3-Clause text with a non-standard copyright line) is resolved by a reviewed override, never by skipping the check: `.github/license-overrides.txt` holds one line per module, `{module path} {SPDX id} {reviewer note}`, added only after a person read that module's LICENSE file. The scan ignores that one module and the override's SPDX id takes its place in the report, so the copyleft check still sees it; a module not listed, and any copyleft id, still fails the scan, and a missing file means no overrides. The file is whitespace-separated, never comma-separated: the `{module},{SPDX}` pairs in the examples are only the csv rows the verifier appends to the scanner's report. The scanner reads only the first two fields; everything after them is the reviewer note (free text: who read which file, and when), which stays in the committed file as the review record (the maintainer's handle who read the file, and the date; an AI is never named as reviewer, and an AI-assisted review is recorded as the maintainer's own), and a line starting with `#` is a comment. A module whose archive has NO LICENSE file gives a person nothing to read, so it is never overridden on a guess: either its repository states the license in another file (README, COPYING, NOTICE), which the note then names and the SPDX id is recorded the same way, or the license cannot be established and the dependency is replaced or removed.
 
 **Include in project repository:**
 
@@ -9919,7 +9919,7 @@ Before proceeding, confirm you understand:
 
 **Credentials and pprof.** The profiles served here are statistical (allocation sites, sizes, stack frames, counts): none contains heap contents, so none can expose a credential value, and the "always redacted in dumps" rule is met without a sanitizing layer. Two things need care and are fixed by this template: `/debug/pprof/cmdline` and the `cmdline` entry of `/debug/vars` print the process arguments, so they are replaced by handlers that print only the binary name; and no endpoint produces a heap dump or a core file (`runtime/debug.WriteHeapDump`, `gcore`), the one artifact that would hold credential bytes. Every `/debug/*` request still needs the operator token.
 
-### Debug API Endpoints
+### Debug API Endpoints (OPTIONAL: mounted only while `--debug` or `DEBUG=true` is set, otherwise `404`)
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
@@ -11365,9 +11365,9 @@ func EmojiEnabled() bool {
         return false
     }
 
-    // 2. Config override (force emojis on; it overrides NO_COLOR only)
-    if cfg := GetConfig(); cfg != nil && cfg.Output.EmojiSet && cfg.Output.Emoji {
-        return true
+    // 2. An explicit config value wins over NO_COLOR: true forces emojis on, false forces them off
+    if cfg := GetConfig(); cfg != nil && cfg.Output.EmojiSet {
+        return cfg.Output.Emoji
     }
 
     // 3. NO_COLOR disables emojis (practical plain output)
@@ -11389,7 +11389,7 @@ func EmojiEnabled() bool {
 - Unicode box drawing characters (tables)
 - Output structure or formatting
 
-**Config override:** To keep emojis enabled even when NO_COLOR is set:
+**Config override:** an explicit `output.emoji` wins over `NO_COLOR` (never over `TERM=dumb`): `true` keeps emojis enabled even when NO_COLOR is set, `false` disables them even when it is not; unset leaves the automatic rules. To keep emojis enabled even when NO_COLOR is set:
 ```yaml
 output:
   # Force emojis on (overrides NO_COLOR for emojis only)
@@ -14751,7 +14751,7 @@ func IsValidHost(host string, devMode bool, projectName string) bool {
 | `192.168.1.1` | ✗ | ✗ | IP address |
 | `myhost` | ✗ | ✗ | No dot (single-label) |
 
-**Note:** DOMAIN and HOSTNAME environment variables MUST pass host validation for the current mode. Invalid values are skipped silently and detection continues to next source.
+**Note:** DOMAIN and HOSTNAME environment variables MUST pass host validation for the current mode. Invalid values are skipped with ONE warning at startup (`DOMAIN` entries and `HOSTNAME` alike) and detection continues to the next source.
 
 ### SSL/Let's Encrypt FQDN Requirements
 
@@ -15326,7 +15326,7 @@ the stale client and evicts its caches in one response.
 
 | Rule | Detail |
 |------|--------|
-| **Build-stamp cookie** | Every HTML response sets `{project_name}_build={asset_stamp}` (`Path=/`, `Max-Age=31536000`, `Secure`, `SameSite=Lax`, NOT HttpOnly-sensitive — the stamp is public). Essential cookie — no consent required. |
+| **Build-stamp cookie** | Every HTML response sets `{project_name}_build={asset_stamp}` (`Path=/`, `Max-Age=31536000`, `Secure` (omitted on an I2P request: the overlay cookie rule of PART 8 wins), `SameSite=Lax`, NOT HttpOnly-sensitive — the stamp is public). Essential cookie — no consent required. |
 | **Mismatch → purge** | If an HTML request carries a `{project_name}_build` cookie whose value ≠ the running stamp, the response adds `Clear-Site-Data: "cache", "storage"` — evicts the HTTP cache, all Cache API caches, and unregisters service workers in one shot. |
 | **`"cookies"` is FORBIDDEN here** | It would destroy the session and every cookie-stored preference (theme, language, consent). The session-revoke `Clear-Site-Data` keeps `"cookies"`; the version purge never includes it. |
 | **Naturally one-shot** | The same response re-sets the cookie to the new stamp, so the next request matches and no purge loop is possible. First-ever visit (no cookie) never purges. |
@@ -15340,7 +15340,7 @@ func versionPurge(w http.ResponseWriter, r *http.Request) {
     }
     http.SetCookie(w, &http.Cookie{
         Name: "{project_name}_build", Value: stamp, Path: "/",
-        MaxAge: 31536000, Secure: true, SameSite: http.SameSiteLaxMode,
+        MaxAge: 31536000, Secure: !onI2P(r), SameSite: http.SameSiteLaxMode,
     })
 }
 ```
@@ -15353,7 +15353,7 @@ Called from the HTML middleware only — never on static, API, or `/sw.js` respo
 |------|--------|
 | **Top-level documents only** | Emit the header only when `Sec-Fetch-Dest: document` and `Sec-Fetch-Mode: navigate` (or those headers are absent on an old browser) - never for iframes, prefetch, XHR/fetch, `HEAD`, redirects (3xx) or error responses (4xx/5xx) |
 | **No IndexedDB dependency** | The app MUST NOT hold long-lived IndexedDB connections open (the `storage` wipe blocks on them); open, use and close per operation |
-| **Client watchdog** | `app.js` starts a 10 s boot timer (cleared when the first render completes). On expiry, and at most once per tab (`sessionStorage` flag `{project_name}_recovered`), it unregisters every service worker, deletes every Cache API cache and reloads. A second expiry replaces the page body with an error panel that `app.js` builds itself (no network, no cache, no static file): the translated strings the worker stores for its offline page (PART 16), with the English defaults only before any were stored, and a reload link; it never loops |
+| **Client watchdog** | `app.js` starts a 10 s boot timer (cleared when the first render completes). On expiry, and at most once per tab (`sessionStorage` flag `{project_name}_recovered`), it unregisters every service worker, deletes every Cache API cache and reloads. A second expiry replaces the page body with an error panel that `app.js` builds itself (no network, no cache, no static file): the translated strings the page stores for the worker's offline page (PART 16: `title`, `heading`, `message` and `reload`, the label of the reload link), with the English defaults only before any were stored; it never loops |
 | **Never a dependency** | The page works with the purge header ignored: HTML is `no-store`, assets are stamped, so a missed purge costs one revalidation, never a stuck page |
 
 ### Cache Warming
@@ -19869,7 +19869,7 @@ server:
 | `security` | `server.contact.security.email` (default `security@{fqdn}` per RFC 2142). If explicitly set to `""`, INTERNAL delivery (notifications, webhooks) falls back to `server.contact.admin.email`; security.txt and every public page then omit the `mailto:` line, so the admin address is never published. Same fallback for each webhook transport (security.webhooks.telegram → admin.webhooks.telegram). |
 | `abuse` | `server.contact.abuse.email` if set → else `server.contact.general.email` if set → else `server.contact.admin.email`. Same fallback chain for webhooks. Never defaults to `abuse@{fqdn}` automatically — RFC 2142 recommends that address, but the operator must opt in (an unprovisioned mailbox would bounce reports). |
 | `general` | `server.contact.general.email` if set → else `server.contact.admin.email`. Same fallback for webhooks. |
-| `dpo` | `server.contact.dpo.email` if set → else `server.contact.general.email` → else `server.contact.admin.email` for `privacy` submissions (internal delivery). The public DPO page uses only `dpo`, then `general`, and never shows the admin address. |
+| `dpo` | `server.contact.dpo.email` if set → else `server.contact.general.email` → else `server.contact.admin.email` for `privacy` submissions (internal delivery). The public DPO page uses only `dpo`, then `general`, and never shows the admin address. `dpo` is a contact-only recipient resolved outside the four notification roles (`admin`, `security`, `abuse`, `general`): it has an address and a name but no email or webhook settings of its own, and a privacy submission uses the `general` role's webhook transports. |
 
 **Effective recipient is computed once per dispatch, not cached across requests** — operator can change `general.email` and the next contact-form submission picks it up without restart.
 
@@ -22319,13 +22319,13 @@ Before adding ANY route, verify:
 
 **Users can only manage themselves. The app knows who from the session.**
 
-| Route | Description |
-|-------|-------------|
-| `GET /api/{api_version}/users` | Current user's profile |
-| `PATCH /api/{api_version}/users` | Update current user's profile |
-| `GET /api/{api_version}/users/tokens` | Current user's API tokens |
-| `GET /api/{api_version}/users/security` | Current user's security settings |
-| `GET /api/{api_version}/users/settings` | Current user's preferences |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/{api_version}/users` | GET | Current user's profile |
+| `/api/{api_version}/users` | PATCH | Update current user's profile |
+| `/api/{api_version}/users/tokens` | GET | Current user's API tokens |
+| `/api/{api_version}/users/security` | GET | Current user's security settings |
+| `/api/{api_version}/users/settings` | GET | Current user's preferences |
 
 **Admin routes for managing OTHER users use `/server/{admin_path}/users/{id}`:**
 
@@ -22341,13 +22341,13 @@ Before adding ANY route, verify:
 
 **Users can own multiple orgs. Slug identifies which org.**
 
-| Route | Description |
-|-------|-------------|
-| `GET /api/{api_version}/orgs` | List user's organizations |
-| `POST /api/{api_version}/orgs` | Create new organization |
-| `GET /api/{api_version}/orgs/{slug}` | Get specific org |
-| `GET /api/{api_version}/orgs/{slug}/members` | Get org members |
-| `GET /api/{api_version}/orgs/{slug}/settings` | Get org settings |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/{api_version}/orgs` | GET | List user's organizations |
+| `/api/{api_version}/orgs` | POST | Create new organization |
+| `/api/{api_version}/orgs/{slug}` | GET | Get specific org |
+| `/api/{api_version}/orgs/{slug}/members` | GET | Get org members |
+| `/api/{api_version}/orgs/{slug}/settings` | GET | Get org settings |
 
 ### Frontend Must Match Backend
 
@@ -23211,7 +23211,7 @@ func renderNoJSHTML(w http.ResponseWriter, data interface{}) {
 | **Optional routes** | The embedded build-time spec is the full SUPERSET of routes, and every route that depends on a flag or a setting (the root aliases, optional well-known files, optional features) carries `x-mounted-when` naming its condition (for example the setting that enables the feature); INTERNAL routes (metrics, `/debug/*`, Tor control) are never in the OpenAPI document, embedded or served. At startup the server derives the SERVED spec from the embedded one by removing every operation whose condition is false for this run, so the spec a client reads always matches the routes that are actually mounted. The drift test compares the superset with the route table |
 | **JSON only** | OpenAPI spec uses JSON format only (NO YAML) |
 | **Source of truth** | AI.md defines the TEMPLATE routes and the `### API routes` inventory in IDEA.md defines EVERY project-defined route, including any native or compatibility API of the project; together they are the API CONTRACT: routes, methods, auth and shapes. AI.md never enumerates project routes. The code and its annotations implement that contract, and the specs are GENERATED from the code, so they are artifacts, never edited by hand. Drift is detected by a test with three legs: the generated OpenAPI route and method list, the router's registered routes, and the union of the AI.md template routes and the IDEA.md `### API routes` inventory. A route present in one leg and missing from another fails the build, naming the route and the missing place; a project whose IDEA.md has no `### API routes` subsection fails with that message instead of passing vacuously. A deliberate change is made in AI.md or IDEA.md first, then the code, then the specs are regenerated |
-| **Template route inventory** | The template leg of the drift test is read from the project's own `AI.md` at test time, deterministically: a template route is a row of a Markdown table whose header row has a path column (`Endpoint`, `Path` or `Route`) and a method column (`Method` or `Methods`), in any order and with any other columns (rows are read by those headers, never by column position): the path cell is exactly one backticked path starting with `/` and the method cell lists one or more HTTP methods (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`) separated by `/` or `,` (each method of the path is its own route), and the method is always explicit (a row without one is not a route). A row whose method cell is `ALL` and whose path ends in `/*` declares a PREFIX, not routes (the admin panel and admin API rows): the drift test does not expand it, the concrete routes under the prefix are the rows of the tables that define them (each with explicit methods), and the test requires at least one registered route under the prefix and every registered route under it to be such a row; `ALL` is valid only on a prefix row. Route classes: a row whose path starts with `/api/`, or is a root alias of an API route (`/healthz`, `/mcp`), is an API route and is compared with all three legs (an INTERNAL path, below, is compared with the router and the inventory only, never with the OpenAPI leg); every other row (`/`, `/server/healthz`, the Swagger and GraphiQL pages, the admin pages, the preferences forms) is a PAGE route, compared only with the router's registered routes and the page registry, and expected in NONE of the OpenAPI document. INTERNAL is a class of path, not a marker on each row: every path of the INTERNAL services (metrics with its `/metrics`, `/api/metrics` and versioned aliases, the `/debug/*` routes, the Tor control routes; the INTERNAL rows of the PART 1 endpoint-pattern table) counts as a template route when it has a row, and the drift test expects it in the route table and in NONE of the OpenAPI document, llms.txt, GraphQL and MCP; a path cell with an alias lists each path as its own route; optional-segment brackets such as `/metrics[/{service}]` expand to two routes, the path without and the path with the bracketed segment. A row in a fenced code block or in a table introduced as an illustrative example (for example the generic REST row `/api/{api_version}/{resource}`) is not a template route. `{api_version}` is the API version in use, `{admin_path}` the configured admin path, a leading `{base}` (the Scoped Agents API table only) is replaced by the Base Route of each enabled scope (admin always, user with PART 34, org with PART 35), any other `{name}` segment matches a path parameter. A row under a section marked OPTIONAL counts only when the project enables that feature (its `x-mounted-when` condition); a row whose description names its own condition (an alias that exists `when server.healthz.root.enabled is true`) is optional in the same way and carries that condition as its `x-mounted-when`. A table without a method column (the frontend page lists, static files, the well-known support matrix) is not a route inventory either: those are `GET`/`HEAD` pages covered by the page registry and conformance tests, not by the drift parser, and any route that accepts a `POST` form is listed in an inventory table with an explicit `POST` row. A route table in any other form is not a route inventory: a new template route is added to AI.md in this form, and nothing is copied into a project |
+| **Template route inventory** | The template leg of the drift test is read from the project's own `AI.md` at test time, deterministically: a template route is a row of a Markdown table whose header row has a path column (`Endpoint`, `Path` or `Route`) and a method column (`Method` or `Methods`), in any order and with any other columns (rows are read by those headers, never by column position): the path cell is exactly one backticked path starting with `/` and the method cell lists one or more HTTP methods (`GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`) separated by `/` or `,` (each method of the path is its own route), and the method is always explicit (a row without one is not a route). A row whose method cell is `ALL` and whose path ends in `/*` declares a PREFIX, not routes (the admin panel and admin API rows): the drift test does not expand it, the concrete routes under the prefix are the rows of the tables that define them (each with explicit methods), and the test requires at least one registered route under the prefix and every registered route under it to be such a row; `ALL` is valid only on a prefix row. Route classes: a row whose path starts with `/api/`, or is a root alias of an API route (`/healthz`, `/mcp`), is an API route and is compared with all three legs (an INTERNAL path, below, is compared with the router and the inventory only, never with the OpenAPI leg); every other row (`/`, `/server/healthz`, the Swagger and GraphiQL pages, the admin pages, the preferences forms) is a PAGE-class route, compared with the router's registered routes and, when it renders a page, with the page registry (an action route that only changes state, such as `GET /server/preferences/sync/import`, is a route but not a page and is never in the page registry), and expected in NONE of the OpenAPI document. INTERNAL is a class of path, not a marker on each row: every path of the INTERNAL services (metrics with its `/metrics`, `/api/metrics` and versioned aliases, the `/debug/*` routes, the Tor control routes; the INTERNAL rows of the PART 1 endpoint-pattern table) counts as a template route when it has a row, and the drift test expects it in the route table and in NONE of the OpenAPI document, llms.txt, GraphQL and MCP; a path cell with an alias lists each path as its own route; optional-segment brackets such as `/metrics[/{service}]` expand to two routes, the path without and the path with the bracketed segment. A row in a fenced code block or in a table introduced as an illustrative example (for example the generic REST row `/api/{api_version}/{resource}`) is not a template route. `{api_version}` is the API version in use, `{admin_path}` the configured admin path, a leading `{base}` (the Scoped Agents API table only) is replaced by the Base Route of each enabled scope (admin always, user with PART 34, org with PART 35), any other `{name}` segment matches a path parameter. A row under a section marked OPTIONAL counts only when the project enables that feature (its `x-mounted-when` condition); a row whose description names its own condition (an alias that exists `when server.healthz.root.enabled is true`) is optional in the same way and carries that condition as its `x-mounted-when`. A table without a method column (the frontend page lists, static files, the well-known support matrix) is not a route inventory either: those are `GET`/`HEAD` pages covered by the page registry and conformance tests, not by the drift parser, and any route that accepts a `POST` form is listed in an inventory table with an explicit `POST` row. A table that writes the method inside the route cell (`GET /path`) instead of a method column illustrates the page/API pairing and is not an inventory: its routes are inventoried by the section tables that define them. A route table in any other form is not a route inventory: a new template route is added to AI.md in this form, and nothing is copied into a project |
 | **Match site theme** | Both UIs styled to match site theme (light/dark/auto) |
 | **Standardized locations** | ALWAYS `src/swagger/` and `src/graphql/` (NEVER in root `.`) |
 
@@ -27193,8 +27193,8 @@ const CACHE_NAME = `{app_name}-cache-${CACHE_VERSION}`;
 // never match these entries. HTML ('/') is never precached - it is always network-first.
 const PRECACHE_ASSETS = [
   '/static/css/common.css?v={asset_stamp}',
-  '/static/css/public.css?v={asset_stamp}',
   '/static/css/components.css?v={asset_stamp}',
+  '/static/css/public.css?v={asset_stamp}',
   '/static/js/app.js?v={asset_stamp}',
   '/static/icons/icon-192.png?v={asset_stamp}',
   '/static/icons/icon-512.png?v={asset_stamp}'
@@ -27312,7 +27312,8 @@ self.addEventListener('fetch', event => {
 const STRINGS_CACHE = '{app_name}-offline-strings';
 const DEFAULT_STRINGS = {
   lang: 'en', dir: 'ltr', title: 'Offline', heading: 'You are offline',
-  message: 'This page could not be loaded and no cached copy is available. Check your connection and try again.'
+  message: 'This page could not be loaded and no cached copy is available. Check your connection and try again.',
+  reload: 'Reload'
 };
 function escapeHtml(text) {
   return String(text).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -27337,8 +27338,8 @@ async function offlineFallbackResponse() {
 }
 
 // PAGE SIDE (app.js, on every load): store the strings for the worker. The values are
-// rendered by the server from the translation keys offline.title, offline.heading and
-// offline.message in the visitor's resolved language (lang and dir are the page's own)
+// rendered by the server from the translation keys offline.title, offline.heading,
+// offline.message and offline.reload (the label of the watchdog's reload link) in the visitor's resolved language (lang and dir are the page's own)
 // caches.open('{app_name}-offline-strings').then(c => c.put('/offline-strings.json',
 //   new Response(JSON.stringify(window.OFFLINE_STRINGS), { headers: { 'Content-Type': 'application/json' } })))
 ```
@@ -28312,8 +28313,8 @@ async function requestPersistentStorage() {
 ├── static/
 │   ├── css/
 │   │   ├── common.css
-│   │   ├── public.css
-│   │   └── components.css
+│   │   ├── components.css
+│   │   └── public.css
 │   ├── js/
 │   │   └── app.js                # Includes SW registration
 │   ├── icons/
@@ -34135,7 +34136,7 @@ Admin Panel Header:
 | `description` | Textarea | (empty) | No | SEO/about description |
 | `logo` | File | (none) | No | Logo image upload |
 | `favicon` | File | (none) | No | Favicon upload |
-| `theme` | Dropdown | `auto` | No | `auto` / `light` / `dark` |
+| `theme` | Dropdown | `dark` | No | `dark` / `light` / `auto` |
 | `accent_color` | Color | `#007bff` | No | Primary accent color |
 
 #### SEO Section
@@ -40776,7 +40777,7 @@ Maintenance commands:
 
 backup [file]                         - Create backup of all data
                                         Default: {backup_dir}/{project_name}-{timestamp}.tar.gz
-restore <file>                        - Restore from backup file
+restore [file]                        - Restore from backup file (no file: the newest full backup)
                                         Stops server, restores data, restarts server
 update [cmd]                          - Manage updates
                                         check         - Check for available updates
@@ -42317,11 +42318,11 @@ release: release-check build
 	# Generate checksums
 	@cd $(RELDIR) && FILES="$$(ls)" && sha256sum $$FILES > sha256.txt && sha512sum $$FILES > sha512.txt
 
-	# Delete existing release/tag if exists
+	# A release tag is immutable: stop when v{version} already exists locally or on the remote (bump the version instead)
 	# Tag and release name are v{version}; version.txt stays unprefixed (numeric SemVer)
-	@gh release delete v$(VERSION) --yes 2>/dev/null || true
-	@git tag -d v$(VERSION) 2>/dev/null || true
-	@git push origin :refs/tags/v$(VERSION) 2>/dev/null || true
+	@if git rev-parse -q --verify "refs/tags/v$(VERSION)" >/dev/null || git ls-remote --exit-code --tags origin "refs/tags/v$(VERSION)" >/dev/null 2>&1; then echo "ERROR: tag v$(VERSION) already exists; release tags are never moved or recreated" >&2; exit 1; fi
+	@git tag v$(VERSION)
+	@git push origin refs/tags/v$(VERSION)
 
 	# Create new release (stable)
 	@gh release create v$(VERSION) $(RELDIR)/* \
@@ -42332,7 +42333,7 @@ release: release-check build
 	@echo "Release complete: v$(VERSION)"
 
 # =============================================================================
-# DOCKER - Build and push container to registry (set REGISTRY env var)
+# DOCKER - Build the host-platform container image locally (no push: CI/CD publishes; set REGISTRY env var for the tag)
 # =============================================================================
 # Uses multi-stage Dockerfile - Go compilation happens inside Docker
 # No pre-built binaries needed
@@ -44912,7 +44913,7 @@ jobs:
         id: v
         run: |
           # The pushed tag YYYYMMDDHHMMSS-beta carries the stamp; a manual run computes one
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then STAMP="${GITHUB_REF_NAME%-beta}"; else STAMP="$(date -u +%Y%m%d%H%M%S)"; fi
+          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then echo "::error::beta.yml runs for an existing *-beta tag only (a manual run selects that tag as the ref)" >&2; exit 1; fi; STAMP="${GITHUB_REF_NAME%-beta}"
           VERSION="${STAMP}-beta"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           # Release tag is always the timestamped beta form - the update channel matches the -beta suffix
@@ -46158,7 +46159,7 @@ jobs:
         id: v
         run: |
           # The pushed tag YYYYMMDDHHMMSS-beta carries the stamp; a manual run computes one
-          if [[ "${GITEA_REF_TYPE}" == "tag" ]]; then STAMP="${GITEA_REF_NAME%-beta}"; else STAMP="$(date -u +%Y%m%d%H%M%S)"; fi
+          if [[ "${GITEA_REF_TYPE}" != "tag" ]]; then echo "::error::beta.yml runs for an existing *-beta tag only (a manual run selects that tag as the ref)" >&2; exit 1; fi; STAMP="${GITEA_REF_NAME%-beta}"
           VERSION="${STAMP}-beta"
           echo "version=$VERSION" >> "$GITEA_OUTPUT"
           # Release tag is always the timestamped beta form - the update channel matches the -beta suffix
@@ -49492,7 +49493,7 @@ rm -rf "$TEST_DIR"
 
 | Route Type | Required Accept Headers | Why |
 |------------|------------------------|-----|
-| **Frontend routes** (`/**`) | `text/html`, `text/plain` | Browsers get HTML, CLI/curl gets plain text |
+| **Frontend routes** (`/**`) | `text/html`, `text/plain`, plus `application/json` on every page that shows data (the same `data` object as its API twin) | Browsers get HTML, CLI/curl gets plain text, a JSON client gets the data |
 | **Backend/API routes** (`/api/*`) | `application/json`, `text/plain` | API clients get JSON, CLI/curl gets plain text |
 
 **Frontend Route Testing (ALL routes):**
@@ -49547,7 +49548,7 @@ curl -q -LSsf /api/v1/weather/Chicago.txt
 #!/bin/bash
 # tests/test_content_negotiation.sh
 
-# Frontend routes - test BOTH text/html and text/plain
+# Frontend routes - test text/html and text/plain, and application/json on the pages that show data
 frontend_routes=(
     "/"
     "/users"
@@ -69033,7 +69034,7 @@ make docker
 - [ ] If compliance mode is on, encryption REQUIRED (backups blocked without password)
 - [ ] Configurable retention: max_backups (default: 1), keep_weekly/monthly/yearly (default: 0)
 - [ ] `--maintenance backup` works
-- [ ] `--maintenance restore {file}` works (prompts for password if encrypted)
+- [ ] `--maintenance restore [file]` works (no file restores the newest full backup; prompts for password if encrypted)
 - [ ] Backup includes: database, config, uploads
 - [ ] Restore is atomic (all or nothing)
 - [ ] **Backup verification after creation** (checksum, decrypt, extract, DB integrity)
