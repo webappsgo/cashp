@@ -992,6 +992,7 @@ docker/                     # Docker files (REQUIRED)
 docker/Dockerfile           # Multi-stage Dockerfile
 docker/docker-compose.yml   # Production docker-compose
 docker/rootfs/              # BUILD-TIME container filesystem overlay (entrypoint.sh, service configs)
+docker/rootfs-aio/          # BUILD-TIME overlay of the all-in-one image only (PART 27)
 volumes/                    # RUNTIME volume data if created locally (gitignored)
 binaries/                   # Build output (gitignored)
 releases/                   # Release artifacts (gitignored)
@@ -5833,7 +5834,7 @@ Not every project needs admin UI extensions - it depends on the project's nature
 - Rate limiting rules
 - robots.txt / security.txt
 - Scheduler settings
-- SSL certificate renewal (the `server.ssl.*` settings themselves need a restart)
+- SSL certificate renewal and the `server.ssl.letsencrypt.*` settings (the ACME client reads them at its next issuance or renewal); every other `server.ssl.*` setting needs a restart
 - All feature toggles
 - `server.tor.*` (only the Tor child process is restarted, in-process, while the server keeps serving; "Tor Restart Triggers")
 
@@ -6235,6 +6236,7 @@ package main
 | **Attribution** | The notice the terms require (author, license, link, changes made) |
 | **Record** | In the project's third-party notices (`LICENSE.md`, "Third-Party Licenses") and on the attribution surface (`/server/about`, or the README when the project has no web page) |
 | **Per-record provenance** | When records come from several sources, every record or file carries a `source` key that names its entry in the third-party notices |
+| **Provenance decision (ask first)** | Before any record is bundled the project asks the user whether the records come from a third-party corpus (then the source, terms and attribution rows above apply) or are original content written at the owner's direction (then the generated-content row applies); the answer is written to IDEA.md first |
 | **Unknown or unusable terms** | Content with no stated license, a license that forbids redistribution, a site that forbids scraping, or an unknown origin is NOT embedded. The project asks the user instead of guessing |
 | **Generated content** | It counts as the project's own only when the user says so, and is never presented with an invented source. Owner-directed original content (the owner declares it theirs and the AI writes it) is recorded in the third-party notices as "Original content, owned by {owner}, written with AI assistance at the owner's direction, released under the project's license", with no external source or URL; every record's `source` key is `original`, the attribution surface lists it under "Original content" without naming any third party, and the owner's statement is kept in the project's IDEA.md |
 | **Project translations** | Strings translated for the project under the localization rule (by the AI or a human translator, I18N & A11Y → "Translating") are the project's own work and need no source record; a human translator's pull request is under the project license. A translation copied from another project, a service or a third-party catalogue is third-party content and follows every row above |
@@ -6499,7 +6501,8 @@ PROJECT_ORG=$(git remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)/[^/]+
 │   ├── docker-compose.yml  # Production compose (NO debug)
 │   ├── docker-compose.dev.yml  # Development compose
 │   ├── docker-compose.test.yml # Test compose (:devel image, DEBUG: true, MODE: development, valkey cache included)
-│   └── rootfs/            # Build-time container filesystem overlay (committed)
+│   ├── rootfs/            # Build-time container filesystem overlay (committed)
+│   └── rootfs-aio/        # Build-time overlay of the all-in-one image only (committed)
 │       ├── usr/
 │       │   └── local/
 │       │       └── bin/
@@ -6752,6 +6755,7 @@ Makefile
 | `go.mod`, `go.sum` | Go module files - required |
 | `docker/` | Dockerfile and compose files - required |
 | `docker/rootfs/` | Build-time overlay files (entrypoint.sh, service configs) |
+| `docker/rootfs-aio/` | Build-time overlay of the all-in-one image only (its own entrypoint.sh, supervisor, PostgreSQL and Valkey configs) |
 
 **RULE: Keep the base directory organized and clean - no clutter!**
 
@@ -8775,7 +8779,7 @@ Wherever this specification says a setting is set "in `server.yml`", it means th
 
 | Rule | Behavior |
 |------|----------|
-| **Keys** | Only these, for every one the project has: `server.token`; `server.security.encryption_key` and `server.security.encryption_key_version`; `server.notifications.email.smtp.password`; `server.cache.password`; `server.database.password` and `server.database.token`; `server.database.url` and `server.cache.url` (each only while the URL carries a credential); `server.pages.contact.captcha_secret_key`; `server.ssl.letsencrypt.dns_credentials`; `data.cve.api_key`; `server.backup.encryption_password`; `server.metrics.auth.tokens.*`; every webhook URL and its `_secret` under `server.contact.{role}.webhooks`; `server.auth.ldap.providers[].bind_password`; `server.auth.oidc.providers[].client_secret` (each written as an entry that holds the provider's `name` and the secret field; "Drop-in Config Directory" → Merge joins it to the provider by `name`). `server.tokens.*` is token policy, not a secret. Every other key stays in its area file |
+| **Keys** | Only these, for every one the project has: `server.token`; `server.security.encryption_key` and `server.security.encryption_key_version`; `server.notifications.email.smtp.password`; `server.cache.password`; `server.database.password` and `server.database.token`; `server.database.url` and `server.cache.url` (each only while the URL carries a credential); `server.pages.contact.captcha_secret_key`; `server.ssl.letsencrypt.dns_credentials`; `data.cve.api_key`; `server.backup.encryption_password`; `server.metrics.auth.tokens.*`; every webhook URL and its `_secret` under `server.contact.{role}.webhooks`; `server.auth.ldap.providers[].bind_password`; `server.auth.saml.providers[].sp_private_key_pem` (the SAML SP private key, stored encrypted at rest as `enc:v1:` and included in backups); `server.auth.oidc.providers[].client_secret` (each written as an entry that holds the provider's `name` and the secret field; "Drop-in Config Directory" → Merge joins it to the provider by `name`). `server.tokens.*` is token policy, not a secret. Every other key stays in its area file |
 | **Generated** | When one of these keys is empty or missing at start, the server generates it BEFORE it serves anything, writes it to `secrets.yml` (atomic, `0600`) and records `config.secret_generated` (the key name only) in `audit.log`: `server.token`; `server.security.encryption_key` (with `encryption_key_version: 1`); `server.metrics.auth.tokens.prometheus`, `.grafana` and `.loki`; and a `server.contact.{role}.webhooks.{transport}_secret` whenever its webhook URL `server.contact.{role}.webhooks.{transport}` is set. `server.token` is an `adm_` token and each metrics token an `mtr_` token, each plus 32 random base62 characters ("Token Catalogue") and the encryption key is 32 random bytes. Only `server.token` is printed, once, to the console at first creation ("First-start disclosure") and never logged; every other value is read from `secrets.yml` |
 | **Never generated** | Credentials that someone else issues stay empty until the operator sets them: `server.notifications.email.smtp.password`, `server.cache.password`, `server.database.password` and `server.database.token`, `server.database.url` and `server.cache.url` with a credential in them, `server.pages.contact.captcha_secret_key`, `server.ssl.letsencrypt.dns_credentials`, `data.cve.api_key`, `server.backup.encryption_password`, the LDAP bind password, the OIDC client secret and the webhook URLs |
 | **Rotation** | Blank a generated key in `secrets.yml` and restart: a new value is generated. `--maintenance secret rotate {name}` rotates `installation_secret` or the encryption key with their grace periods (PART 11); those are the only two with a manual rotation, while `cookie_signing_key` and `csrf_token_secret` rotate automatically and any other name is rejected with a usage error |
@@ -9541,6 +9545,8 @@ A user service always runs with the per-user paths of "User (non-privileged)" fo
 | Any | Any | Both ports active, HTTP redirects to HTTPS optional |
 | 80 | 443 | Let's Encrypt challenges enabled, standard web ports |
 | 64xxx | 64xxx+1 | Common pattern for random ports |
+
+**`8090` and `8443` below are example values only, never defaults: the default is the random 64xxx port (`80` in an application container), see "Port Selection Logic".**
 
 ```yaml
 # Single port (HTTP by default; exception: port 443 = HTTPS-only mode; ssl.enabled overrides)
@@ -11323,9 +11329,10 @@ When the `NO_COLOR` environment variable is set and not empty (value doesn't mat
 | Priority | Source | Example |
 |----------|--------|---------|
 | 1 | CLI flag | `--color=yes`, `--color=no` (`--color=yes` also overrides `TERM=dumb`, for color sequences only; every other `TERM=dumb` restriction stays) |
-| 2 | Config file | `output.color: false` |
-| 3 | `NO_COLOR` env var | `NO_COLOR=1` |
-| 4 | Auto-detect | TTY check, `TERM` variable |
+| 2 | Project environment variable (CLI binaries) | `{PROJECT_NAME}_OUTPUT_COLOR=no` (applied by the loader as the value of `output.color`, so `ColorEnabled` keeps its signature) |
+| 3 | Config file | `output.color: false` |
+| 4 | `NO_COLOR` env var | `NO_COLOR=1` (a standard, not a project variable: it ranks after the explicit project settings) |
+| 5 | Auto-detect | TTY check, `TERM` variable |
 
 **Implementation (ALL binaries):**
 
@@ -12128,7 +12135,7 @@ PHASE 5: Server startup (actual server start)
 | cgroup | `/proc/1/cgroup` contains `docker`, `kubepods`, `lxc` |
 | Self wrapper | Parent process is `{project_name}` (entrypoint wrapper) |
 
-**System containers (Incus/LXC/LXD/systemd-nspawn):** these run a full init, so the table above does not make them "container" for service-manager purposes. When systemd launched the process (`INVOCATION_ID` set) the service manager is `systemd`; when OpenRC launched it (`RC_SVCNAME` set, or PPID 1 with `/run/openrc` present) the service manager is `openrc`. In both cases service install/start/stop/status work normally. "container" applies to application containers (Docker, Podman, Kubernetes) and to Incus/LXC containers whose init is neither systemd nor OpenRC. The systemd and OpenRC checks run before generic container detection. The same order decides every default that depends on being in a container (the listen port `80` and `server.i2p.enabled`): the systemd and OpenRC checks run first, so an Incus/LXC system container run by systemd or OpenRC is a host for them, and only then is `isContainer()` consulted.
+**System containers (Incus/LXC/LXD/systemd-nspawn):** these run a full init, so the table above does not make them "container" for service-manager purposes. When systemd launched the process (`INVOCATION_ID` set) the service manager is `systemd`; when OpenRC launched it (`RC_SVCNAME` set, or PID 1 being OpenRC's init with `/run/openrc` present, whatever the launch method) the service manager is `openrc`. In both cases service install/start/stop/status work normally. "container" applies to application containers (Docker, Podman, Kubernetes) and to Incus/LXC containers whose init is neither systemd nor OpenRC. The systemd and OpenRC checks run before generic container detection. The same order decides every default that depends on being in a container (the listen port `80` and `server.i2p.enabled`): the systemd and OpenRC checks run first, so an Incus/LXC system container run by systemd or OpenRC is a host for them, and only then is `isContainer()` consulted.
 
 **Manual Start Priority Order:**
 1. `--daemon` CLI flag (highest)
@@ -12208,12 +12215,16 @@ func detectServiceManager() string {
         return "openrc"
     }
 
-    // PPID 1 with a running systemd or OpenRC: a system container whose init is one of them is a host
-    if os.Getppid() == 1 {
-        if _, err := os.Stat("/run/systemd/system"); err == nil {
+    // PID 1 is systemd or OpenRC's init, whatever the launch method (a manual shell launch included): a system container whose init is one of them is a host
+    if comm, err := os.ReadFile("/proc/1/comm"); err == nil {
+        pid1 := strings.TrimSpace(string(comm))
+        if pid1 == "systemd" {
             return "systemd"
         }
-        if _, err := os.Stat("/run/openrc"); err == nil {
+        if pid1 == "openrc-init" {
+            return "openrc"
+        }
+        if _, err := os.Stat("/run/openrc"); err == nil && pid1 == "init" {
             return "openrc"
         }
     }
@@ -21014,7 +21025,7 @@ All settings above MUST be configurable via admin panel:
 | Compression | Enable, level, MIME types |
 | Trusted Proxies | Additional IPs/CIDRs, client IP header |
 | Session | Cookie name, max age, secure, http_only, same_site |
-| Rate Limiting | Enable, requests, window |
+| Rate Limiting | Requests, window (always on: there is no enable control) |
 | i18n | Default language, supported languages |
 | Cache | Type, connection settings, prefix, TTL |
 
@@ -27908,7 +27919,7 @@ Preferences aren't tied to identity — any two guests who set the same `theme`/
 | 15 | **Page layout and buttons** | `/server/preferences` is ONE `<form method="POST" action="/server/preferences">` carrying the CSRF token and every section: appearance (`theme`), language (`lang`), cookie-consent and CCPA controls, every `{project_name}_pref_{key}` control — all sections always visible, none collapsed or revealed by a button. A **More preferences** card, outside the form, links every registered preferences page (see "Preferences and Help Hubs"). The form has exactly three action buttons (the header theme toggle is a separate mini-form on other pages and is OMITTED from the header on this page, whose own form carries the theme control; the header markup is otherwise identical on every page): **Save** (submit; applies every changed field, then `303` per rules 9–10), **Cancel** (a link to the rule 10 redirect target; discards unsaved edits, sends no write) and **Reset** (a `type="button"` with `popovertarget` that opens a native HTML `popover` — no JS; the popover holds the warning, an **Erase everything** submit with `action=reset`, and a dismiss control using `popovertargetaction="hide"`; those two belong to Reset, not to the page's button set; forgets the visitor completely: every noncredential cookie this app set — `theme`, `lang`, `{project_name}_pref_*`, `cookie_consent`, `ccpa_opt_out`, `{project_name}_build`, plus any other noncredential cookie the project defines (announcement dismissals, flash messages, age-verification or content-acknowledgment cookies, forwarding preferences) — is deleted (`Max-Age=0`, same `Path`/attributes as rule 8), and the `303` carries `Clear-Site-Data: "storage"` to wipe localStorage/sessionStorage/IndexedDB without JS. Defaults apply and the consent banner returns on the next page. Never deletes session, CSRF or other credential cookies — signing out is a separate action. The popover warning states exactly what is erased. Only Reset confirms — Save and Cancel never ask for confirmation. The popover is styled with CSS, and a direct `POST action=reset` behaves identically on the server). No per-section save buttons and no "Sync", "Export", "Import" or "Show" buttons: sync has its own page. Every other preferences page (`/server/preferences/sync`, `/server/preferences/tokens` where the project has owner tokens, and project pages) is NOT part of this form: each lives on its own page, reached from the More preferences card, and those pages' own forms are exempt from this button limit. Reset never deletes credential cookies: session, CSRF and, when the project defines owner tokens, the owner-token cookie |
 | 16 | **Web save never `400`** | `400 VALIDATION_FAILED` (rule 11) is API-only. A web `POST /server/preferences` or `POST /server/preferences/sync` always answers `303` (rule 9) — including empty submits, unchecked checkboxes (absent fields), invalid values (dropped) and a bad `code`. The only `4xx` is a missing/invalid CSRF token (`403`), so every preferences form MUST always render the token and post only to the canonical route, never to the `/api/{api_version}/…` mirror |
 | 17 | **Consent and CCPA controls** | The page form's cookie-consent toggles (`consent_preferences`, `consent_analytics`; `essential` is always on and not a field) and the CCPA opt-out toggle (`ccpa_opt_out`, rendered only when `server.privacy.data.sold` is `true`; otherwise absent and never written) are web-form-only controls handled by `POST /server/preferences`, with a hidden `consent_form=1` marker rendered inside the form. They are applied only when `consent_form=1` is present — an unchecked checkbox then means off, while a POST without the marker (the header theme toggle) never touches consent or CCPA. Applying writes `cookie_consent` (JSON per PART 16 consent state, with a fresh timestamp in Unix seconds) and `ccpa_opt_out` with the rule 8 attributes. Import and the API mirror never write them, Reset deletes them (rule 15), and they are never exported (rule 1). The privacy page's own CCPA form is the one other writer of `ccpa_opt_out` (`POST /server/ccpa`), as the cookie banner is the other writer of `cookie_consent` (`POST /server/consent`) |
-| 18 | **Consent gate** | An explicit preference action (Save, Import, an API write) is not itself consent to the Preferences cookie category, and a visitor who has taken no consent action has the category off. `theme`, `lang` and every `{project_name}_pref_{key}` cookie belong to the **Preferences** cookie category, not to the essential one, so import, save and sync set them only on a device whose `cookie_consent` has `preferences: true` (the same per-device consent that is never exported, rule 1). The gate sits in the one shared implementation, after validation and before any cookie is written, for the web routes and the API mirror alike. When the category is not accepted (no `cookie_consent` cookie, or `preferences: false`): nothing is written, `applied` is empty, every valid value is reported in `ignored`, and the API `data` carries `"consent_required": true`. The web route still answers `303` (rules 9 and 16), never a `4xx`, and the redirect carries `consent_required=1` as a query parameter that the landing page reads, never stores, and turns into a notice pointing at the cookie-consent toggle of rule 17. An import link opened on a new device therefore applies nothing until that device's visitor accepts Preferences and opens the link again; the server keeps no pending state. While the cookies are absent the page renders with the defaults (the language detected from `Accept-Language`). **The header toggles are gated too.** The no-JavaScript header theme POST and the language switcher are preference writes like any other: with no consent they write nothing, answer `303` with `consent_required=1` (the notice of rule 17 appears) and the theme or language does not change. Only the JS instant preview (the theme block of `static/js/app.js`) may change the `<html>` class for the CURRENT page view, and it stores nothing. **Cookie visibility is one rule for every preference cookie** (`theme`, `lang`, `{project_name}_pref_{key}`): not HttpOnly, because the preview script reads them, and set only after consent; `owner_token` is the one HttpOnly cookie in this family |
+| 18 | **Consent gate** | An explicit preference action (Save, Import, an API write) is not itself consent to the Preferences cookie category, and a visitor who has taken no consent action has the category off. `theme`, `lang` and every `{project_name}_pref_{key}` cookie belong to the **Preferences** cookie category, not to the essential one, so import, save and sync set them only on a device whose `cookie_consent` has `preferences: true` (the same per-device consent that is never exported, rule 1). The gate sits in the one shared implementation, after validation and before any cookie is written, for the web routes and the API mirror alike. The gate governs preference WRITES only: a `?lang=` link without consent still sets the language for that one response and writes no cookie, because it is a request parameter, not a preference write. When the category is not accepted (no `cookie_consent` cookie, or `preferences: false`): nothing is written, `applied` is empty, every valid value is reported in `ignored`, and the API `data` carries `"consent_required": true`. The web route still answers `303` (rules 9 and 16), never a `4xx`, and the redirect carries `consent_required=1` as a query parameter that the landing page reads, never stores, and turns into a notice pointing at the cookie-consent toggle of rule 17. An import link opened on a new device therefore applies nothing until that device's visitor accepts Preferences and opens the link again; the server keeps no pending state. While the cookies are absent the page renders with the defaults (the language detected from `Accept-Language`). **The header toggles are gated too.** The no-JavaScript header theme POST and the language switcher are preference writes like any other: with no consent they write nothing, answer `303` with `consent_required=1` (the notice of rule 17 appears) and the theme or language does not change. Only the JS instant preview (the theme block of `static/js/app.js`) may change the `<html>` class for the CURRENT page view, and it stores nothing. **Cookie visibility is one rule for every preference cookie** (`theme`, `lang`, `{project_name}_pref_{key}`): not HttpOnly, because the preview script reads them, and set only after consent; `owner_token` is the one HttpOnly cookie in this family |
 
 **Page layout (`/server/preferences`) — one form, one Save, always visible, then the More preferences card:**
 ```
@@ -30515,7 +30526,7 @@ server:
 | Homepage (`/`) | Always | 1.0 | daily |
 | Public pages | Always | 0.8 | weekly |
 | Public documentation pages (project-defined, if any) | Dynamic | 0.8 | weekly |
-| API docs (`/server/docs/swagger`, `/server/docs/graphql`) | Always | 0.7 | weekly |
+| API docs (`/server/docs/swagger`, `/server/docs/graphql`): public frontend pages, the one deliberate listing among the `/server/*` pages | Always | 0.7 | weekly |
 | User profiles (if public) | Dynamic | 0.6 | weekly |
 | Admin pages (`/server/{admin_path}/*`) | **NEVER** | - | - |
 | Auth pages (`/server/auth/*`) | **NEVER** | - | - |
@@ -35093,7 +35104,7 @@ The admin panel MUST include a scheduler section with:
 │                                                                             │
 │  ┌─ Actions ─────────────────────────────────────────────────────────────┐  │
 │  │                                                                       │  │
-│  │  [Refresh Now]  [View Logs]  [Edit Tags]  [Regenerate Token]          │  │
+│  │  [Edit Tags]  [Regenerate Token]                                       │  │
 │  │                                                                       │  │
 │  │  [Remove Agent]  ← Requires confirmation                              │  │
 │  │                                                                       │  │
@@ -35126,11 +35137,11 @@ The admin panel MUST include a scheduler section with:
 │  └─────────────────────────────────────────────────────────────────────┘    │
 │  Comma-separated. Used for filtering and grouping.                          │
 │                                                                             │
-│  Token Expiry:                                                              │
+│  Registration window (how long the token may be used to register):          │
 │  ○ 1 hour                                                                   │
 │  ● 24 hours (recommended)                                                   │
 │  ○ 7 days                                                                   │
-│  ○ Never expires                                                            │
+│  ○ No limit                                                                 │
 │                                                                             │
 │  [Generate Agent Token]                                                     │
 │                                                                             │
@@ -35300,12 +35311,12 @@ func getDefaultAgentName() string {
 
 | Topic | Rule |
 |-------|------|
-| **Token "once"** | The token in the connection command is the agent's own credential, shown once and valid for 24 hours until an agent registers with it. "Used once" means ONE registration: a second `register` call with the same token is `409 CONFLICT`. After registration the same token stays the agent's credential for `heartbeat` and `report` until it is regenerated or revoked |
-| **Registration request** | `hostname`, `os`, `arch`, `version`, `tags` and the optional `display_name` (the agent's `identity.display_name`). The server names the agent `display_name` when it is set, valid and unique within its scope and owner, otherwise the `hostname`, with `-2`, `-3` appended on a clash |
-| **Heartbeat** | `POST {base}/heartbeat`, body `{"uptime_seconds": n, "version": "...", "update_available": "..."}`; the server stores `last_seen_at`, the IP address and `uptime_seconds` (shown on the detail page) |
+| **Token "once"** | The token in the connection command is the agent's own credential, shown once and valid until an agent registers with it, for the registration window chosen on the add page (`1 hour`, `24 hours` (the default, also the API default), `7 days` or `no limit`). "Used once" means ONE registration: a second `register` call with the same token is `409 CONFLICT`. After registration the same token stays the agent's credential for `heartbeat` and `report` until it is regenerated or revoked |
+| **Registration request** | `hostname`, `os`, `arch`, `version`, `tags`, `interval_seconds` (the agent's collection interval) and the optional `display_name` (the agent's `identity.display_name`). The name chosen on the add page, stored with the token, wins; otherwise the server names the agent `display_name` when it is set, valid and unique within its scope and owner, otherwise the short `hostname` (the part before the first `.`, as `hostname -s`), with `-2`, `-3` appended on a clash |
+| **Heartbeat** | `POST {base}/heartbeat`, body `{"uptime_seconds": n, "interval_seconds": n, "version": "...", "update_available": "..."}`; the server stores `last_seen_at`, the IP address, `uptime_seconds` (shown on the detail page) and the latest `interval_seconds` |
 | **Report** | `POST {base}/report`, body `{"samples": [ ... ]}` with at most `collection.batch_size` samples, oldest first. One sample is one collection cycle: `recorded_at` (RFC 3339 UTC), the metric fields of `agent_metrics` and an optional `custom_metrics` JSON object. The server stores one `agent_metrics` row per sample, `custom_metrics` as JSON text. `collection.buffer_size` is how many samples the agent keeps while offline; the oldest are dropped first |
 | **Liveness** | An agent is `online` while a heartbeat or report arrived within the last 90 seconds (three missed 30-second heartbeats), `offline` after that, and `pending` until its first registration completes. The server derives `status` from `last_seen_at`; it is not agent-reported |
-| **Health** | `Error` when the agent is offline, or any of `cpu_percent`, `memory_percent`, `disk_percent` is 95 or higher; `Warn` when any is 80 or higher, or the newest sample is older than three collection intervals; otherwise `Good`. An agent with no samples yet is `Warn`. These are fixed constants, not settings |
+| **Health** | `Error` when the agent is offline, or any of `cpu_percent`, `memory_percent`, `disk_percent` is 95 or higher; `Warn` when any is 80 or higher, or the newest sample is older than three times the agent's `interval_seconds` (stored from registration and every heartbeat); otherwise `Good`. An agent with no samples yet is `Warn`. These are fixed constants, not settings |
 | **Tasks** | There is no task queue and no task API: an agent collects and reports. A project that needs server-assigned tasks defines that API itself in `IDEA.md` and `SPEC.md`; this template does not |
 | **Split SQLite** | `agents` and `agent_metrics` live in `server.db` and `tokens` in `users.db`, so `agents.token_id` is a LOGICAL reference: a real foreign key only in a single remote database. The application enforces it: deleting an agent deletes its token row, revoking the token sets the agent `offline` and the daily cleanup removes an agent whose token row is gone |
 
@@ -35651,7 +35662,7 @@ server:
 | Template | Default Subject | Default Behavior |
 |----------|-----------------|------------------|
 | `welcome` | `Welcome to {app_name}` | Sent to new users on registration (if enabled) and to admin on first setup |
-| `password_reset` | `Password Reset Request - {app_name}` | 24-hour expiry, includes IP address |
+| `password_reset` | `Password Reset Request - {app_name}` | 1-hour expiry (`auth.password_reset_ttl`), includes IP address |
 | `email_verify` | `Verify Your Email - {app_name}` | 48-hour expiry |
 | `login_alert` | `New Login Detected - {app_name}` | Includes IP, location (if GeoIP enabled), device |
 | `security_alert` | `Security Alert - {app_name}` | Generic alert for various security events |
@@ -37707,7 +37718,7 @@ server:
 
 | Rule | Format | Example |
 |------|--------|---------|
-| **Prefix** | `{project_name}_` | `jokes_http_requests_total` |
+| **Prefix** | `{metric_prefix}_`: the project name lowercased with every run of characters outside `[a-z0-9]` replaced by one `_` (`wordList` becomes `wordlist_`, `word-list` becomes `word_list_`), so the name stays snake case; `{project_name}_` in the examples below stands for it | `jokes_http_requests_total` |
 | **Snake case** | `word_word_word` | `http_request_duration_seconds` |
 | **Unit suffix** | `_seconds`, `_bytes`, `_total` | `request_duration_seconds` |
 | **Total suffix** | Counters end with `_total` | `http_requests_total` |
@@ -39192,7 +39203,10 @@ groups:
 
 ```bash
 {project_name} --maintenance backup [filename]
+{project_name} --maintenance backup test [file]
 ```
+
+`backup test` verifies a backup without touching live data: `file` defaults to the newest full backup in `{backup_dir}` (chosen by the UTC date in the file name, exactly as for restore; an incremental is checked together with its base). An encrypted backup asks for its password interactively exactly like restore (there is no password flag; without a terminal the command fails with a message that says so). It extracts into a temporary directory, verifies the manifest checksums, reports each result and removes the temporary directory.
 
 ### Backup Contents
 
@@ -40791,7 +40805,9 @@ $ {project_name} --maintenance --help
 Maintenance commands:
 
 backup [file]                         - Create backup of all data
-                                        Default: {backup_dir}/{project_name}-{timestamp}.tar.gz
+                                        Default: {backup_dir}/{project_name}_backup_YYYY-MM-DD_HHMMSS.tar.gz[.enc]
+backup test [file]                    - Verify a backup without touching live data
+                                        Default: the newest full backup in {backup_dir}; asks for the password of an encrypted backup
 restore [file]                        - Restore from backup file (no file: the newest full backup)
                                         Stops server, restores data, restarts server
 update [cmd]                          - Manage updates
@@ -43624,6 +43640,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tzdata \
     && rm -rf /var/lib/apt/lists/*
 
+# The packaged PostgreSQL tools live in a versioned directory (/usr/lib/postgresql/<version>/bin) that is on no PATH: expose it under one stable path
+RUN ln -s "$(ls -d /usr/lib/postgresql/*/bin | sort -V | tail -n 1)" /usr/local/lib/postgresql-bin
+
 # Create directories for EXTERNAL services only (PostgreSQL, Valkey)
 # NOTE: App directories (config, data, sqlite, logs, backups) created by server binary
 # External services need dirs pre-created with special ownership (postgres user)
@@ -43672,7 +43691,7 @@ logfile=/data/log/supervisord.log
 pidfile=/var/run/supervisord.pid
 
 [program:postgresql]
-command=/usr/bin/postgres -D /data/db/postgres
+command=/usr/local/lib/postgresql-bin/postgres -D /data/db/postgres
 user=postgres
 autostart=true
 autorestart=true
@@ -43795,16 +43814,19 @@ chown -R postgres:postgres /data/db/postgres /run/postgresql
 chmod 700 /data/db/postgres
 chmod 755 /run/valkey
 
+# The PostgreSQL tools are not on PATH: the image links their versioned directory to this stable path
+PG_BIN=/usr/local/lib/postgresql-bin
+
 # Initialize PostgreSQL if not already done
 if [ ! -f /data/db/postgres/PG_VERSION ]; then
     echo "Initializing PostgreSQL database..."
-    su - postgres -c "initdb -D /data/db/postgres"
+    su - postgres -c "$PG_BIN/initdb -D /data/db/postgres"
 
     # Copy optimized config baked into the image (/config is shadowed by the runtime volume mount)
     cp /usr/share/{project_name}/postgres/postgresql.conf /data/db/postgres/postgresql.conf
 
     # Start PostgreSQL temporarily to create database and user
-    su - postgres -c "pg_ctl -D /data/db/postgres -l /data/log/postgres/init.log start"
+    su - postgres -c "$PG_BIN/pg_ctl -D /data/db/postgres -l /data/log/postgres/init.log start"
     sleep 3
 
     # The database password is never derived from the project name: a value is generated on first init unless the operator
@@ -43812,12 +43834,12 @@ if [ ! -f /data/db/postgres/PG_VERSION ]; then
 DB_PASSWORD="${DB_PASSWORD:-$(openssl rand -hex 24)}"
 
 # Create application database and user
-    su - postgres -c "psql -c \"CREATE USER ${DB_USER:-{project_name}} WITH PASSWORD '${DB_PASSWORD}';\""
-    su - postgres -c "psql -c \"CREATE DATABASE ${DB_NAME:-{project_name}} OWNER ${DB_USER:-{project_name}};\""
-    su - postgres -c "psql -c \"GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME:-{project_name}} TO ${DB_USER:-{project_name}};\""
+    su - postgres -c "$PG_BIN/psql -c \"CREATE USER ${DB_USER:-{project_name}} WITH PASSWORD '${DB_PASSWORD}';\""
+    su - postgres -c "$PG_BIN/psql -c \"CREATE DATABASE ${DB_NAME:-{project_name}} OWNER ${DB_USER:-{project_name}};\""
+    su - postgres -c "$PG_BIN/psql -c \"GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME:-{project_name}} TO ${DB_USER:-{project_name}};\""
 
     # Stop PostgreSQL (supervisor will start it)
-    su - postgres -c "pg_ctl -D /data/db/postgres stop"
+    su - postgres -c "$PG_BIN/pg_ctl -D /data/db/postgres stop"
 fi
 
 # Tor is NOT a supervisor program: the app owns the Tor process (PART 32) and starts its own dedicated, isolated instance as the
@@ -57731,7 +57753,7 @@ I2P Eepsite: Running (i2pd)
 
 | Field | Description |
 |-------|-------------|
-| I2P Eepsite | Running (provider) / Disabled / No Provider / Error |
+| I2P Eepsite | The lifecycle `state` verbatim: `disabled`, `no_provider`, `starting`, `building`, `running` (followed by the provider in parentheses, for example `running (i2pd)`) or `error` |
 | Address | Full `.b32.i2p` address |
 
 ---
@@ -59765,7 +59787,7 @@ auth:
 
 # Output preferences
 output:
-  # Default: table, json, yaml, plain, csv
+  # table, json or plain (the same set as the --output flag)
   format: table
   # auto, yes, no (match terminal detection)
   color: auto
@@ -59824,8 +59846,8 @@ defaults:
 
 | Priority | Source | Example |
 |----------|--------|---------|
-| 1 | CLI flag | `--format json` |
-| 2 | Environment variable | `{PROJECT_NAME}_FORMAT=json` |
+| 1 | CLI flag | `--output json` (`--format` is not a flag) |
+| 2 | Environment variable | `{PROJECT_NAME}_OUTPUT_FORMAT=json` |
 | 3 | Config file | `output.format: json` |
 | 4 | Compiled default | `table` |
 
@@ -59836,6 +59858,7 @@ defaults:
 {PROJECT_NAME}_SERVER_TIMEOUT=60
 {PROJECT_NAME}_TOKEN="usr_abc123..."
 {PROJECT_NAME}_OUTPUT_FORMAT="json"
+{PROJECT_NAME}_OUTPUT_COLOR="auto"
 {PROJECT_NAME}_DEBUG=true
 ```
 
@@ -60032,7 +60055,7 @@ server:
 | `--server` | Multi-server support (skip if single official site) |
 | `--token` | Authenticated operations |
 | `--config` | Multiple config profiles |
-| `--output` | Multiple output formats (json/table/plain) |
+| `--output` | Output format: `json`, `table` or `plain` (the one canonical format flag) |
 | `--debug` | Debug mode |
 
 ### Flag Argument Syntax (ALL Binaries)
