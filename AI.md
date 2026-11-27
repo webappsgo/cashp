@@ -6238,7 +6238,7 @@ package main
 | **Per-record provenance** | When records come from several sources, every record or file carries a `source` key that names its entry in the third-party notices |
 | **Provenance decision (ask first)** | Before any record is bundled the project asks the user which of two options applies: (1) a third-party corpus (the source, terms and attribution rows above apply) or (2) original content written at the owner's direction (the AI writes it and the owner declares it theirs). Option (2) requests no corpus, publisher, source URL or external redistribution license: the records carry `source: "original"`, belong to the owner, are released under the project's license (MIT by default) and add no third-party notice. The answer is written to IDEA.md before anything is bundled |
 | **Unknown or unusable terms** | Content with no stated license, a license that forbids redistribution, a site that forbids scraping, or an unknown origin is NOT embedded. The project asks the user instead of guessing |
-| **Generated content** | It counts as the project's own only when the user says so, and is never presented with an invented source. Owner-directed original content (the owner declares it theirs and the AI writes it) is recorded in the third-party notices as "Original content, owned by {owner}, written with AI assistance at the owner's direction, released under the project's license", with no external source or URL; every record's `source` key is `original`, the attribution surface lists it under "Original content" without naming any third party, and the owner's statement is kept in the project's IDEA.md |
+| **Generated content** | It counts as the project's own only when the user says so, and is never presented with an invented source. Owner-directed original content (the owner declares it theirs and the AI writes it) is recorded in IDEA.md (the owner's statement) and, on the attribution surface, under "Original content" (owned by {owner}, written with AI assistance at the owner's direction, released under the project's license); it is NOT a third-party notice and no external source or URL exists; every record's `source` key is `original`, the attribution surface lists it under "Original content" without naming any third party, and the owner's statement is kept in the project's IDEA.md |
 | **Project translations** | Strings translated for the project under the localization rule (by the AI or a human translator, I18N & A11Y → "Translating") are the project's own work and need no source record; a human translator's pull request is under the project license. A translation copied from another project, a service or a third-party catalogue is third-party content and follows every row above |
 
 ## License Compatibility Matrix
@@ -25498,14 +25498,61 @@ fi
 }
 ```
 
-### Breakpoints
+### Breakpoints (named sizes: base, sm, md, lg, xl)
 
-| Breakpoint | Target | CSS |
-|------------|--------|-----|
-| Base (no query) | Mobile phones (<768px) | Default styles |
-| `min-width: 768px` | Tablets and up | `@media (min-width: 768px)` |
-| `min-width: 1024px` | Desktops and up | `@media (min-width: 1024px)` |
-| `min-width: 1280px` | Large desktops (optional) | `@media (min-width: 1280px)` |
+**Mobile-first: the base styles are the smallest layout, and each named size only ADDS rules with `min-width`. These five sizes are the only ones a stylesheet may use; a query at any other width is a defect.**
+
+| Name | Width | Target | CSS |
+|------|-------|--------|-----|
+| **base** | below 640 px | Phones in portrait | Default styles, no query |
+| **sm** | 640 px and up | Large phones, phones in landscape | `@media (min-width: 640px)` |
+| **md** | 768 px and up | Tablets | `@media (min-width: 768px)` |
+| **lg** | 1024 px and up | Laptops and desktops | `@media (min-width: 1024px)` |
+| **xl** | 1280 px and up | Large desktops | `@media (min-width: 1280px)` |
+
+| Rule | Detail |
+|------|--------|
+| **Written literally** | A media query cannot read a custom property, so the four widths are written literally, always as `min-width` in `px`, in this order inside a file (`sm` before `md` before `lg` before `xl`). The names appear in a comment on each query (`/* md */`) and in the tests |
+| **Container queries first for components** | A component adapts to the width of its container, not of the viewport: the card or section that holds it declares `container-type: inline-size` and the component answers with `@container`. Named container widths: `cq-sm` 20 rem, `cq-md` 30 rem, `cq-lg` 40 rem, `cq-xl` 60 rem. A tile grid in a narrow card and in a wide card therefore both look right without a page rule |
+| **Page layout uses viewport queries** | Only page-level layout (the header drawer, the number of columns of the page grid, the container width) answers to `sm`, `md`, `lg` and `xl`; everything inside a card answers to its container |
+| **Tested at the edges** | The layout tests run at 320 px and at both sides of every name (639 and 640, 767 and 768, 1023 and 1024, 1279 and 1280) plus 1920 px, in both themes |
+
+### Size Scale (sm, md, lg, xl)
+
+**Every shared component that has a size uses the same four names, and `md` is the default. A size is one custom property, so a component never hardcodes a height.**
+
+```css
+:root {
+  --size-sm: 2rem;
+  --size-md: 2.75rem;
+  --size-lg: 3.25rem;
+  --size-xl: 3.75rem;
+  --icon-sm: 1rem;
+  --icon-md: 1.25rem;
+  --icon-lg: 1.5rem;
+  --icon-xl: 2rem;
+}
+.btn { min-height: var(--control-height, var(--size-md)); }
+.btn-sm { --control-height: var(--size-sm); }
+.btn-lg { --control-height: var(--size-lg); }
+.btn-xl { --control-height: var(--size-xl); }
+```
+
+| Name | Control height | Icon | Used for |
+|------|----------------|------|----------|
+| `sm` | `--size-sm` (2 rem) | `--icon-sm` (1 rem) | Dense desktop contexts: table row actions, toolbars, filter chips |
+| `md` (default) | `--size-md` (2.75 rem, the 44 px touch target) | `--icon-md` (1.25 rem) | Everything else: forms, cards, dialogs, the preferences action row |
+| `lg` | `--size-lg` (3.25 rem) | `--icon-lg` (1.5 rem) | Prominent single actions (a page's main call to action) |
+| `xl` | `--size-xl` (3.75 rem) | `--icon-xl` (2 rem) | Hero and landing blocks, empty states |
+
+| Rule | Detail |
+|------|--------|
+| **Which components** | Button (`.btn-sm`, `.btn-lg`, `.btn-xl`), input and select (`.input-sm`, `.input-lg`), toggle (`.toggle-sm`, `.toggle-lg`), badge (`.badge-sm`, `.badge-lg`), tile (`.tile-sm`, `.tile-lg`, `.tile-xl`), icon (`.icon-sm` to `.icon-xl`). A component without a size simply has none; a project never invents another size name |
+| **Touch targets** | Below `md` every interactive control has a hit area of at least 44 x 44 px, so `sm` controls are `md` there (`@media (max-width: 767px) { .btn-sm { --control-height: var(--size-md); } }` is written once per component, in the component's own block). At `md` and up an `sm` control may be 2 rem tall and is never below 24 x 24 px (WCAG 2.5.8) |
+| **Sizes never mix in a group** | Buttons in one row, inputs in one form row and tiles in one grid share one size |
+| **Responsive size** | A size change with the viewport goes through the named breakpoints or the container (a page's main action is `lg` from `md` up, never a one-off `font-size` and `padding`) |
+| **One text scale** | Text sizes are the `--font-size-xs` to `--font-size-4xl` tokens; a component size never changes the type scale of the page |
+| **Documented and tested** | Each size of each component is a row of the "Component State Matrix" and renders in the `/debug/components` gallery, so a size that breaks fails before a page uses it |
 
 ### Container
 
@@ -25678,13 +25725,13 @@ footer p {
 
 | Axis | Values |
 |------|--------|
-| **Viewports (CSS px)** | 320x640, 375x812, 390x844, 768x1024 (tablet portrait), 820x1180, 1024x768 (tablet landscape), 1280x800, 1440x900, 1920x1080 |
+| **Viewports (CSS px)** | 320x640, 375x812, 390x844, both sides of every named breakpoint (639 and 640, 767 and 768, 1023 and 1024, 1279 and 1280), 768x1024 (tablet portrait), 820x1180, 1024x768 (tablet landscape), 1280x800, 1440x900, 1920x1080 |
 | **Themes / direction** | dark, light, auto; LTR and RTL (Arabic) |
 | **Stress content** | 200% text zoom, the longest realistic values (62-char `.onion`, 64-char token, 64-char name, long translations), 0 / 1 / 25 list items |
 | **States** | empty, loading, error, success flash, disabled, JavaScript off |
-| **Pass criteria** | No horizontal scroll; nothing clipped or overlapping; every target >= 44x44 px; no empty or unlabeled control; no heading repeated; screenshot looks intentional at every viewport |
+| **Pass criteria** | No horizontal scroll; nothing clipped or overlapping; every target >= 44x44 px (below `md`; an `sm` control at `md` and up is at least 24x24 px); no empty or unlabeled control; no heading repeated; screenshot looks intentional at every viewport |
 
-Automated layout tests (headless browser at the viewports above) assert: `scrollWidth <= innerWidth`; no element's bounding box extends past the viewport; every `<select>` has options; every form control has a label; the open nav drawer covers the full viewport height and lists every nav link. The same run, on every registered page and error page, in dark and light, asserts: no overlap between text-bearing or interactive boxes outside the intended overlays; no zero gap between adjacent cards, sections or a button row and the next block; every custom control part (`.toggle-track`, tile, segmented option) has a non-zero rendered size and lies inside its container; no visible text matches the raw-key shape or a placeholder ("No raw keys or placeholders"); computed contrast of every text node against its effective background is at least 4.5:1 (3:1 for large text and UI parts), checked with an accessibility engine such as axe-core; every interactive element has a non-zero hit area of at least 44 x 44 px; the browser console reports no error or warning; and the layout shift score stays below 0.1. These checks need a headless browser and Node: they run in the integration tier, in an image that carries them (the Go image has Node and npm; a Rust project runs them from that image too).
+Automated layout tests (headless browser at the viewports above) assert: `scrollWidth <= innerWidth`; no element's bounding box extends past the viewport; every `<select>` has options; every form control has a label; the open nav drawer covers the full viewport height and lists every nav link. The same run, on every registered page and error page, in dark and light, asserts: no overlap between text-bearing or interactive boxes outside the intended overlays; no zero gap between adjacent cards, sections or a button row and the next block; every custom control part (`.toggle-track`, tile, segmented option) has a non-zero rendered size and lies inside its container; no visible text matches the raw-key shape or a placeholder ("No raw keys or placeholders"); computed contrast of every text node against its effective background is at least 4.5:1 (3:1 for large text and UI parts), checked with an accessibility engine such as axe-core; every interactive element has a hit area of at least 44 x 44 px below `md` (24 x 24 px for an `sm` control at `md` and up); every component size (`sm`, `md`, `lg`, `xl`) of the gallery renders at its declared height; the browser console reports no error or warning; and the layout shift score stays below 0.1. These checks need a headless browser and Node: they run in the integration tier, in an image that carries them (the Go image has Node and npm; a Rust project runs them from that image too).
 
 ---
 
@@ -26259,6 +26306,155 @@ document.addEventListener('click', function(e) {
 
 ---
 
+## CSS System (the one definition)
+
+**Everything about the project's CSS is defined here or in the sections this one names; no other section may define a file, a token, a class, a size or a rule that contradicts it. A stylesheet that follows this section needs no per-page fixes.**
+
+| Topic | Where |
+|-------|-------|
+| Files, layers and load order | "Files and layers" below, and "CSS Architecture (Cascade Layers)" |
+| Tokens (colors, type, space, radius, shadow, z-index, motion, focus) | "CSS Variable Reference" and "Additional tokens" below |
+| Breakpoints and container widths | "Breakpoints (named sizes: base, sm, md, lg, xl)" |
+| Component sizes (sm, md, lg, xl) | "Size Scale (sm, md, lg, xl)" |
+| Class naming | "Naming" below |
+| Layout primitives and utilities | "Layout primitives" and "Utilities" below |
+| Components, their classes, variants and states | "Component catalog" below, "Component State Matrix" and "UI Components" |
+| Themes, direction, motion, contrast | "Themes, direction, motion and contrast" below |
+| Tests and lint | "Layout Integrity & Polish Contract" and the lint gate of "CSS Architecture (Cascade Layers)" |
+
+### Files and layers
+
+| File | Layer | Contains | Loaded |
+|------|-------|----------|--------|
+| `common.css` | `reset`, `tokens`, `base`, `utilities` | The `@layer` order statement (first line of the first file read), the reset, every `:root` token, bare element styles, the utilities | First, on every page |
+| `components.css` | `components` | Every shared component and layout primitive (the catalog below) | Second, on every page |
+| `public.css` | `pages` | Placement and spacing of the public pages and the public header and footer | Third, on public pages |
+| `admin.css` | `pages` | The same for the admin panel (only where the admin panel exists) | Third, on admin pages instead of `public.css` |
+
+No other stylesheet exists: a project never adds a file per page. The HTML links the files in this order and the service worker precaches the same list; the layer order, not the file order, decides the cascade.
+
+### Additional tokens
+
+**These complete the scale of "CSS Variable Reference" and live in the `tokens` layer of `common.css`; a component uses them and never writes a literal.**
+
+```css
+:root {
+  --border-width: 1px;
+  --opacity-disabled: 0.5;
+  --tap-target: 2.75rem;
+  --measure: 72ch;
+  --container-sm: 40rem;
+  --container-md: 48rem;
+  --container-lg: 64rem;
+  --container-xl: 87.5rem;
+  --size-sm: 2rem;
+  --size-md: 2.75rem;
+  --size-lg: 3.25rem;
+  --size-xl: 3.75rem;
+  --icon-sm: 1rem;
+  --icon-md: 1.25rem;
+  --icon-lg: 1.5rem;
+  --icon-xl: 2rem;
+}
+```
+
+| Rule | Detail |
+|------|--------|
+| **Grammar** | `--{category}-{role}[-{variant}]`: categories are `color`, `font`, `line`, `space`, `radius`, `shadow`, `z`, `transition`, `focus`, `border`, `opacity`, `tap`, `measure`, `container`, `size`, `icon`; lower case, hyphen separated, no other category |
+| **Semantic over raw** | A component reads a role (`--color-bg-card`, `--color-text`, `--color-muted`, `--color-primary`), never a literal and never a value copied from another token. The `tokens` layer is the only place a literal color, size or duration is written |
+| **Two border tokens** | `--color-border` is decorative (dividers, card edges) and may be below 3:1; a border that DEFINES a control (input, select, textarea, outlined button, toggle track, check box, tile) uses `--color-border-strong`, which is at least 3:1 against every surface in both themes. A palette value never overrides the 3:1 rule: when they conflict, the token is changed |
+| **Component properties** | A component may expose its own customization point named `--{component}-{property}` (`--toggle-size`, `--grid-min`, `--control-height`); it defaults to a token and a page sets it through the `pages` layer |
+| **No new scale** | A spacing, radius, shadow, type or size value that is not in a scale is a defect: add it to the scale in this document first |
+
+### Naming
+
+| Kind | Form | Example |
+|------|------|---------|
+| Block | `.block` | `.section-card`, `.toggle`, `.hub-list` |
+| Element | `.block-element` (one hyphen) | `.toggle-track`, `.hub-link`, `.section-card-title` |
+| Modifier | `.block--modifier` (two hyphens) | `.section-card--flush`, `.btn--block` |
+| Variant | `.block-variant` for the fixed variants named in the catalog | `.btn-primary`, `.badge-error` |
+| Size | `.block-sm`, `.block-lg`, `.block-xl` (`md` is the default and has no class) | `.btn-lg`, `.input-sm` |
+| State | The native or ARIA state first: `:disabled`, `:checked`, `[aria-current="page"]`, `[aria-expanded="true"]`, `[aria-pressed="true"]`, `[aria-busy="true"]`, `[aria-invalid="true"]`; a state class (`.is-active`, `.is-loading`) only when no attribute exists | `.toggle input:checked + .toggle-track` |
+| Page hook | `.page-{name}` on `<body>` or `<main>`, with no rule of its own in any stylesheet (tests and anchors only) | `.page-preferences` |
+| JavaScript hook | `data-js-{name}` attribute, never a class | `data-js-copy` |
+
+**Never:** an ID selector, a class named for its look (`.red`, `.big-box`), a class named for a spacing size (`.spacing-sm`: `sm` is a SIZE name, spacing helpers are numbered, see Utilities), a one-off class on one page, or a class that only one page uses.
+
+### Layout primitives
+
+**Class-based, in `components.css`, each defined once; a page composes them instead of writing layout.**
+
+| Primitive | Purpose | Customization |
+|-----------|---------|---------------|
+| `.container` | Page column (see "Container") | none |
+| `.stack` | Vertical rhythm: children separated by `gap` | `--stack-gap` (default `var(--space-4)`; `.stack-6` sets `--space-6`) |
+| `.cluster` | Inline group that wraps (button rows, chips, badges) | `--cluster-gap` (default `var(--space-3)`) |
+| `.grid` | Responsive columns, no media query: `repeat(auto-fit, minmax(min(var(--grid-min), 100%), 1fr))` | `--grid-min` (default `16rem`) |
+| `.section-card` | Card surface (`--color-bg-card`), `--radius-lg`, padding `--space-6`, declares `container-type: inline-size` | `.section-card--flush` removes padding for tables |
+| `.page-header` | The `<h1>` block with the optional back link | none |
+| `.form-actions` | The action row of a form: a `.cluster` that is followed by `--space-6` | none |
+| `.table-wrapper` | Horizontal scroll container for a table | none |
+
+```css
+.stack { display: flex; flex-direction: column; gap: var(--stack-gap, var(--space-4)); }
+.cluster { display: flex; flex-wrap: wrap; align-items: center; gap: var(--cluster-gap, var(--space-3)); }
+.grid { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(min(var(--grid-min, 16rem), 100%), 1fr)); }
+.section-card { container-type: inline-size; padding: var(--space-6); background: var(--color-bg-card); border-radius: var(--radius-lg); }
+.form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-block-end: var(--space-6); }
+```
+
+### Utilities
+
+**Single-purpose, one declaration each, in the `utilities` layer. This list is complete: a project adds no other utility.**
+
+| Utility | Effect |
+|---------|--------|
+| `.visually-hidden` | Hidden visually, available to assistive technology (the `clip` pattern) |
+| `.text-start`, `.text-center`, `.text-end` | `text-align: start`, `center`, `end` (logical, never `left` or `right`) |
+| `.text-muted`, `.text-mono` | `color: var(--color-muted)`; the monospace family at `0.875rem` |
+| `.nowrap`, `.break-anywhere`, `.truncate` | `white-space: nowrap`; `overflow-wrap: anywhere`; one line with an ellipsis |
+| `.mt-{0,1,2,3,4,6,8}`, `.mb-{0,1,2,3,4,6,8}` | `margin-block-start` / `margin-block-end` of `--space-{n}` (the number is the scale step, never a size name) |
+| `.gap-{1,2,3,4,6}` | `gap` of `--space-{n}` on a flex or grid parent |
+
+### Component catalog
+
+**The complete list of shared components. Each has one block class in `components.css`, exactly the variants and sizes listed, the states of the "Component State Matrix", and an entry in the `/debug/components` gallery. A component not in this table is added here first.**
+
+| Component | Block and elements | Variants | Sizes | State hooks |
+|-----------|--------------------|----------|-------|-------------|
+| Button | `.btn` | `-primary`, `-secondary`, `-danger`, `-ghost`, `--block` | `sm`, `lg`, `xl` | `:disabled`, `[aria-busy]`, `[aria-pressed]` |
+| Input, select, textarea | `.input` | none | `sm`, `lg` | `:disabled`, `:read-only`, `[aria-invalid]` |
+| Form group | `.form-group`, `.form-group-label`, `.form-group-help`, `.form-group-error` | none | none | `[aria-invalid]` on the control |
+| Toggle | `.toggle`, `.toggle-track`, `.toggle-thumb`, `.toggle-label`, `.toggle-help` | none | `sm`, `lg` | `:checked`, `:disabled`, `:focus-visible` |
+| Check and radio | `.check`, `.check-box`, `.check-label` | none | none | `:checked`, `:indeterminate`, `:disabled` |
+| Tile (picker) | `.tile`, `.tile-icon`, `.tile-label` | none | `sm`, `lg`, `xl` | `[aria-checked]`, `:disabled` |
+| Badge | `.badge` | `-ok`, `-warning`, `-error`, `-info`, `-neutral` | `sm`, `lg` | none |
+| Alert | `.alert`, `.alert-title` | `-info`, `-success`, `-warning`, `-error` | none | none |
+| Toast | `.toast`, `.toast-progress`, `.toast-close` | `-success`, `-info`, `-warning`, `-error` | none | none |
+| Modal, popover | `.modal`, `.modal-body`, `.modal-actions` on `<dialog>` or `[popover]` | none | none | `[open]`, `:popover-open` |
+| Table | `.table-wrapper`, `.data-table` | none | `sm` | `[aria-sort]` |
+| Navigation | `.nav-links`, `.nav-link`, hamburger drawer | none | none | `[aria-current]`, `[aria-expanded]` |
+| Header, footer | `.site-header`, `.site-footer`, `.footer-onion` | none | none | none |
+| Hub list | `.hub-list`, `.hub-item`, `.hub-link`, `.hub-title`, `.hub-desc` | none | none | `:focus-visible` |
+| Info list | `.info-list`, `.info-label`, `.info-value` | none | none | none |
+| Empty state | `.empty-state`, `.empty-state-title` | none | `lg`, `xl` | none |
+| Site banner | `.site-banner` | `-info`, `-warning`, `-error`, `-success` | none | none |
+| Icon | `.icon` | none | `sm`, `lg`, `xl` | none |
+
+### Themes, direction, motion and contrast
+
+| Topic | Rule |
+|-------|------|
+| **Themes** | `html.theme-dark` is the base token set, `html.theme-light` overrides the color tokens, `html.theme-auto` follows `prefers-color-scheme`. Every theme sets `color-scheme` so native controls and scrollbars match. A component never branches on the theme: it reads tokens |
+| **Direction** | Logical properties only: `margin-inline`, `padding-block`, `inset-inline-start`, `border-start-start-radius`, `text-align: start`, `float: inline-start`. `left`, `right`, `margin-left` and the like are banned, except inside `transform` or for a deliberately physical illustration. `[dir="rtl"]` rules exist only for icons that must mirror |
+| **Motion** | Durations come from `--transition-*`; every animation and transition is wrapped so that `@media (prefers-reduced-motion: reduce)` removes it (a state change stays visible without motion) |
+| **Contrast** | Text 4.5:1 and UI parts 3:1 in every theme; `@media (forced-colors: active)` keeps borders on controls, the toggle track and focus rings (they use `CanvasText` and `Highlight` there); `@media (prefers-contrast: more)` raises borders to `--color-text` |
+| **Print** | One `@media print` block in `utilities`: white background, black text, no nav, no toast, no banner, links show their URL |
+| **Focus** | One `:focus-visible` rule in `base` draws `--focus-ring`; a component never removes an outline without a replacement of at least the same contrast |
+
+**Stylelint rules of the lint gate (in addition to "CSS Architecture"):** no literal color, `font-size`, `margin`, `padding`, `gap` or `border-radius` value outside the `tokens` layer (`stylelint-declaration-strict-value`); logical properties only; no ID selector; no `!important` outside print; no class that is not in the catalog, the primitives, the utilities or a page hook.
+
 ## CSS Variable Reference
 
 **All components use these CSS variables for consistent theming:**
@@ -26311,6 +26507,7 @@ html.theme-dark {
   /* Borders */
   --color-border: #44475a;
   --color-border-hover: #6272a4;
+  --color-border-strong: #7f8bb8;
 
   /* Status colors */
   --color-success: #50fa7b;
@@ -26335,6 +26532,7 @@ html.theme-light {
   --color-muted: #59636e;
   --color-border: #d1d9e0;
   --color-border-hover: #818b98;
+  --color-border-strong: #818b98;
   --color-success: #1a7f37;
   --color-success-bg: rgba(26, 127, 55, 0.12);
   --color-error: #d1242f;
@@ -26361,7 +26559,7 @@ html.theme-light {
 | `reset` | Box sizing, margin and padding reset | Nothing visual |
 | `tokens` | The `:root` custom properties (colors, spacing, radius, type) | The only place a literal color or size is written |
 | `base` | Bare element selectors (`body`, `a`, `h1`..`h6`, `label`, `input`) | Typography, color and spacing of plain elements only; never the layout or internals of a component |
-| `components` | Every shared component (`.btn`, `.section-card`, `.form-group`, `.toggle`, `.hub-list`, `.badge`, `.table-wrapper`) | Class selectors only, specificity at most `(0,4,1)` (a state selector such as `.toggle input:checked + .toggle-track` is allowed), self-contained: a component sets its own `display`, size and alignment and never relies on its parent for them. A descendant selector on a generic parent (`.form-group label`) is forbidden: write `.form-group__label` or `label:not(.toggle)` |
+| `components` | Every shared component (`.btn`, `.section-card`, `.form-group`, `.toggle`, `.hub-list`, `.badge`, `.table-wrapper`) | Class selectors only, specificity at most `(0,4,1)` (a state selector such as `.toggle input:checked + .toggle-track` is allowed), self-contained: a component sets its own `display`, size and alignment and never relies on its parent for them. A descendant selector on a generic parent (`.form-group label`) is forbidden: write `.form-group-label` or `label:not(.toggle)` |
 | `pages` | Page-specific placement | Grid placement and spacing of shared components through their documented custom properties (`--toggle-size`); a page never restyles a component's internals and never invents a styled class (see "Classes" in the page shell rules) |
 | `utilities` | Single-purpose helpers (`.visually-hidden`, `.text-start`, `.stack-4`) | Win over every other layer; one declaration each |
 
@@ -26554,7 +26752,7 @@ fetch('/api/save', { method: 'POST', body: data })
   height: 1.5rem;
   background: var(--color-bg-active);
   border-radius: var(--radius-full);
-  border: 1px solid var(--color-muted);
+  border: 1px solid var(--color-border-strong);
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 .toggle input:checked + .toggle-track { background: var(--color-primary); border-color: var(--color-primary); }
@@ -26575,7 +26773,7 @@ fetch('/api/save', { method: 'POST', body: data })
 | Rule | Detail |
 |------|--------|
 | **Why `display: block` and `flex: 0 0`** | The track is a `<span>`: an inline span ignores `width` and `height`, so any rule that turns the label into a block (a generic `.form-group label { display: block }`) would collapse the track and draw the absolutely positioned thumb over the text. The track therefore sets its own `display`, and a generic form-label rule MUST exclude toggles (`label:not(.toggle)`) |
-| **Contrast** | The off-state track border is `--color-muted` (at least 3:1 against the card, WCAG 1.4.11) and the thumb contrasts with the track in both states; a track whose border equals its surface is a defect |
+| **Contrast** | The off-state track border is `--color-border-strong` (at least 3:1 against the card, WCAG 1.4.11) and the thumb contrasts with the track in both states; a track whose border equals its surface is a defect |
 | **Alignment** | The label and any description below it are start-aligned (never centered) and share one left edge with the page's other controls |
 | **Conformance test** | A browser test opens every page that contains a `.toggle` at 320, 768 and 1280 px and asserts that each `.toggle-track` renders at least `2.5rem x 1.5rem` and that its thumb lies inside it |
 
@@ -26595,6 +26793,8 @@ fetch('/api/save', { method: 'POST', body: data })
 | Table | empty, one row, many rows (scrolls inside `.table-wrapper`), sorted column |
 | Modal, popover | open, closing, focus trapped, backdrop |
 | Hub entry | default, hover, `:focus-visible` |
+
+**Sizes:** every component that has a size ("Size Scale") is tested at each of its sizes in every state above; a component's size never changes its states.
 
 **Component gallery (`/debug/components`, debug flag only):** one page that renders every shared component in every state above, in both themes and both directions. Reviewers use it to see the whole library at once, and the automated layout tests run against it in addition to the real pages, so a broken component fails before any page uses it.
 
@@ -29372,12 +29572,12 @@ src/server/static/
 
 | Rule | Description |
 |------|-------------|
-| **One file per context** | `common.css`, `public.css`, `admin.css`, `components.css` |
+| **One file per context** | `common.css`, `components.css`, `public.css`, `admin.css`: see "CSS System" → "Files and layers" |
 | **Load order matters** | common → components → public/admin |
 | **CSS variables** | Define in `common.css` `:root {}` for theming |
 | **NO inline styles** | All styles in CSS files, never in HTML |
 | **NO `!important`** | Exception: print styles only |
-| **BEM-like naming** | `.component`, `.component-element`, `.component--modifier` |
+| **BEM-like naming** | `.block`, `.block-element`, `.block--modifier`, sizes `.block-sm` to `.block-xl`: see "CSS System" → "Naming" |
 | **Mobile-first** | Base styles for mobile, `@media (min-width)` for larger |
 
 **CSS Variables (common.css):**
@@ -30038,8 +30238,8 @@ Full CSS rules (custom properties, theming, layout): see "CSS Rules" earlier in 
 
 | Bad | Good |
 |-----|------|
-| `<div style="color: red;">` | `<div class="error-text">` |
-| `style="margin: 10px;"` | `class="spacing-sm"` |
+| `<div style="color: red;">` | `<div class="alert alert-error">` or `<p class="text-muted">` |
+| `style="margin: 10px;"` | `class="mt-2"` (the number is a `--space-*` scale step) |
 
 **All styles MUST be in CSS files, not HTML elements.**
 
@@ -40808,7 +41008,7 @@ Application user creation **REQUIRES** privilege escalation. If the user cannot 
 
 **IMPORTANT: See PART 5 "Privileged Port Binding (<1024)" — especially "Commands Requiring Escalation" and "How Binary Determines Escalation Need" — for the complete escalation flow:**
 - Binary first checks if already root/admin → skips escalation prompt entirely
-- Only prompts if user CAN actually escalate (is in sudoers/wheel/admin group)
+- Only prompts if user CAN actually escalate: `sudo -n` works or the user is in the sudo/wheel/admin group, `doas` permits the user, or `pkexec` can show its prompt ("Detection (normative)" below); `su` is never a prompt criterion
 - Never prompts if user cannot escalate → `--service --install` installs a user service; an action that has no user-service path (managing an installed system service, binding a privileged port) shows an informative error instead
 
 ## Escalation Detection by OS
@@ -40819,10 +41019,10 @@ Application user creation **REQUIRES** privilege escalation. If the user cannot 
 ```
 Escalation Methods (in order):
 1. Already root (EUID == 0)
-2. sudo (if user is in sudoers/wheel group)
-3. su (if user knows root password)
-4. pkexec (PolicyKit, if available)
-5. doas (OpenBSD-style, if configured)
+2. sudo (`sudo -n true` works, or the user is in the sudo/wheel/admin group)
+3. doas (installed and permits the user)
+4. pkexec (PolicyKit, with a graphical session)
+5. su (never detected: the last-resort method, in a terminal, after the user chose to escalate)
 ```
 
 ### macOS
