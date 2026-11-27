@@ -88,6 +88,75 @@ language selector. The embedded languages are English, Spanish, French,
 German, Italian, Arabic, Japanese, and Chinese; see the
 [translation guide](translating.md) for locale details.
 
+## Privacy and consent
+
+Privacy settings are under `server.privacy` and can be edited in the protected
+admin page at `/server/{admin_path}/privacy`. The page validates and saves
+changes to `server.yml` and applies them to public pages immediately. A
+representative configuration is:
+
+```yaml
+server:
+  privacy:
+    data:
+      sold: false
+      stored_on_server: true
+      sharing: []
+    consent:
+      show_until_acknowledged: true
+      policy:
+        text: Privacy Policy
+        url: /server/privacy
+        version: "1"
+      buttons:
+        decline: Decline
+        accept: I Agree
+      show_preferences: true
+    cookies:
+      preferences:
+        enabled: true
+      analytics:
+        enabled: true
+```
+
+Non-essential cookie categories remain off until a visitor accepts them.
+Disabling a category hides its control and forces its effective consent state
+off. The `data.sold` setting selects the consent and analytics wording and
+whether the privacy page displays the California opt-out control. The
+`consent.policy.version` value is included in consent-update audit events. The
+built-in data-collection, data-usage, and data-security copy is localized
+project text; it is not loaded from `server.yml`. Operator-written additions
+belong in `server.branding.content.privacy`.
+
+## Analytics tracking
+
+`server.tracking` selects one supported analytics provider. Tracking scripts
+are rendered only when analytics is configured, the analytics category is
+offered, and the visitor has accepted analytics cookies. Tracking is omitted
+for Tor and I2P requests. Accepting in the banner activates external scripts
+without reloading; the server still records consent and supplies the tracking
+configuration. Configured provider hosts are allowed by CSP when analytics is
+enabled, but no provider is requested before consent. The protected
+`/server/{admin_path}/tracking` page validates and saves these settings,
+checks configured self-hosted URLs, and previews the generated script.
+
+```yaml
+server:
+  tracking:
+    type: matomo
+    id: "1"
+    url: https://analytics.example.com
+```
+
+Supported types are `google`, `matomo`, `piwik`, `owa`, `fathom`,
+`plausible`, `umami`, `simple`, and `cloudflare`. An empty type disables
+tracking. Matomo, Piwik, OWA, and Umami require an absolute HTTP or HTTPS URL;
+Fathom and Plausible accept one for self-hosted deployments. Google IDs,
+Matomo/Piwik IDs, Plausible domains, and Umami UUIDs are validated before
+configuration is saved or used. The configured provider is added automatically
+to the privacy page's third-party disclosures; operator-entered services are
+kept alongside it.
+
 ## Environment overrides
 
 These names are read by the config loader. Values marked **first run** are

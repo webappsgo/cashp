@@ -35,6 +35,21 @@ can be reset to its built-in United States text. The
 running server's route list and settings schema are authoritative for the
 configured build.
 
+Privacy and consent settings have a dedicated page at
+`/server/{admin_path}/privacy`. It edits the consent notice, policy link and
+version, button labels and position, cookie-category descriptions and offered
+state, data-sale disclosure, sharing conditions, retention text and choices,
+and third-party service disclosures. Saves are validated server-side, written
+to `server.yml`, applied to the running public pages immediately, and recorded
+in the audit log. A banner preview uses the current saved settings.
+
+Analytics providers are configured separately at
+`/server/{admin_path}/tracking`. The page validates the provider ID and URL,
+shows the URL field only when that provider supports a self-hosted endpoint,
+tests self-hosted URL reachability, and displays a preview of the generated
+script. Changes apply to public pages immediately. Provider scripts run only
+after analytics consent and are suppressed for Tor and I2P requests.
+
 The Security section also contains the coordinated-disclosure report queue at
 `/server/{admin_path}/security/reports`. Administrators can filter and review
 encrypted reports, update status and severity, and record researcher-facing

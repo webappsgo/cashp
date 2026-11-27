@@ -6,6 +6,16 @@ support APIs, administration settings, generated OpenAPI, and GraphQL
 documentation routes. The OpenAPI document is built from the routes mounted by
 the running server and is the authoritative API contract for that build.
 
+Public page-content endpoints return localized source content in the standard
+`{ "ok": true, "data": ... }` envelope. They honor `?lang=`, a consented
+language cookie, and `Accept-Language` negotiation. The privacy response
+includes the effective data-sale flag, cookie categories, sharing and
+retention disclosures, tracking configuration, third-party services, and
+built-in localized data-collection, data-usage, and data-security text. Its
+`ccpa` object is present only when data sale is enabled. The Terms endpoint
+returns the localized Markdown or the operator's configured localized
+override, together with its title and format.
+
 ## Server routes
 
 | Method | Path | Access | Purpose |
@@ -14,6 +24,7 @@ the running server and is the authoritative API contract for that build.
 | `GET` | `/server/readyz` | Public | Readiness probe |
 | `GET` | `/server/livez` | Public | Liveness probe |
 | `GET` | `/server/version` | Public | Build identity |
+| `GET` | `/server/tracking.js` | Public, analytics consent required | Same-origin provider bootstrap for providers that need it; returns 404 without consent, when disabled, when the provider uses a direct external tag, or for Tor/I2P requests |
 | `GET` | `/api/{api_version}/server/autodiscover` | Public | Client bootstrap information |
 | `GET` | `/api/{api_version}/server/about` | Public | About content source, title, and format |
 | `GET` | `/api/{api_version}/server/privacy` | Public | Privacy settings, cookies, data sharing, retention, tracking, and conditional CCPA status |
@@ -41,6 +52,13 @@ The API version and metrics paths come from `server.yml`. Health aliases are
 mounted directly to the same handlers rather than redirecting. Optional root
 health aliases depend on configuration. Metrics are only mounted when enabled
 and may require a configured token.
+
+`POST /server/consent` is the server-rendered consent form endpoint. Ordinary
+form submissions set the `cookie_consent` cookie and redirect back. The
+browser enhancement sends `X-Requested-With: fetch`; the server still sets the
+cookie, then returns JSON containing provider script markup only when the
+accepted choice enables configured analytics. The browser inserts only those
+external scripts, without reloading the page.
 
 ## Account and organization routes
 

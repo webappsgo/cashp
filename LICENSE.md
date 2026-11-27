@@ -32,4 +32,14 @@ This software includes the following third-party libraries:
 
 Full license texts: https://spdx.org/licenses/
 
+## GeoIP Data Sources
+
+| Database | License | Source |
+|----------|---------|--------|
+| ASN | PDDL | iptoasn.com (RouteViews / RIR data) |
+| Country | PDDL | iptoasn.com (RIR data) |
+| City | CC BY 4.0 | DB-IP |
+
+City data attribution: [IP Geolocation by DB-IP](https://db-ip.com/).
+
 ---

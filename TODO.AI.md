@@ -36,6 +36,6 @@ PART 0. AI.md itself is read-only; template defects belong only in
 
 - [ ] Bring README, MkDocs/ReadTheDocs, operator/admin/API/integration/security/CLI docs, generated API references, and examples into sync with implemented behavior (PARTS 3, 14, 30).
 - [ ] Complete translation parity, locale selection, pluralization, accessibility, and server/client text coverage (PART 31).
-- [ ] Maintain aggregate unit coverage at or above AI.md's 60% gate (the latest `make test` run passed at 60.0%) and reach 100% coverage for all HTTP endpoints. Auth, billing, and support handlers are mounted; full route integration coverage remains incomplete.
+- [ ] Maintain aggregate unit coverage at or above AI.md's 60% gate and reach 100% coverage for all HTTP endpoints. Current focused checks fail on locale catalog validation and translation-key parity; rerun the full suite after those catalog and reference gaps are fixed.
 - [ ] Reconcile IDEA.md with AI.md and actual behavior; ensure root instruction files and all 14 `.claude/rules/` files accurately load/summarize the authoritative spec.
 - [ ] Complete the AI.md FINAL CHECKPOINT, required unit/route/accessibility/security/E2E validation, documentation checks, and provider workflow validation; resolve every failure.
