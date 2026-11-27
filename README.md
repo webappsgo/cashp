@@ -28,6 +28,10 @@ generates its OpenAPI contract from registered routes.
 - Tor hidden-service support and optional I2P hosting
 - Static server, client, and optional remote-agent binaries
 
+The embedded language catalogs support English, Spanish, French, German,
+Italian, Arabic, Japanese, and Chinese. The server's `available_languages`
+setting can narrow this list while retaining the six required languages.
+
 ## Production
 
 Requirements: Docker and GNU Make. The Go toolchain runs inside

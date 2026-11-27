@@ -51,6 +51,9 @@ server:
   api_version: v1
   database:
     driver: sqlite
+  i18n:
+    default_language: en
+    available_languages: [en, es, fr, de, it, ar, ja, zh]
   tor:
     binary: ""
     expose: false
@@ -76,6 +79,14 @@ maintenance, feature, user, organization, I2P, web UI, and CORS settings. The
 admin panel exposes field-driven server settings; restart-required values take
 effect after restart. Scheduler settings are loaded from persisted admin
 settings when the scheduler starts.
+
+`server.i18n.default_language` selects the fallback for server-rendered pages.
+`server.i18n.available_languages` defaults to every embedded locale; operators
+may narrow the list while keeping English, Spanish, French, German, Italian,
+and Arabic enabled. The available list drives request negotiation and the
+language selector. The embedded languages are English, Spanish, French,
+German, Italian, Arabic, Japanese, and Chinese; see the
+[translation guide](translating.md) for locale details.
 
 ## Environment overrides
 

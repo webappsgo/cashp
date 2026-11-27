@@ -11339,7 +11339,7 @@ When the `NO_COLOR` environment variable is set and not empty (value doesn't mat
 |----------|--------|---------|
 | 1 | CLI flag | `--color=yes`, `--color=no` (`--color=yes` also overrides `TERM=dumb`, for color sequences only; every other `TERM=dumb` restriction stays) |
 | 2 | Project environment variable (CLI binaries) | `{PROJECT_NAME}_OUTPUT_COLOR=no` (applied by the loader as the value of `output.color`, so `ColorEnabled` keeps its signature) |
-| 3 | Config file | `output.color: false` |
+| 3 | Config file | `output.color: no` (the string enum `auto`, `yes` or `no`, default `auto`, the same values as `--color`; `ColorEnabled` receives `yes` as true, `no` as false and `auto` as nil) |
 | 4 | `NO_COLOR` env var | `NO_COLOR=1` (a standard, not a project variable: it ranks after the explicit project settings) |
 | 5 | Auto-detect | TTY check, `TERM` variable |
 
@@ -21818,7 +21818,7 @@ Statistics
 | Rule | Detail |
 |------|--------|
 | **One feature per line** | `{Label}: {status}` plus ` - {hostname}` when the feature has an address. Never one line per sub-field (`enabled`/`running`/`status`/`hostname` are NOT separate lines) |
-| **Status words** | `healthy`, `starting`, `disabled`, `error: {short message}` (from `features.*.status`); a boolean feature shows `enabled` / `disabled` |
+| **Status words** | `healthy`, `starting`, `disabled`, `error: {short message}` (from `features.*.status`, for non-overlay features only: Tor and I2P use their fixed status words and never free text); a boolean feature shows `enabled` / `disabled` |
 | **Durations** | `format.Duration()` — `2 days 5 hours`, never `2d 5h 30m` or raw seconds |
 | **Timestamps** | `%B %d, %Y at %H:%M:%S %Z` — never ISO 8601, never `Z`-suffixed machine form |
 | **Counts** | thousands separators (`1,234,567`) |
@@ -24396,7 +24396,7 @@ func isDevTLD(host, projectName string) bool {
 
 | Terminal Size | Banner Style | Example |
 |---------------|--------------|---------|
-| **NO_COLOR / TERM=dumb** | Plain text only, no emojis | `AppName v1.0.0` |
+| **NO_COLOR / TERM=dumb** | The plain layout: no emojis, no ASCII art (an explicit `--color=yes` or `output.color: yes` restores ANSI color sequences only; the layout stays plain) | `AppName v1.0.0` |
 | **≥80 cols** | Full ASCII art + icons + URLs | Full branded banner |
 | **60-79 cols** | Icons + text only, no ASCII art | `🚀 AppName v1.0.0` |
 | **40-59 cols** | Minimal text, abbreviated | `AppName 1.0.0 :8080` |
@@ -26525,7 +26525,7 @@ No other stylesheet is written by hand: a project never adds a file per page. Th
 | **Print** | One `@media print` block in `utilities`: white background, black text, no nav, no toast, no banner, links show their URL |
 | **Focus** | One `:focus-visible` rule in `base` draws `--focus-ring`; a component never removes an outline without a replacement of at least the same contrast |
 
-**Stylelint rules of the lint gate (in addition to "CSS Architecture"):** no literal color, `font-size`, `margin`, `padding`, `gap` or `border-radius` value outside the `tokens` layer (`stylelint-declaration-strict-value`); logical properties only; no ID selector; no `!important` outside print; no class that is not in the catalog, the primitives, the utilities or a page hook.
+**CSS lint rules (in addition to "CSS Architecture"):** no literal color, `font-size`, `margin`, `padding`, `gap` or `border-radius` value outside the `tokens` layer; logical properties only; no ID selector; no `!important` outside print; no class that is not in the catalog, the primitives, the utilities or a page hook.
 
 ## CSS Variable Reference
 
@@ -26702,7 +26702,7 @@ html.theme-light {
 | **Customize through properties** | A component exposes custom properties for what may vary; overriding its selectors from another file is a defect |
 | **No `!important`, no ID selectors** | The print stylesheet's `!important` is the only exception and lives in `utilities` |
 | **Examples are unwrapped** | The CSS examples in this document are shown without their `@layer` wrapper to stay readable; in a project every rule sits inside its layer |
-| **Lint gate** | `stylelint` runs in `make test` (from the Go image, which has Node and npm) and fails on an unlayered rule, `!important`, an ID selector, a selector above `(0,4,1)` in `components`, and a descendant selector whose subject is a bare element under a generic or foreign component class (a component's own block may style its own `dt`, `dd`, `th`, `td`, `input` and `label`) |
+| **Lint gate** | A CSS lint test runs in `make test` (Phase 1, no Node and no `package.json`): a unit test in the package that embeds the static files parses every embedded stylesheet with a pure-Go CSS parser (`github.com/tdewolff/parse/v2/css`) and fails on an unlayered rule, `!important`, an ID selector, a selector above `(0,4,1)` in `components`, and a descendant selector whose subject is a bare element under a generic or foreign component class (a component's own block may style its own `dt`, `dd`, `th`, `td`, `input` and `label`) |
 
 ## Reuse Before Creating
 
@@ -35402,6 +35402,7 @@ The admin panel MUST include a scheduler section with:
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/totp/recovery-keys` | POST | Regenerate the recovery keys (the old keys stop working; returns the new keys ONCE) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/passkey/{id}` | PATCH | Rename a passkey |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/passkey/{id}` | DELETE | Revoke one passkey |
+| `/server/{admin_path}/{admin_username}/profile/security/recovery-keys/ack` | POST | Web form of the recovery-key acknowledgement (CSRF-protected; `303` back to the profile security page) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/recovery-keys/ack` | POST | Acknowledge the one-time recovery-key display; only then does the pending passkey or TOTP become usable for login |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/preferences` | GET | Get admin preferences (theme, notifications) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/preferences` | PATCH | Update admin preferences |
@@ -37798,7 +37799,7 @@ Execute task
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  SCHEDULED TASKS                                            [Run All Now]   │
+│  SCHEDULED TASKS                                                            │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │ Task              Schedule         Last Run                  Next Run Status│
@@ -49660,6 +49661,7 @@ rm -rf "$TEMP_DIR"
 | `./docker/rootfs/` | ❌ NEVER for runtime | Build-time overlay only |
 | `$TEMP_DIR/volumes/` | ✅ ALWAYS | Proper temp directory isolation |
 | `/tmp/{org}/{project}-XXXXXX/volumes/` | ✅ ALWAYS | Full path equivalent |
+| `binaries/`, `releases/` | ✅ Build output only | The one exception: gitignored artifacts written by `make build` and the test scripts, and nothing else in the project tree |
 
 ### Summary
 
@@ -50448,7 +50450,7 @@ verify_all_endpoints_tested
 | **During development** | `make test` (Phase 1 toolchain gate, then the Phase 2 basic tier) | Feedback on source logic and on the compiled binary |
 | **Before committing** | `make test` (Phase 1 and the basic tier required) | The gate must pass before every commit |
 | **Before release** | `make test` + `./tests/incus.sh` | The gate plus the full-app check (manual) |
-| **In CI/CD** | Phase 1 only | Toolchain gate; Phase 2 is manual |
+| **In CI/CD** | The toolchain gates and the image check | CI never uses Makefile targets; the basic binary tier (`tests/run_tests.sh`) runs inside `make test` locally and the shipped image is checked in CI; the other Phase 2 scripts are manual |
 
 **Test Execution Order:**
 ```bash
@@ -65652,6 +65654,7 @@ Organizations - only for projects with multi-user collaboration.
 | `/api/{api_version}/users/security/sessions/{session_id}` | DELETE | Revoke session |
 | `/api/{api_version}/users/security/2fa` | GET | Get 2FA status |
 | `/api/{api_version}/users/security/2fa/enable` | POST | Enable 2FA |
+| `/users/security/recovery-keys/ack` | POST | Web form of the recovery-key acknowledgement (CSRF-protected; `303` back to `/users/security`) |
 | `/api/{api_version}/users/security/recovery-keys/ack` | POST | Acknowledge the one-time recovery-key display; only then does the pending passkey or 2FA become usable |
 | `/api/{api_version}/users/security/2fa/disable` | POST | Disable 2FA |
 | `/api/{api_version}/users/security/recovery` | GET | Get recovery keys status |
@@ -65789,6 +65792,7 @@ Moderation only - Server Admin does not manage org members/roles.
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/totp/recovery-keys` | POST | Regenerate the recovery keys (the old keys stop working; returns the new keys ONCE) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/passkey/{id}` | PATCH | Rename a passkey |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/passkey/{id}` | DELETE | Revoke one passkey |
+| `/server/{admin_path}/{admin_username}/profile/security/recovery-keys/ack` | POST | Web form of the recovery-key acknowledgement (CSRF-protected; `303` back to the profile security page) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/profile/security/recovery-keys/ack` | POST | Acknowledge the one-time recovery-key display; only then does the pending passkey or TOTP become usable for login |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/preferences` | GET | Get admin preferences (theme, notifications) |
 | `/api/{api_version}/server/{admin_path}/{admin_username}/preferences` | PATCH | Update admin preferences |
