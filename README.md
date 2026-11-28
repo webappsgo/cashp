@@ -34,8 +34,9 @@ setting can narrow this list while retaining the six required languages.
 
 ## Production
 
-Requirements: Docker and GNU Make. The Go toolchain runs inside
-`casjaysdev/go:latest`.
+Building from source requires Docker and GNU Make; the Go toolchain runs
+inside `casjaysdev/go:latest`. Prebuilt release binaries do not require either
+tool.
 
 ```sh
 git clone https://github.com/webappsgo/cashp.git
@@ -88,15 +89,15 @@ reference](docs/api.md).
 
 ## Development
 
-Build and run the unit coverage gate with:
+Run the source coverage gate and the basic Docker binary-validation tier with:
 
 ```sh
 make test
 ```
 
-Phase-2 endpoint checks run against an already-running server and do not build
-or start one. They read the live OpenAPI document, enumerate public and
-module/admin browser page routes, and exercise every advertised API method
+The standalone endpoint checks run against an already-running server and do
+not build or start one. They read the live OpenAPI document, enumerate public
+and module/admin browser page routes, and exercise every advertised API method
 and path. GET routes receive JSON, plain-text, and HTML content-negotiation
 requests, alongside explicit metrics and static-route checks:
 
@@ -115,8 +116,18 @@ contribution instructions.
 
 ## Disclaimer
 
-This software is provided "as is" without warranty of any kind. Use at your
-own risk.
+This software is provided "as is" without warranty of any kind. Review and
+test it for your environment before production use. The authors are not
+responsible for damage, data loss, or operational issues resulting from its
+use. The software is not legal, financial, medical, or other professional
+advice. Third-party services remain subject to their own terms, and no
+software can be guaranteed free of security vulnerabilities. By using CasHp,
+you acknowledge these limitations.
+
+## License
+
+CasHp is licensed under the MIT License. See [LICENSE.md](LICENSE.md) for the
+full text.
 
 - **No Warranty**: The authors are not responsible for damages, data loss, or
   issues arising from use of this software.

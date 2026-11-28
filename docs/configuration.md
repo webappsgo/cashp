@@ -174,7 +174,8 @@ copied into a newly generated configuration and are not re-applied after
 | `LOG_DIR` | First run and path resolver | Log directory |
 | `MODE` | Runtime | `server.mode` |
 | `DOMAIN` | Runtime | `server.fqdn` |
-| `DATABASE_DRIVER`, `DATABASE_URL` | Runtime | Database connection |
+| `DATABASE_DRIVER` | First run | Database driver when `DATABASE_URL` is unset |
+| `DATABASE_URL` | First run | Full database connection string |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS` | Runtime | Outbound SMTP |
 | `SMTP_FROM_NAME`, `SMTP_FROM_EMAIL` | Runtime | SMTP sender identity |
 

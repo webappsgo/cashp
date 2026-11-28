@@ -276,6 +276,15 @@ intent):**
 
 ### Service hosting model
 
+On Unix, the server service retains root because its core host-management
+functions install and manage native web, mail, DNS and security services,
+configure host networking and firewall rules, and control container engines
+and hypervisors. Running that control plane as an unprivileged account would
+prevent those product features from working. This is the product-specific
+reason for the PART 24 permanent-root exception; tenant workloads remain
+isolated and do not inherit the server's privileges. Windows uses its
+Virtual Service Account as required by AI.md.
+
 - **Native host services** (real distro packages, managed via
   systemd/OpenRC): web server, PHP-FPM, mail stack (Postfix, Dovecot,
   Amavis/amavisd-new, SpamAssassin, ClamAV, OpenDKIM, OpenDMARC), DNS server

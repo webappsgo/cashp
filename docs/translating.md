@@ -6,15 +6,28 @@ reviewers. The catalogs are embedded in the Go package at
 
 ## Current status
 
-The package embeds eight locale catalogs: Arabic (`ar`), German (`de`), English
-(`en`), Spanish (`es`), French (`fr`), Italian (`it`), Japanese (`ja`), and
-Chinese (`zh`). English, Spanish, French, Arabic, German, and Italian are the
-required minimum; Japanese and Chinese are additional complete catalogs. A
-single registry defines each locale's code, English name, native name,
-direction, and required CLDR plural categories. Loading the embedded catalogs
-checks that the registry and locale files have the same languages and that
-catalog metadata and plural forms match the registry. The runtime default
-language list and language selector are derived from that registry.
+The package embeds eight locale catalogs. English, Spanish, French, Arabic,
+German, and Italian are the required minimum; Japanese and Chinese are
+additional complete catalogs. The registry is the source for each locale's
+code, English name, native name, direction, and required CLDR plural
+categories. The table below mirrors that registry and must be updated whenever
+a locale is added or retired.
+
+| Code | Language | Native name | Direction | Required plural categories |
+|---|---|---|---|---|
+| `en` | English | English | `ltr` | `one`, `other` |
+| `es` | Spanish | Español | `ltr` | `one`, `other` |
+| `fr` | French | Français | `ltr` | `one`, `other` (`0` is `one`) |
+| `ar` | Arabic | العربية | `rtl` | `zero`, `one`, `two`, `few`, `many`, `other` |
+| `de` | German | Deutsch | `ltr` | `one`, `other` |
+| `it` | Italian | Italiano | `ltr` | `one`, `many`, `other` (`many` only for round multiples of 1,000,000) |
+| `ja` | Japanese | 日本語 | `ltr` | `other` |
+| `zh` | Chinese | 中文 | `ltr` | `other` |
+
+Loading the embedded catalogs checks that the registry and locale files have
+the same languages and that catalog metadata and plural forms match the
+registry. The runtime default language list and language selector are derived
+from that registry.
 
 The package provides catalog lookup and fallback, request language
 negotiation, formatting, plural handling, accessibility helpers, and template
@@ -28,9 +41,10 @@ make those application strings translated.
 
 No individual translator names are recorded in the current locale metadata.
 The repository therefore credits zero named translators across eight locale
-files; names must not be guessed or assigned to an automated system. When a
-human translator chooses to be credited, add their name or handle to that
-locale's `meta.translators` and update this page.
+files; names must not be guessed or assigned to an automated system. A
+translator who chooses to be credited may add their name or handle to that
+locale's `meta.translators`; the maintainer updates this page when merging the
+change.
 
 ## Editing a catalog
 
@@ -78,8 +92,9 @@ quotation, and numeral conventions.
 Reviewers should verify meaning, placeholders, plural categories, glossary
 terms, and layout. A native speaker review is welcome. Human corrections take
 precedence over earlier translations; no translator should be credited
-without their consent. Add a contributor's chosen name or handle to
-`meta.translators` and this page when they request credit.
+without their consent. Contributors may add their chosen name or handle to
+`meta.translators`; the maintainer updates this page and the README credits at
+merge.
 
 ## Glossary
 

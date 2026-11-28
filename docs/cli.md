@@ -11,7 +11,7 @@ CasHp builds three binaries: `cashp` (server), `cashp-cli` (client), and
 | `-h`, `--help` | Show flag help |
 | `-v`, `--version` | Print build identity, build date, Go version, and OS/architecture |
 | `--status` | Probe the local health endpoint; healthy returns `0`, unhealthy or unreachable returns `1` |
-| `--mode production\|development\|debug` | Set application mode |
+| `--mode production\|development\|debug` | Select the application mode for this run |
 | `--debug` | Enable debug logging and debug endpoints |
 | `--color auto\|yes\|no` | Select terminal color behavior |
 | `--lang CODE` | Select the language for command output |

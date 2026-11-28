@@ -113,15 +113,19 @@ make test
 ./tests/incus.sh
 ```
 
-Tests run `go test -v -cover ./...` inside the container with a **60% coverage
-floor**. The target fails the build if total coverage drops below it, so a
-change that adds code without adding tests will not pass.
+`make test` runs the source test suite with `go test -v -cover ./...` inside the
+container and enforces a **60% coverage floor**. It also runs the basic binary
+validation tier through `tests/run_tests.sh`. The target fails if total
+coverage drops below the threshold, so a change that adds code without adding
+tests will not pass.
 
-`tests/run_tests.sh` runs the basic Docker binary checks. `tests/incus.sh`
-exercises the operating-system and service-manager integration in Incus.
-Browser tests are separate and on-demand through `tests/e2e.sh`; they are not
-part of `make test`. The test scripts accept `BINDIR` and `RELDIR` so their
-build artifacts can be directed to temporary output directories.
+`tests/run_tests.sh` runs the basic Docker binary checks and is part of
+`make test`. The broader binary-validation scripts are explicit,
+developer-initiated checks: `tests/incus.sh` exercises operating-system and
+service-manager integration in Incus, and browser tests run through
+`tests/e2e.sh`. The E2E and Incus suites are not run by `make test`. The test
+scripts accept `BINDIR` and `RELDIR` so their build artifacts can be directed
+to temporary output directories.
 
 Coverage profiles are written to a temporary directory under
 `$TMPDIR/{project_org}/{internal_name}-XXXXXX`, never into the repository.

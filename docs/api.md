@@ -24,9 +24,14 @@ override, together with its title and format.
 | `GET` | `/server/tracking.js` | Public, analytics consent required | Same-origin provider bootstrap for providers that need it; returns 404 without consent, when disabled, when the provider uses a direct external tag, or for Tor/I2P requests |
 | `GET` | `/api/{api_version}/server/about` | Public | About content source, title, and format |
 | `GET` | `/api/{api_version}/server/privacy` | Public | Privacy settings, cookies, data sharing, retention, tracking, and conditional CCPA status |
+| `GET` | `/api/{api_version}/server/dpo` | Public | Data protection contact name, email, and request-resolved privacy URL |
+| `GET`, `POST` | `/api/{api_version}/server/contact` | Public | Read the report form definition and submit a validated report |
 | `GET` | `/api/{api_version}/server/terms` | Public | Localized Terms source, title, and format |
 | `GET` | `/api/{api_version}/server/help` | Public | Public Help Markdown source and registered help pages |
 | `GET` | `/api/{api_version}/server/help/mcp` | Public | JSON MCP connection help |
+| `GET` | `/api/{api_version}/server/security` | Public | Public security contacts and reporting information |
+| `GET` | `/api/{api_version}/server/security/policy` | Public | Vulnerability disclosure policy |
+| `GET` | `/api/{api_version}/server/security/thanks` | Public | Published researcher acknowledgements |
 | `GET` | `/api/{api_version}` | Public | Versioned API discovery document |
 | `GET` | `/api/autodiscover` | Public | Unversioned autodiscovery document; clients use it before selecting an API version |
 | `GET` | `/api/{api_version}/server/healthz` | Public | Versioned health alias |

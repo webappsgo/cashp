@@ -8,10 +8,13 @@ in `src/main.go` and integrations that can be configured at runtime.
 SQLite is the default. The server opens `server.db` and `users.db` in separate
 SQLite mode; remote SQL drivers use one shared database connection. Supported
 driver identifiers are defined by `src/database` and include SQLite,
-PostgreSQL (`pgx`), MySQL/MariaDB, SQL Server, and libSQL. Configure a remote
-driver with `server.database.driver` and `server.database.url`. The server
-creates the schema during startup and exposes both database connections to its
-health checks.
+PostgreSQL (`pgx`), MySQL/MariaDB, SQL Server, and libSQL. A database URL's
+scheme selects the remote driver, so `server.database.driver` is optional when
+`server.database.url` is set. `DATABASE_URL` and `DATABASE_DRIVER` seed a new
+configuration on first run only; subsequent changes come from the saved
+configuration, admin panel, CLI, or cluster join. The URL takes precedence over
+separate connection fields. The server creates the schema during startup and
+exposes both database connections to its health checks.
 
 ## TLS and certificates
 

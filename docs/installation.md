@@ -64,10 +64,12 @@ one-time setup token and setup URL for creating the primary administrator.
 Keep the token private and redeem it once. See [Configuration](configuration.md)
 for path resolution, environment variables, and server flags.
 
-The default listener is dual-stack at `[::]`; the first-run port is selected
-from the configured default range and persisted in `server.yml`. Configure
-`server.address`, `server.port`, and, when needed, `server.baseurl` before
-exposing the service.
+The default listener is dual-stack at `[::]`. On first run outside an
+application container, the server selects an unused port from `64000–64999`
+and saves it to `server.yml`; inside Docker, Podman, or Kubernetes, the
+container listener defaults to port `80` and the host-side mapping supplies
+the external port. Configure `server.address`, `server.port`, and, when
+needed, `server.baseurl` before exposing the service.
 
 ## Linux systemd service
 
@@ -79,9 +81,11 @@ sudo ./cashp --service --install
 
 The installer writes and enables the system unit, then starts it. When run
 without system privileges, the server installs a per-user service when the
-host supports one. The binary starts with the privileges required for its
-configured listener, then drops to the dedicated service account for a system
-service. Check the service manager and current status with:
+host supports one. A system service runs as root for its lifetime under the
+project-specific AI.md PART 24 exception: the control plane manages native
+host services, firewall and network settings, container engines, and
+hypervisors. Tenant workloads remain isolated from the server process. Check
+the service manager and current status with:
 
 ```sh
 cashp --service --help
@@ -100,8 +104,10 @@ commands.
 The configuration, database, logs, backups, and cache use the directories
 resolved by the shared path package. SQLite stores server data in
 `server.db` and user data in `users.db`. Container deployments use
-`/data/db/sqlite` for SQLite by default. Mount persistent storage for the
-configured data and backup directories.
+`/config/cashp/` for configuration and `/data/` for application state,
+including `/data/db/sqlite/` for SQLite, `/data/log/cashp/` for logs, and
+`/data/backups/cashp/` for backups. Persist both `/config` and `/data` with
+volume mounts. Native installs use their platform-specific resolved paths.
 
 ## Agent service
 
