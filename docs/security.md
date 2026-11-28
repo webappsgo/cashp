@@ -37,8 +37,8 @@ instead of filing a public issue.
 
 The public security surface also includes `/.well-known/llms.txt`,
 `/server/security`, and `/server/security/policy`. The server exposes public
-health probes at `/server/healthz`, `/server/readyz`, and `/server/livez`, with
-versioned and unversioned API aliases documented in the [API reference](api.md).
+health status at `/server/healthz`, the versioned API health route, and the
+`/api/healthz` alias. See the [API reference](api.md) for canonical paths.
 Only `security.txt` and `llms.txt` are generated under `/.well-known/`; unknown
 entries return 404. Operators can provide override files for these two entries
 under `{data_dir}/web/.well-known/`.

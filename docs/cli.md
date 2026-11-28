@@ -9,7 +9,7 @@ CasHp builds three binaries: `cashp` (server), `cashp-cli` (client), and
 | Flag | Description |
 |---|---|
 | `-h`, `--help` | Show flag help |
-| `-v`, `--version` | Print build version |
+| `-v`, `--version` | Print build identity, build date, Go version, and OS/architecture |
 | `--status` | Probe the local health endpoint; healthy returns `0`, unhealthy or unreachable returns `1` |
 | `--mode production\|development\|debug` | Set application mode |
 | `--debug` | Enable debug logging and debug endpoints |
@@ -53,7 +53,7 @@ Global options can appear before or after command words:
 | Option | Description |
 |---|---|
 | `-h`, `--help` | Show help |
-| `-v`, `--version` | Print version |
+| `-v`, `--version` | Print the build identity, build date, Go version, and OS/architecture |
 | `--server URL` | Select a server |
 | `--config NAME` | Select a client configuration |
 | `--token TOKEN` | Supply an API token |
@@ -73,6 +73,11 @@ Global options can appear before or after command words:
 The output formats and command groups are defined in `src/client/cmd`; the
 live API reference describes the server routes used by commands.
 
+The client uses shared exit codes: `0` success, `1` general failure, `2` usage,
+`65` invalid input, `66` not found, `69` unavailable server, `77` authentication
+or permission failure, and `78` invalid configuration. `cashp-cli --help` lists
+the nonzero codes returned by client commands.
+
 ## Remote agent: `cashp-agent`
 
 | Option | Description |
@@ -90,7 +95,10 @@ live API reference describes the server routes used by commands.
 
 The positional agent commands are `status`, `test`, and `register`. The agent
 opens outbound connections to the configured server and does not listen for
-incoming commands.
+incoming commands. Its shared exit codes include `0` for success, `1` for a
+general failure, `2` for usage, `65` for invalid input, `66` for not found,
+`69` for an unavailable server, and `77` for authentication or permission
+failure; `cashp-agent --help` lists the nonzero codes its commands return.
 
 ## Related
 

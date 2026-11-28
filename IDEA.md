@@ -460,6 +460,11 @@ username enumeration for targeted attacks.
   `curl | bash` install script, never disabled signature verification) and
   by only ever adding repos needed for features already documented in this
   file, never arbitrary ones.
+- **SAML service-provider implementation**: use the maintained
+  `github.com/supatype/saml` fork at a pinned release, currently v0.7.0. It
+  derives from crewjam/saml and carries the namespace and assertion-validation
+  fixes for GO-2026-6909 plus additional SAML hardening. Verify the selected
+  release with the mandatory `govulncheck` gate before shipping.
 
 ### Constraints
 
@@ -534,11 +539,21 @@ returns a file export.
 | `/api/{api_version}/users/domains/{domain}` | GET | Authenticated owner | Read domain | Empty body → domain status |
 | `/api/{api_version}/users/domains/{domain}` | DELETE | Authenticated owner | Delete domain | Empty body → success |
 | `/api/{api_version}/users/domains/{domain}/verify` | POST | Authenticated owner | Verify user domain | Empty body → verification result |
+| `/api/{api_version}/users/domains/dns-providers` | GET | Authenticated | List DNS providers available for custom-domain certificates | Empty body → provider identifiers |
+| `/api/{api_version}/users/domains/{domain}/dns` | GET | Authenticated owner | Read DNS configuration instructions | Empty body → required DNS records |
+| `/api/{api_version}/users/domains/{domain}/ssl` | GET | Authenticated owner | Read custom-domain certificate status | Empty body → certificate status |
+| `/api/{api_version}/users/domains/{domain}/ssl` | POST | Authenticated owner | Configure custom-domain SSL | Provider and credentials → certificate request result |
+| `/api/{api_version}/users/domains/{domain}/ssl/renew` | POST | Authenticated owner | Request custom-domain certificate renewal | Empty body → renewal result |
 | `/api/{api_version}/orgs/{slug}/domains` | GET | Organization admin | List organization domains | Empty body → domain list |
 | `/api/{api_version}/orgs/{slug}/domains` | POST | Organization admin | Add organization domain | Hostname → domain and verification instructions |
 | `/api/{api_version}/orgs/{slug}/domains/{domain}` | GET | Organization admin | Read domain | Empty body → domain status |
 | `/api/{api_version}/orgs/{slug}/domains/{domain}` | DELETE | Organization admin | Delete domain | Empty body → success |
 | `/api/{api_version}/orgs/{slug}/domains/{domain}/verify` | POST | Organization admin | Verify organization domain | Empty body → verification result |
+| `/api/{api_version}/orgs/{slug}/domains/dns-providers` | GET | Organization admin | List DNS providers available for custom-domain certificates | Empty body → provider identifiers |
+| `/api/{api_version}/orgs/{slug}/domains/{domain}/dns` | GET | Organization admin | Read DNS configuration instructions | Empty body → required DNS records |
+| `/api/{api_version}/orgs/{slug}/domains/{domain}/ssl` | GET | Organization admin | Read custom-domain certificate status | Empty body → certificate status |
+| `/api/{api_version}/orgs/{slug}/domains/{domain}/ssl` | POST | Organization admin | Configure custom-domain SSL | Provider and credentials → certificate request result |
+| `/api/{api_version}/orgs/{slug}/domains/{domain}/ssl/renew` | POST | Organization admin | Request custom-domain certificate renewal | Empty body → renewal result |
 | `/api/{api_version}/orgs/{slug}/billing` | GET | Organization billing access | Read billing overview | Empty body → subscription and balance |
 | `/api/{api_version}/orgs/{slug}/billing/plans` | GET | Organization billing access | List plans | Empty body → available plans |
 | `/api/{api_version}/orgs/{slug}/billing/subscribe` | POST | Organization billing admin | Subscribe to plan | Plan and payment details → subscription |

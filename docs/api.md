@@ -1,6 +1,6 @@
 # API Reference
 
-The server exposes health and build metadata endpoints, optional metrics,
+The server exposes health and status information, optional metrics,
 client autodiscovery, account and organization APIs, tenant billing APIs,
 support APIs, administration settings, generated OpenAPI, and GraphQL
 documentation routes. The OpenAPI document is built from the routes mounted by
@@ -21,37 +21,64 @@ override, together with its title and format.
 | Method | Path | Access | Purpose |
 |---|---|---|---|
 | `GET` | `/server/healthz` | Public | Health status and dependency checks |
-| `GET` | `/server/readyz` | Public | Readiness probe |
-| `GET` | `/server/livez` | Public | Liveness probe |
-| `GET` | `/server/version` | Public | Build identity |
 | `GET` | `/server/tracking.js` | Public, analytics consent required | Same-origin provider bootstrap for providers that need it; returns 404 without consent, when disabled, when the provider uses a direct external tag, or for Tor/I2P requests |
-| `GET` | `/api/{api_version}/server/autodiscover` | Public | Client bootstrap information |
 | `GET` | `/api/{api_version}/server/about` | Public | About content source, title, and format |
 | `GET` | `/api/{api_version}/server/privacy` | Public | Privacy settings, cookies, data sharing, retention, tracking, and conditional CCPA status |
 | `GET` | `/api/{api_version}/server/terms` | Public | Localized Terms source, title, and format |
 | `GET` | `/api/{api_version}/server/help` | Public | Public Help Markdown source and registered help pages |
-| `GET` | `/api/{api_version}` | Public | Homepage content and instance API links |
-| `GET` | `/api/autodiscover` | Public | Unversioned autodiscovery alias |
+| `GET` | `/api/{api_version}/server/help/mcp` | Public | JSON MCP connection help |
+| `GET` | `/api/{api_version}` | Public | Versioned API discovery document |
+| `GET` | `/api/autodiscover` | Public | Unversioned autodiscovery document; clients use it before selecting an API version |
 | `GET` | `/api/{api_version}/server/healthz` | Public | Versioned health alias |
 | `GET` | `/api/healthz` | Public | Unversioned health alias |
-| `GET` | `/api/{api_version}/server/readyz` | Public | Versioned readiness alias |
-| `GET` | `/api/readyz` | Public | Unversioned readiness alias |
-| `GET` | `/api/{api_version}/server/livez` | Public | Versioned liveness alias |
-| `GET` | `/api/livez` | Public | Unversioned liveness alias |
-| `GET` | `/api/{api_version}/server/version` | Public | Versioned build identity alias |
-| `GET` | `/api/version` | Public | Unversioned build identity alias |
-| `GET` | `/{configured metrics path}` | Configured | Metrics when metrics are enabled |
+| `GET` | `/api/{api_version}/server/metrics[/{service}]` | Configured | Versioned metrics endpoint when metrics are enabled |
+| `GET` | `/api/metrics[/{service}]` | Configured | Unversioned alias of the current version's metrics endpoint |
 | `GET` | `/api/{api_version}/server/swagger` | Public | OpenAPI JSON |
 | `GET` | `/api/swagger` | Public | Unversioned OpenAPI alias |
-| `POST` | `/api/{api_version}/server/graphql` | Public | GraphQL endpoint |
-| `POST` | `/api/graphql` | Public | Unversioned GraphQL alias |
+| `GET`, `POST` | `/api/{api_version}/server/graphql` | Public | Query-only GraphQL endpoint |
+| `GET`, `POST` | `/api/graphql` | Public | Unversioned GraphQL alias for the current API version |
+| `POST` | `/api/{api_version}/server/mcp` | Bearer token | Versioned Streamable HTTP MCP endpoint |
+| `POST` | `/api/mcp` | Bearer token | Unversioned MCP alias for the current API version |
+| `POST` | `/mcp` | Bearer token | Root alias of the current version's MCP endpoint |
 | `GET` | `/server/docs/swagger` | Public | OpenAPI explorer |
 | `GET` | `/server/docs/graphql` | Public | GraphQL explorer |
 
-The API version and metrics paths come from `server.yml`. Health aliases are
-mounted directly to the same handlers rather than redirecting. Optional root
-health aliases depend on configuration. Metrics are only mounted when enabled
-and may require a configured token.
+The API version comes from `server.yml`. Versioned alias routes are mounted
+directly to the same handlers as their canonical routes; they do not redirect.
+`/api/autodiscover` is unversioned by design and has no versioned form. Optional
+root `/healthz` is a frontend alias of `/server/healthz`,
+not an API route. Metrics are only mounted when enabled and require the
+configured per-service bearer token unless unauthenticated metrics are
+explicitly enabled.
+
+## API conventions
+
+Canonical resource routes use `/api/{api_version}/...`, plural lowercase
+resource names, hyphens for compound names, and no trailing slash. The
+versioned API root has no trailing slash; its slash form redirects to the
+canonical root. The unversioned alias routes listed above return the same
+status, headers, and response body as their canonical handlers. The separate
+`/api/autodiscover` endpoint is unversioned by design, not an alias.
+
+Native API requests authenticate with `Authorization: Bearer {token}`. Query
+parameters are not accepted as credentials. Browser cross-origin requests
+follow the configured CORS policy; see the server's CORS settings in the
+[configuration guide](configuration.md).
+
+Successful native API responses use the `{ "ok": true, "data": ... }`
+envelope. Errors use `{ "ok": false, "error": "CODE", "message": "..." }`
+and an optional `details` object; the HTTP status is not repeated in the body.
+Health responses are bare health objects, GraphQL uses its standard response
+shape and supports queries only, MCP uses JSON-RPC 2.0, and file routes return
+their documented bytes and content type. Paginated responses include the
+`pagination` object; the default page size is 250.
+
+For API routes, responses default to JSON. `.txt` suffixes and
+`Accept: text/plain` request plain text; an explicit
+`Accept: application/json` takes priority over client detection. HTTP tools
+without an explicit format preference receive plain text. Binary routes always
+return their binary success body and content type. See the live OpenAPI
+document for exact methods, parameters, schemas, and response codes.
 
 `POST /server/consent` is the server-rendered consent form endpoint. Ordinary
 form submissions set the `cookie_consent` cookie and redirect back. The

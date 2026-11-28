@@ -23,12 +23,17 @@ handled by the HTTP listener. See `server.ssl` in
 
 ## Public discovery and protocol endpoints
 
-- `/api/{api_version}/server/autodiscover` provides client bootstrap data;
-  `/api/autodiscover` is its unversioned alias.
+- `/api/autodiscover` provides client bootstrap data before a client selects an
+  API version. It is unversioned by design and has no versioned form.
 - `/api/{api_version}/server/swagger` and `/api/swagger` serve generated
   OpenAPI JSON. `/server/docs/swagger` is the browser explorer.
 - `/api/{api_version}/server/graphql` and `/api/graphql` expose the GraphQL
-  endpoint; `/server/docs/graphql` is the browser explorer.
+  query endpoint; `/server/docs/graphql` is the browser explorer.
+- `/api/{api_version}/server/healthz` and `/api/healthz` expose health data.
+  The only unversioned API aliases are `/api/swagger`, `/api/graphql`,
+  `/api/healthz`, `/api/metrics[/{service}]`, and `/api/mcp`; `/mcp` is the
+  root alias for MCP. Readiness, liveness, and build metadata are available on
+  their versioned API routes without unversioned aliases.
 - `/server/help/mcp` explains how to connect an assistant to the Streamable
   HTTP MCP endpoint. `/api/{api_version}/server/mcp` is the canonical endpoint;
   `/api/mcp` and `/mcp` are aliases. Requests require a Bearer API token, and

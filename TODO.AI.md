@@ -9,7 +9,8 @@ PART 0. AI.md itself is read-only; template defects belong only in
 
 - [ ] Verify and complete core configuration, path security, runtime modes, startup validation, and binary behavior (PARTS 4–8, 12).
 - [ ] Verify and complete authentication, authorization, tenant isolation, credential handling, `app_secrets` consumption and rotation, database access, cluster behavior, rate limiting, and error/logging controls (PARTS 9–11).
-- [ ] Consolidate the incompatible `src/admin` and `src/auth` admin/session schemas and make both the admin panel and shared auth use the canonical account records (PARTS 10–11).
+- [ ] Audit the duplicated `src/admin` and `src/auth` schema and account/session code, then unify schema ownership and runtime flows with the canonical Server Admin account/session contract (PARTS 10–11); do not assume the DDL itself is incompatible without evidence.
+- [ ] Implement PART 34 external identity authentication: multiple OIDC, LDAP, and SAML providers, the specified login/onboarding/session flows, admin provider management, and every documented route; SPEC.md activates PART 34 as REQUIRED.
 - [ ] Verify and complete API route behavior, content negotiation, health/version endpoints, OpenAPI/GraphQL parity, and endpoint integration coverage (PARTS 13–14, 29).
 - [ ] Complete the running HTTP/TLS composition root by wiring shared auth, the complete API, and every configured service alongside the existing middleware, public pages, admin panel, health/readiness/version, metrics, Swagger, and GraphQL handlers (PARTS 8, 12–17).
 - [ ] Rebuild the admin route tree and settings/pages to match PART 17's canonical `/server/{admin_path}/...` structure; remove obsolete route aliases and close every required page/form flow.
@@ -19,6 +20,7 @@ PART 0. AI.md itself is read-only; template defects belong only in
 
 ## P1 — Required product features and operations
 
+- [ ] Implement the server `--maintenance` command parser, authorization gates, typed confirmations, and every documented subcommand; help currently advertises commands that `parseFlags` cannot accept (PARTS 8, 11, 22–25).
 - [ ] Verify and complete TLS/ACME, email and notifications, internal scheduling, GeoIP, metrics, backup/restore, and updates (PARTS 15, 18–23).
 - [ ] Verify and complete privilege/service management for every required platform and init system, including the documented permanent-root exception (PARTS 24–25).
 - [ ] Verify and complete the required `cashp-cli` and optional `cashp-agent`, including command/API parity, authentication, terminal behavior, and platform builds (PART 33).
@@ -36,6 +38,6 @@ PART 0. AI.md itself is read-only; template defects belong only in
 
 - [ ] Bring README, MkDocs/ReadTheDocs, operator/admin/API/integration/security/CLI docs, generated API references, and examples into sync with implemented behavior (PARTS 3, 14, 30).
 - [ ] Complete translation parity, locale selection, pluralization, accessibility, and server/client text coverage (PART 31).
-- [ ] Maintain aggregate unit coverage at or above AI.md's 60% gate and reach 100% coverage for all HTTP endpoints. Current focused checks fail on locale catalog validation and translation-key parity; rerun the full suite after those catalog and reference gaps are fixed.
+- [ ] Maintain aggregate unit coverage at or above AI.md's 60% gate and reach 100% coverage for all HTTP endpoints. Focused locale catalog and referenced-key validation now pass; aggregate coverage and endpoint coverage remain unverified.
 - [ ] Reconcile IDEA.md with AI.md and actual behavior; ensure root instruction files and all 14 `.claude/rules/` files accurately load/summarize the authoritative spec.
 - [ ] Complete the AI.md FINAL CHECKPOINT, required unit/route/accessibility/security/E2E validation, documentation checks, and provider workflow validation; resolve every failure.

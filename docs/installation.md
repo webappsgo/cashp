@@ -69,6 +69,32 @@ from the configured default range and persisted in `server.yml`. Configure
 `server.address`, `server.port`, and, when needed, `server.baseurl` before
 exposing the service.
 
+## Linux systemd service
+
+On a Linux host running systemd, install the service with the server binary:
+
+```sh
+sudo ./cashp --service --install
+```
+
+The installer writes and enables the system unit, then starts it. When run
+without system privileges, the server installs a per-user service when the
+host supports one. The binary starts with the privileges required for its
+configured listener, then drops to the dedicated service account for a system
+service. Check the service manager and current status with:
+
+```sh
+cashp --service --help
+systemctl status cashp
+```
+
+Use `cashp --service restart` to restart after changing settings that require
+a restart. `cashp --service --disable` stops and disables the service while
+keeping its data. `cashp --service --uninstall` removes the service and its
+state after confirmation; it keeps the binary. For a per-user service, use
+`systemctl --user status cashp` and the corresponding `systemctl --user`
+commands.
+
 ## Persistent data
 
 The configuration, database, logs, backups, and cache use the directories
